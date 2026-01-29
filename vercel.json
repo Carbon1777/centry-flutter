@@ -1,9 +1,8 @@
 {
-  "redirects": [
+  "routes": [
     {
-      "source": "/invite/:path*",
-      "destination": "/",
-      "permanent": false
+      "src": "^/invite/.*$",
+      "dest": "/invite.html"
     }
   ]
 }
