@@ -1,8 +1,12 @@
 {
   "routes": [
     {
-      "src": "^/\\.well-known/(.*)",
-      "dest": "/.well-known/$1"
+      "src": "^/\\.well-known/apple-app-site-association$",
+      "dest": "/.well-known/apple-app-site-association"
+    },
+    {
+      "src": "^/\\.well-known/assetlinks.json$",
+      "dest": "/.well-known/assetlinks.json"
     },
     {
       "src": "/(.*)",
