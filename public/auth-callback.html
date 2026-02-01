@@ -6,31 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   </head>
   <body>
-    <p>Signing you in…</p>
+    <p>Redirecting…</p>
 
-    <script type="module">
-      import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+    <script>
+      const params = window.location.search || '';
+      const hash = window.location.hash || '';
+      const redirectUrl = 'centry://auth' + params + hash;
 
-      const SUPABASE_URL = 'https://lqgzvolirohuettizkhx.supabase.co';
-      const SUPABASE_ANON_KEY = 'PASTE_YOUR_PUBLIC_ANON_KEY_HERE';
-
-      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-      try {
-        // ✅ КАНОН ДЛЯ MAGIC LINK
-        const { data, error } = await supabase.auth.getSessionFromUrl({
-          storeSession: true,
-        });
-
-        if (error) {
-          console.error('Auth callback error:', error);
-        }
-      } catch (e) {
-        console.error('Unexpected auth error:', e);
-      }
-
-      // ➜ только после успешного getSessionFromUrl
-      const redirectUrl = 'centry://auth';
       window.location.replace(redirectUrl);
     </script>
   </body>
