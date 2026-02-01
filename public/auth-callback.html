@@ -11,30 +11,26 @@
     <script type="module">
       import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-      // ⚠️ ЗАМЕНИ НА СВОИ ЗНАЧЕНИЯ
       const SUPABASE_URL = 'https://lqgzvolirohuettizkhx.supabase.co';
       const SUPABASE_ANON_KEY = 'PASTE_YOUR_PUBLIC_ANON_KEY_HERE';
 
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
       try {
-        // 🔑 КАНОН: завершение magic link flow
-        const { data, error } = await supabase.auth.exchangeCodeForSession(
-          window.location.href
-        );
+        // ✅ КАНОН ДЛЯ MAGIC LINK
+        const { data, error } = await supabase.auth.getSessionFromUrl({
+          storeSession: true,
+        });
 
         if (error) {
-          console.error('Auth exchange error', error);
+          console.error('Auth callback error:', error);
         }
       } catch (e) {
-        console.error('Unexpected auth error', e);
+        console.error('Unexpected auth error:', e);
       }
 
-      // ➜ ТОЛЬКО ПОСЛЕ ЭТОГО возвращаемся в приложение
-      const params = window.location.search || '';
-      const hash = window.location.hash || '';
-      const redirectUrl = 'centry://auth' + params + hash;
-
+      // ➜ только после успешного getSessionFromUrl
+      const redirectUrl = 'centry://auth';
       window.location.replace(redirectUrl);
     </script>
   </body>
