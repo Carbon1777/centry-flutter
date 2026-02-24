@@ -109,6 +109,8 @@ class PushNotifications {
       required String action,
       required String planId,
       String? actionToken,
+      String? title,
+      String? body,
     }) onInviteAction,
   }) async {
     if (_initedUi) return;
@@ -152,6 +154,8 @@ class PushNotifications {
 
       final inviteId = (map['invite_id'] ?? '').toString();
       final planId = (map['plan_id'] ?? '').toString();
+      final notifTitle = (map['title'] ?? '').toString().trim();
+      final notifBody = (map['body'] ?? '').toString().trim();
 
       if (inviteId.isEmpty || planId.isEmpty) return;
 
@@ -166,6 +170,8 @@ class PushNotifications {
         action: kInviteActionOpen,
         planId: planId,
         actionToken: null,
+        title: notifTitle.isEmpty ? null : notifTitle,
+        body: notifBody.isEmpty ? null : notifBody,
       );
     }
 
@@ -241,6 +247,8 @@ class PushNotifications {
     final payload = jsonEncode({
       'invite_id': inviteId,
       'plan_id': planId,
+      'title': title,
+      'body': body,
     });
 
     final id = inviteId.hashCode & 0x7fffffff;
