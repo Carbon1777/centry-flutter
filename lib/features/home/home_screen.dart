@@ -16,6 +16,9 @@ class HomeScreen extends StatefulWidget {
   // Called when HomeScreen/Feed starts opening the initial plan to avoid re-opening on rebuild.
   final VoidCallback? onInitialPlanOpened;
 
+  // Called when the real working screen (Feed) is ready.
+  final VoidCallback? onAppShellReady;
+
   const HomeScreen({
     super.key,
     required this.userId,
@@ -24,6 +27,7 @@ class HomeScreen extends StatefulWidget {
     required this.email,
     this.initialPlanIdToOpen,
     this.onInitialPlanOpened,
+    this.onAppShellReady,
   });
 
   @override
@@ -154,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen>
           email: widget.email,
           initialPlanIdToOpen: initialPlanIdToOpen,
           onInitialPlanOpened: widget.onInitialPlanOpened,
+          onAppShellReady: widget.onAppShellReady,
         ),
       ),
     );
