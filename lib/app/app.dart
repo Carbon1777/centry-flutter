@@ -84,21 +84,11 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   bool _handlingPendingPlanInvite = false;
 
-  // If server successfully applied invite, it returns plan_id.
-  // We forward it to HomeScreen to immediately open PlanDetails.
-  String? _pendingOpenPlanId;
-  String? _pendingOpenPlanToastMessage;
-  DateTime? _homeVisibleAt;
-  Timer? _pendingPlanOpenTimer;
-  static const Duration _minHomeVisibleForPushOpen = Duration(seconds: 6);
-
-  // ✅ Pending internal invite action clicked from notification before restore()
-  String? _pendingInviteId;
-  String? _pendingInviteAction; // 'ACCEPT' | 'DECLINE'
-  String? _pendingInvitePlanId;
-
-  // ✅ Token path for background-safe DECLINE
-  String? _pendingInviteActionToken;
+  // ✅ Pending internal invite OPEN from push (processed after restore / normal app start)
+  String? _pendingInviteDialogId;
+  String? _pendingInviteDialogPlanId;
+  String? _pendingInviteDialogTitle;
+  String? _pendingInviteDialogBody;
 
   // ✅ Push token registration guards (UI-only, no business logic)
   bool _registeringDeviceToken = false;
@@ -181,11 +171,14 @@ class _BootstrapGateState extends State<BootstrapGate>
         required String planId,
         String? actionToken,
       }) async {
-        await _handleInternalInviteAction(
+        // New canon: push action only opens the app.
+        // Product decision (ACCEPT/DECLINE) happens inside app modal.
+        if (action != 'OPEN') return;
+        _queuePendingInviteDialog(
           inviteId: inviteId,
-          action: action,
           planId: planId,
-          actionToken: actionToken,
+          title: 'Вас пригласили в план',
+          body: 'Открыть приглашение?',
         );
       },
     );
@@ -215,22 +208,76 @@ class _BootstrapGateState extends State<BootstrapGate>
 
 
   Future<void> _maybeShowInternalInviteDialog(RemoteMessage m) async {
-    if (!mounted) return;
-    if (_inviteDialogVisible) return;
-
     if (!PushNotifications.isInternalInvite(m)) return;
 
     final inviteId = (m.data['invite_id'] ?? '').toString();
     final planId = (m.data['plan_id'] ?? '').toString();
-    final actionToken = (m.data['action_token'] ?? '').toString();
-    final title = (m.data['title'] ?? 'Приглашение в план').toString();
-    final body = (m.data['body'] ?? '').toString();
+    final title = (m.data['title'] ?? 'Вас пригласили в план').toString();
+    final body = (m.data['body'] ?? 'Открыть приглашение?').toString();
 
     if (inviteId.isEmpty || planId.isEmpty) return;
 
-    _inviteDialogVisible = true;
+    _queuePendingInviteDialog(
+      inviteId: inviteId,
+      planId: planId,
+      title: title,
+      body: body,
+    );
+  }
 
-    // Ensure we show dialog on UI frame.
+  void _queuePendingInviteDialog({
+    required String inviteId,
+    required String planId,
+    String? title,
+    String? body,
+  }) {
+    _pendingInviteDialogId = inviteId;
+    _pendingInviteDialogPlanId = planId;
+    _pendingInviteDialogTitle = title;
+    _pendingInviteDialogBody = body;
+    _schedulePendingInviteDialogIfReady();
+  }
+
+  void _schedulePendingInviteDialogIfReady() {
+    if (!mounted) return;
+    if (_restoring) return;
+    if (_inviteDialogVisible) return;
+
+    final userId = _userId;
+    final publicId = _publicId;
+    final inviteId = _pendingInviteDialogId;
+    final planId = _pendingInviteDialogPlanId;
+    if (userId == null || userId.isEmpty) return;
+    if (publicId == null || publicId.isEmpty) return;
+    if (inviteId == null || inviteId.isEmpty) return;
+    if (planId == null || planId.isEmpty) return;
+
+    final title = _pendingInviteDialogTitle ?? 'Вас пригласили в план';
+    final body = _pendingInviteDialogBody ?? 'Открыть приглашение?';
+
+    _pendingInviteDialogId = null;
+    _pendingInviteDialogPlanId = null;
+    _pendingInviteDialogTitle = null;
+    _pendingInviteDialogBody = null;
+
+    unawaited(_showInternalInviteDialog(
+      inviteId: inviteId,
+      planId: planId,
+      title: title,
+      body: body,
+    ));
+  }
+
+  Future<void> _showInternalInviteDialog({
+    required String inviteId,
+    required String planId,
+    required String title,
+    required String body,
+  }) async {
+    if (!mounted) return;
+    if (_inviteDialogVisible) return;
+
+    _inviteDialogVisible = true;
     await Future<void>.delayed(Duration.zero);
 
     if (!mounted) {
@@ -238,8 +285,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       return;
     }
 
-    // App-style modal (not SnackBar).
-    // Tap outside does nothing; user must choose.
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -255,7 +300,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                   inviteId: inviteId,
                   action: 'DECLINE',
                   planId: planId,
-                  actionToken: actionToken.isEmpty ? null : actionToken,
                 );
               },
               child: const Text('Отклонить'),
@@ -267,7 +311,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                   inviteId: inviteId,
                   action: 'ACCEPT',
                   planId: planId,
-                  actionToken: actionToken.isEmpty ? null : actionToken,
                 );
               },
               child: const Text('Принять'),
@@ -278,226 +321,102 @@ class _BootstrapGateState extends State<BootstrapGate>
     );
 
     _inviteDialogVisible = false;
+    _schedulePendingInviteDialogIfReady();
   }
 
-    /// If user clicked ACCEPT/DECLINE before we restored _userId,
-    /// we must execute the RPC as soon as we know app_user_id.
-    Future<void> _flushPendingInternalInviteActionIfAny() async {
+
+  
+  Future<void> _handleInternalInviteAction({
+    required String inviteId,
+    required String action,
+    required String planId,
+    String? actionToken,
+  }) async {
+    if (_processingInviteAction) return;
+    _processingInviteAction = true;
+
+    try {
       final userId = _userId;
       if (userId == null || userId.isEmpty) return;
 
-      final inviteId = _pendingInviteId;
-      final action = _pendingInviteAction;
-      final planId = _pendingInvitePlanId;
-      final token = _pendingInviteActionToken;
-
-      if (inviteId == null ||
-          inviteId.isEmpty ||
-          action == null ||
-          action.isEmpty ||
-          planId == null ||
-          planId.isEmpty) {
-        return;
-      }
-
-      // Clear first to avoid loops / duplicate execution.
-      _pendingInviteId = null;
-      _pendingInviteAction = null;
-      _pendingInvitePlanId = null;
-      _pendingInviteActionToken = null;
-
-      // Execute via the same handler (keeps UI behavior consistent).
-      await _handleInternalInviteAction(
-        inviteId: inviteId,
-        action: action,
-        planId: planId,
-        actionToken: token,
+      await _supabase.rpc(
+        'respond_plan_internal_invite_v1',
+        params: {
+          'p_app_user_id': userId,
+          'p_invite_id': inviteId,
+          'p_action': action,
+        },
       );
-    }
 
-    Future<void> _handleInternalInviteAction({
-      required String inviteId,
-      required String action,
-      required String planId,
-      String? actionToken,
-    }) async {
-      if (_processingInviteAction) return;
-      _processingInviteAction = true;
+      if (!mounted) return;
 
-      try {
-        final userId = _userId;
-        if (userId == null || userId.isEmpty) {
-          // ❗️User clicked action before restore() finished.
-          // Store the action and execute immediately after restore.
-          _pendingInviteId = inviteId;
-          _pendingInviteAction = action;
-          _pendingInvitePlanId = planId;
-          _pendingInviteActionToken = actionToken;
-          return;
-        }
-
-        if (action == 'DECLINE' && actionToken != null && actionToken.trim().isNotEmpty) {
-          // ✅ Canon: decline should not require UI/auth; use token RPC.
-          await PushNotifications.respondInternalInviteByToken(
-            actionToken: actionToken,
-            action: 'DECLINE',
-          );
-        } else {
-          await _supabase.rpc(
-            'respond_plan_internal_invite_v1',
-            params: {
-              'p_app_user_id': userId,
-              'p_invite_id': inviteId,
-              'p_action': action,
-            },
-          );
-        }
-
-  if (!mounted) return;
-
-        if (action == 'ACCEPT') {
-          // Canon: server action first, then defer canonical open until Home
-          // has been visible long enough (no "flash" on cold start).
-          _queuePendingPlanOpen(
+      if (action == 'ACCEPT') {
+        unawaited(
+          _openPlanDetailsCanonicalStack(
             planId,
             toastMessage: 'Приглашение принято',
-          );
-        }
-  } on PostgrestException catch (e) {
-        if (!mounted) return;
-        unawaited(showCenterToast(context, message: e.message, isError: true));
-  } catch (e) {
-        if (!mounted) return;
-        unawaited(showCenterToast(context, message: 'Ошибка: $e', isError: true));
-  } finally {
-        _processingInviteAction = false;
-      }
-    }
-
-    Future<void> _openPlanDetailsCanonicalStack(
-      String planId, {
-      String? toastMessage,
-    }) async {
-      final userId = _userId;
-      final publicId = _publicId;
-      if (userId == null || userId.isEmpty) return;
-      if (publicId == null || publicId.isEmpty) return;
-
-      final nav = App.navigatorKey.currentState;
-      if (nav == null) return;
-
-      final PlansRepository repo = PlansRepositoryImpl(Supabase.instance.client);
-
-      Route<T> noAnimRoute<T>(Widget child) {
-        return PageRouteBuilder<T>(
-          pageBuilder: (_, __, ___) => child,
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
+          ),
         );
       }
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      unawaited(showCenterToast(context, message: e.message, isError: true));
+    } catch (e) {
+      if (!mounted) return;
+      unawaited(showCenterToast(context, message: 'Ошибка: $e', isError: true));
+    } finally {
+      _processingInviteAction = false;
+    }
+  }
 
-      // ✅ Canonical cold-start stack from push:
-      // Home -> Plans -> PlanDetails
-      // Build the stack in one chain to avoid the visible Home flash.
-      nav.pushAndRemoveUntil(
-        noAnimRoute(
-          HomeScreen(
-            userId: userId,
-            nickname: _nickname ?? '',
-            publicId: publicId,
-            email: _email,
-            initialPlanIdToOpen: null,
-            onInitialPlanOpened: _consumePendingOpenPlanId,
-          ),
-        ),
-        (route) => false,
+  Future<void> _openPlanDetailsCanonicalStack(
+    String planId, {
+    String? toastMessage,
+  }) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+
+    final nav = App.navigatorKey.currentState;
+    if (nav == null) return;
+
+    final PlansRepository repo = PlansRepositoryImpl(Supabase.instance.client);
+
+    Route<T> noAnimRoute<T>(Widget child) {
+      return PageRouteBuilder<T>(
+        pageBuilder: (_, __, ___) => child,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
       );
+    }
 
+    // New invite canon: no Home in push route. Open inside Plans root.
+    nav.pushAndRemoveUntil(
+      noAnimRoute(
+        PlansScreen(appUserId: userId),
+      ),
+      (route) => false,
+    );
+
+    unawaited(
       nav.push(
-        noAnimRoute(
-          PlansScreen(appUserId: userId),
-        ),
-      );
-
-      unawaited(
-        nav.push(
-          MaterialPageRoute(
-            builder: (_) => PlanDetailsScreen(
-              appUserId: userId,
-              planId: planId,
-              repository: repo,
-            ),
+        MaterialPageRoute(
+          builder: (_) => PlanDetailsScreen(
+            appUserId: userId,
+            planId: planId,
+            repository: repo,
           ),
         ),
-      );
+      ),
+    );
 
-      if (toastMessage != null && toastMessage.isNotEmpty) {
-        Future<void>.delayed(const Duration(milliseconds: 350), () async {
-          final toastCtx = App.navigatorKey.currentContext;
-          if (toastCtx == null) return;
-          await showCenterToast(toastCtx, message: toastMessage);
-        });
-      }
+    if (toastMessage != null && toastMessage.isNotEmpty) {
+      Future<void>.delayed(const Duration(milliseconds: 350), () async {
+        final toastCtx = App.navigatorKey.currentContext;
+        if (toastCtx == null) return;
+        await showCenterToast(toastCtx, message: toastMessage);
+      });
     }
-
-
-    void _queuePendingPlanOpen(
-      String planId, {
-      String? toastMessage,
-    }) {
-      if (mounted) {
-        setState(() {
-          _pendingOpenPlanId = planId;
-          _pendingOpenPlanToastMessage = toastMessage;
-        });
-      } else {
-        _pendingOpenPlanId = planId;
-        _pendingOpenPlanToastMessage = toastMessage;
-      }
-
-      _schedulePendingPlanOpenIfReady();
-    }
-
-    void _schedulePendingPlanOpenIfReady() {
-      final planId = _pendingOpenPlanId;
-      if (planId == null || planId.isEmpty) return;
-      if (_restoring) return;
-
-      final shownAt = _homeVisibleAt;
-      if (shownAt == null) return;
-
-      final elapsed = DateTime.now().difference(shownAt);
-      final remaining = _minHomeVisibleForPushOpen - elapsed;
-
-      _pendingPlanOpenTimer?.cancel();
-
-      if (remaining > Duration.zero) {
-        _pendingPlanOpenTimer = Timer(remaining, () {
-          if (!mounted) return;
-          _schedulePendingPlanOpenIfReady();
-        });
-        return;
-      }
-
-      final toastMessage = _pendingOpenPlanToastMessage;
-
-      if (mounted) {
-        setState(() {
-          _pendingOpenPlanId = null;
-          _pendingOpenPlanToastMessage = null;
-        });
-      } else {
-        _pendingOpenPlanId = null;
-        _pendingOpenPlanToastMessage = null;
-      }
-
-      unawaited(
-        _openPlanDetailsCanonicalStack(
-          planId,
-          toastMessage: toastMessage,
-        ),
-      );
-    }
+  }
 
     @override
     void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -505,8 +424,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         unawaited(GeoService.instance.refresh());
         unawaited(_ensureDeviceTokenRegistered());
 
-        // If user restored while app was backgrounded, flush pending invite action.
-        unawaited(_flushPendingInternalInviteActionIfAny());
+        _schedulePendingInviteDialogIfReady();
       }
     }
 
@@ -592,7 +510,7 @@ void _initAuthListener() {
 
       await _storage.clearPendingPlanInviteToken();
 
-      _queuePendingPlanOpen(planId);
+      unawaited(_openPlanDetailsCanonicalStack(planId));
 
       await _restore();
     } on PostgrestException catch (e) {
@@ -711,7 +629,6 @@ void _initAuthListener() {
 
   Future<void> _restore() async {
     _retryTimer?.cancel();
-    _pendingPlanOpenTimer?.cancel();
 
     final session = _supabase.auth.currentSession;
 
@@ -737,8 +654,7 @@ void _initAuthListener() {
         unawaited(_ensureDeviceTokenRegistered());
         unawaited(_tryConsumePendingPlanInvite());
 
-        // ✅ If user clicked ACCEPT/DECLINE before restore finished, execute now.
-        unawaited(_flushPendingInternalInviteActionIfAny());
+        _schedulePendingInviteDialogIfReady();
         return;
       }
 
@@ -761,8 +677,7 @@ void _initAuthListener() {
       unawaited(_ensureDeviceTokenRegistered());
       unawaited(_tryConsumePendingPlanInvite());
 
-      // ✅ Same for guest (domain id exists) – execute pending action.
-      unawaited(_flushPendingInternalInviteActionIfAny());
+      _schedulePendingInviteDialogIfReady();
       return;
     }
 
@@ -815,23 +730,13 @@ void _initAuthListener() {
     unawaited(_ensureDeviceTokenRegistered());
     unawaited(_tryConsumePendingPlanInvite());
 
-    // ✅ After onboarding, execute pending action if any.
-    unawaited(_flushPendingInternalInviteActionIfAny());
-  }
-
-  void _consumePendingOpenPlanId() {
-    if (_pendingOpenPlanId == null && _pendingOpenPlanToastMessage == null) return;
-    setState(() {
-      _pendingOpenPlanId = null;
-      _pendingOpenPlanToastMessage = null;
-    });
+    _schedulePendingInviteDialogIfReady();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _retryTimer?.cancel();
-    _pendingPlanOpenTimer?.cancel();
     _authSub?.cancel();
     _linkSub?.cancel();
     _fcmTokenSub?.cancel();
@@ -848,10 +753,9 @@ void _initAuthListener() {
     }
 
     if (_userId != null && _publicId != null) {
-      _homeVisibleAt ??= DateTime.now();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _schedulePendingPlanOpenIfReady();
+        _schedulePendingInviteDialogIfReady();
       });
 
       return HomeScreen(
@@ -860,7 +764,7 @@ void _initAuthListener() {
         publicId: _publicId!,
         email: _email,
         initialPlanIdToOpen: null,
-        onInitialPlanOpened: _consumePendingOpenPlanId,
+        onInitialPlanOpened: null,
       );
     }
 
