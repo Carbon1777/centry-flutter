@@ -131,9 +131,7 @@ class PushNotifications {
       // Canon: for internal invite push no product actions in system notification.
       // Both tap on body and tap on "Посмотреть" route to OPEN.
       final normalizedAction =
-          (actionId.isEmpty || actionId == NotificationResponse.defaultActionId)
-              ? kInviteActionOpen
-              : actionId;
+          actionId.isEmpty ? kInviteActionOpen : actionId;
 
       if (normalizedAction != kInviteActionOpen) {
         return;

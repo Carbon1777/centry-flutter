@@ -24,6 +24,9 @@ class ActivityFeedScreen extends StatefulWidget {
   // Called when Feed starts opening the initial plan to avoid re-opening on rebuild.
   final VoidCallback? onInitialPlanOpened;
 
+  // Called once when Feed is actually visible and ready (app shell ready).
+  final VoidCallback? onAppShellReady;
+
   const ActivityFeedScreen({
     super.key,
     required this.userId,
@@ -32,6 +35,7 @@ class ActivityFeedScreen extends StatefulWidget {
     required this.email,
     this.initialPlanIdToOpen,
     this.onInitialPlanOpened,
+    this.onAppShellReady,
   });
 
   @override
@@ -43,6 +47,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   StreamSubscription<AuthState>? _authSub;
 
   bool _handledInitialPlanNav = false;
+  bool _appShellReadyNotified = false;
 
   @override
   void initState() {
@@ -118,6 +123,16 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   void _retry() {
     setState(() {
       _future = _loadFromAuthoritativeSource();
+    });
+  }
+
+  void _notifyAppShellReadyAfterBuild() {
+    if (_appShellReadyNotified) return;
+    _appShellReadyNotified = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onAppShellReady?.call();
     });
   }
 
@@ -212,6 +227,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         final user = snap.data!;
         final accentBlue = colors.primary;
         final outlineWhite = Colors.white.withOpacity(0.75);
+
+        // ✅ Feed is the first real working screen after welcome.
+        _notifyAppShellReadyAfterBuild();
 
         // ✅ Only after user is loaded, trigger invite navigation (once).
         _maybeOpenInitialPlanAfterBuild();
