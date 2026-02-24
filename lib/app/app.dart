@@ -63,6 +63,13 @@ class _BootstrapGateState extends State<BootstrapGate>
   static const MethodChannel _notificationIntentChannel =
       MethodChannel('centry/notification_intents');
 
+  // UI strings (keep centralized to avoid drift)
+  static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';
+  static const String kInviteDialogDefaultBody =
+      'Вас пригласили в план. Принять приглашение?';
+  static const String kInviteAcceptedToast = 'Приглашение принято';
+  static const String kInviteDeclinedToast = 'Приглашение отклонено';
+
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<Uri>? _linkSub;
 
@@ -91,6 +98,10 @@ class _BootstrapGateState extends State<BootstrapGate>
   DateTime? _homeVisibleAt;
   Timer? _pendingPlanOpenTimer;
   bool _appShellReady = false;
+
+  // Post-identity pipeline guards (avoid reentry/loops).
+  bool _postIdentityFlowsRunning = false;
+  bool _postIdentityFlowsRerunRequested = false;
 
   // ✅ Pending internal invite dialog (open-only push -> in-app modal)
   String? _pendingDialogInviteId;
@@ -180,6 +191,8 @@ class _BootstrapGateState extends State<BootstrapGate>
         required String action,
         required String planId,
         String? actionToken,
+        String? title,
+        String? body,
       }) async {
         final normalized = action.trim().toUpperCase();
 
@@ -189,8 +202,8 @@ class _BootstrapGateState extends State<BootstrapGate>
             inviteId: inviteId,
             planId: planId,
             actionToken: actionToken,
-            title: 'Вас пригласили в план',
-            body: 'Откройте приглашение и выберите действие.',
+            title: title,
+            body: body,
           );
           return;
         }
@@ -246,7 +259,7 @@ class _BootstrapGateState extends State<BootstrapGate>
             .toString()
             .trim();
 
-    final title = 'Вас пригласили в план';
+    final title = kInviteDialogDefaultTitle;
     final body = (inviterNickname.isNotEmpty && planTitle.isNotEmpty)
         ? '$inviterNickname пригласил вас в план $planTitle'
         : (m.data['body'] ?? '').toString();
@@ -273,7 +286,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     _pendingDialogPlanId = planId;
     _pendingDialogActionToken = actionToken;
     _pendingDialogTitle = (title == null || title.trim().isEmpty)
-        ? 'Вас пригласили в план'
+        ? kInviteDialogDefaultTitle
         : title;
     _pendingDialogBody = body ?? '';
 
@@ -298,7 +311,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     final inviteId = _pendingDialogInviteId;
     final planId = _pendingDialogPlanId;
     final actionToken = _pendingDialogActionToken;
-    final title = _pendingDialogTitle ?? 'Вас пригласили в план';
+    final title = _pendingDialogTitle ?? kInviteDialogDefaultTitle;
     final body = _pendingDialogBody ?? '';
 
     if (inviteId == null ||
@@ -327,9 +340,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           return AlertDialog(
             title: Text(title),
             content: Text(
-              body.isEmpty
-                  ? 'Вас пригласили в план. Принять приглашение?'
-                  : body,
+              body.isEmpty ? kInviteDialogDefaultBody : body,
             ),
             actions: [
               TextButton(
@@ -408,12 +419,16 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (!mounted) return;
 
       if (action == 'ACCEPT') {
+        // Важно: не открываем детали напрямую в момент RPC-ответа,
+        // потому что это может происходить до полной готовности shell-а.
+        // Кладём навигацию в pending и даём BootstrapGate открыть детали,
+        // когда app shell уже восстановлен.
         _queuePendingPlanOpen(
           planId,
-          toastMessage: 'Приглашение принято',
+          toastMessage: kInviteAcceptedToast,
         );
       } else if (action == 'DECLINE') {
-        unawaited(showCenterToast(context, message: 'Приглашение отклонено'));
+        unawaited(showCenterToast(context, message: kInviteDeclinedToast));
       }
     } on PostgrestException catch (e) {
       if (!mounted) return;
@@ -426,14 +441,12 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
   }
 
-  Future<void> _openPlanDetailsCanonicalStack(
+  Future<void> _openPlanDetailsFromCurrentShell(
     String planId, {
     String? toastMessage,
   }) async {
     final userId = _userId;
-    final publicId = _publicId;
     if (userId == null || userId.isEmpty) return;
-    if (publicId == null || publicId.isEmpty) return;
 
     final nav = App.navigatorKey.currentState;
     if (nav == null) return;
@@ -448,48 +461,36 @@ class _BootstrapGateState extends State<BootstrapGate>
       );
     }
 
-    // ✅ Canonical cold-start stack from push:
-    // Home -> Plans -> PlanDetails
-    // Build the stack in one chain to avoid the visible Home flash.
-    nav.pushAndRemoveUntil(
-      noAnimRoute(
-        HomeScreen(
-          userId: userId,
-          nickname: _nickname ?? '',
-          publicId: publicId,
-          email: _email,
-          initialPlanIdToOpen: null,
-          onInitialPlanOpened: _consumePendingOpenPlanId,
-        ),
-      ),
-      (route) => false,
-    );
-
     nav.push(
       noAnimRoute(
         PlansScreen(appUserId: userId),
       ),
     );
 
-    unawaited(
-      nav.push(
-        MaterialPageRoute(
-          builder: (_) => PlanDetailsScreen(
-            appUserId: userId,
-            planId: planId,
-            repository: repo,
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final nav2 = App.navigatorKey.currentState;
+      if (nav2 == null) return;
+
+      unawaited(
+        nav2.push(
+          MaterialPageRoute(
+            builder: (_) => PlanDetailsScreen(
+              appUserId: userId,
+              planId: planId,
+              repository: repo,
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    if (toastMessage != null && toastMessage.isNotEmpty) {
-      Future<void>.delayed(const Duration(milliseconds: 350), () async {
-        final toastCtx = App.navigatorKey.currentContext;
-        if (toastCtx == null) return;
-        await showCenterToast(toastCtx, message: toastMessage);
-      });
-    }
+      if (toastMessage != null && toastMessage.isNotEmpty) {
+        Future<void>.delayed(const Duration(milliseconds: 350), () async {
+          final toastCtx = App.navigatorKey.currentContext;
+          if (toastCtx == null) return;
+          await showCenterToast(toastCtx, message: toastMessage);
+        });
+      }
+    });
   }
 
   void _queuePendingPlanOpen(
@@ -530,7 +531,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     unawaited(
-      _openPlanDetailsCanonicalStack(
+      _openPlanDetailsFromCurrentShell(
         planId,
         toastMessage: toastMessage,
       ),
@@ -543,7 +544,9 @@ class _BootstrapGateState extends State<BootstrapGate>
       unawaited(GeoService.instance.refresh());
       unawaited(_ensureDeviceTokenRegistered());
 
-      // If user restored while app was backgrounded, flush pending invite action.
+      // If user restored while app was backgrounded, flush pending invite UI/actions.
+      _schedulePendingInviteDialogIfReady();
+      _schedulePendingPlanOpenIfReady();
     }
   }
 
@@ -666,6 +669,32 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
   }
 
+  void _runPostIdentityFlows() {
+    if (_postIdentityFlowsRunning) {
+      _postIdentityFlowsRerunRequested = true;
+      return;
+    }
+
+    _postIdentityFlowsRunning = true;
+    unawaited(_runPostIdentityFlowsAsync());
+  }
+
+  Future<void> _runPostIdentityFlowsAsync() async {
+    try {
+      // After identity becomes available (AUTH/GUEST/onboarding), kick off pending UI-only flows.
+      await _ensureDeviceTokenRegistered();
+      await _tryConsumePendingPlanInvite();
+      _schedulePendingInviteDialogIfReady();
+      _schedulePendingPlanOpenIfReady();
+    } finally {
+      _postIdentityFlowsRunning = false;
+      if (_postIdentityFlowsRerunRequested) {
+        _postIdentityFlowsRerunRequested = false;
+        _runPostIdentityFlows();
+      }
+    }
+  }
+
   Future<void> _ensureDeviceTokenRegistered() async {
     if (kIsWeb) return;
 
@@ -770,14 +799,11 @@ class _BootstrapGateState extends State<BootstrapGate>
           _email = row['email'] as String?;
           _restoring = false;
           _appShellReady = false;
+          _homeVisibleAt = null;
+          _postIdentityFlowsRerunRequested = false;
         });
 
-        unawaited(_ensureDeviceTokenRegistered());
-        unawaited(_tryConsumePendingPlanInvite());
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _schedulePendingInviteDialogIfReady();
-        });
+        _runPostIdentityFlows();
         return;
       }
 
@@ -795,14 +821,12 @@ class _BootstrapGateState extends State<BootstrapGate>
         _publicId = snapshot.publicId;
         _email = null;
         _restoring = false;
+        _appShellReady = false;
+        _homeVisibleAt = null;
+        _postIdentityFlowsRerunRequested = false;
       });
 
-      unawaited(_ensureDeviceTokenRegistered());
-      unawaited(_tryConsumePendingPlanInvite());
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _schedulePendingInviteDialogIfReady();
-      });
+      _runPostIdentityFlows();
       return;
     }
 
@@ -814,6 +838,9 @@ class _BootstrapGateState extends State<BootstrapGate>
       _publicId = null;
       _email = null;
       _restoring = false;
+      _appShellReady = false;
+      _homeVisibleAt = null;
+      _postIdentityFlowsRerunRequested = false;
     });
   }
 
@@ -851,14 +878,10 @@ class _BootstrapGateState extends State<BootstrapGate>
       _nickname = snapshot.nickname;
       _email = null;
       _appShellReady = false;
+      _homeVisibleAt = null;
     });
 
-    unawaited(_ensureDeviceTokenRegistered());
-    unawaited(_tryConsumePendingPlanInvite());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _schedulePendingInviteDialogIfReady();
-    });
+    _runPostIdentityFlows();
   }
 
   void _onAppShellReady() {
@@ -875,8 +898,9 @@ class _BootstrapGateState extends State<BootstrapGate>
   }
 
   void _consumePendingOpenPlanId() {
-    if (_pendingOpenPlanId == null && _pendingOpenPlanToastMessage == null)
+    if (_pendingOpenPlanId == null && _pendingOpenPlanToastMessage == null) {
       return;
+    }
     setState(() {
       _pendingOpenPlanId = null;
       _pendingOpenPlanToastMessage = null;
