@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1052430642596",
+    "project_id": "centry1777",
+    "storage_bucket": "centry1777.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052430642596:android:33b702b2d9cda544392531",
+        "android_client_info": {
+          "package_name": "com.example.centry"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCr0sZQsXTV1vYoP-DPR5ew7xEXIn2aOA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

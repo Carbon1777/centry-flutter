@@ -1,0 +1,32 @@
+{
+  // --- Deno: включаем ТОЛЬКО для supabase/functions ---
+  "deno.enable": false,
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.lint": true,
+  "deno.unstable": [
+    "bare-node-builtins",
+    "byonm",
+    "sloppy-imports",
+    "unsafe-proto",
+    "webgpu",
+    "broadcast-channel",
+    "worker-options",
+    "cron",
+    "kv",
+    "ffi",
+    "fs",
+    "http",
+    "net"
+  ],
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  // --- Dart/Flutter: НЕ задаём flutterSdkPath через ~ ---
+  // Пусть Dart extension сам найдёт Flutter по PATH (flutter/dart в системе).
+  // Если Flutter не находится автоматически — тогда зададим абсолютный путь (без ~) следующим шагом.
+  "dart.flutterSdkPath": null,
+  "dart.previewFlutterUiGuides": true,
+  "dart.previewFlutterUiGuidesCustomTracking": true
+}
