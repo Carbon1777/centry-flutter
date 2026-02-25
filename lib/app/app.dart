@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
@@ -62,6 +63,17 @@ class _BootstrapGateState extends State<BootstrapGate>
   final _appLinks = AppLinks();
   static const MethodChannel _notificationIntentChannel =
       MethodChannel('centry/notification_intents');
+
+// Global UI relay (UI-only): handles invite taps that arrive on stale callbacks.
+static String? _globalInviteId;
+static String? _globalPlanId;
+static String? _globalInviteActionToken;
+static String? _globalInviteTitle;
+static String? _globalInviteBody;
+static Timer? _globalInviteFlushTimer;
+static bool _globalInviteDialogVisible = false;
+static bool _globalInviteActionProcessing = false;
+
 
   // UI strings (keep centralized to avoid drift)
   static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';
@@ -169,11 +181,50 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
 
-        // 2) Notification tap routing (open Plan Details by plan_id)
+        // 2) Notification tap routing for local notification OPEN action (payload JSON in extras.payload)
+        final actionId = (extras['actionId'] ?? extras['action_id'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
+
+        Map<String, dynamic> payload = <String, dynamic>{};
+        final payloadRaw = extras['payload'];
+        if (payloadRaw is Map) {
+          payload = Map<String, dynamic>.from(payloadRaw);
+        } else if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
+          final decoded = jsonDecode(payloadRaw);
+          if (decoded is Map) {
+            payload = Map<String, dynamic>.from(decoded);
+          }
+        }
+
+        final inviteId = (payload['invite_id'] ?? extras['invite_id'] ?? '')
+            .toString()
+            .trim();
+        final planId = (payload['plan_id'] ?? extras['plan_id'] ?? '')
+            .toString()
+            .trim();
+        final title = (payload['title'] ?? '').toString();
+        final body = (payload['body'] ?? '').toString();
+
+        if (actionId == 'OPEN' && inviteId.isNotEmpty && planId.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint(
+              '[IntentBridge] queue invite dialog from intent inviteId=$inviteId planId=$planId mounted=$mounted',
+            );
+          }
+          _queuePendingInviteDialog(
+            inviteId: inviteId,
+            planId: planId,
+            title: title,
+            body: body,
+          );
+          return;
+        }
+
+        // Legacy internal-invite body taps are ignored by canon.
         final type = (extras['type'] ?? '').toString();
-        final planId = (extras['plan_id'] ?? '').toString();
         if (type == 'PLAN_INTERNAL_INVITE' && planId.isNotEmpty) {
-          // Canon: tap on invite body does nothing (no ACCEPT/DECLINE, no nav).
           return;
         }
       } catch (e) {
@@ -275,33 +326,312 @@ class _BootstrapGateState extends State<BootstrapGate>
     );
   }
 
-  void _queuePendingInviteDialog({
-    required String inviteId,
-    required String planId,
-    String? actionToken,
-    String? title,
-    String? body,
-  }) {
-    _pendingDialogInviteId = inviteId;
-    _pendingDialogPlanId = planId;
-    _pendingDialogActionToken = actionToken;
-    _pendingDialogTitle = (title == null || title.trim().isEmpty)
-        ? kInviteDialogDefaultTitle
-        : title;
-    _pendingDialogBody = body ?? '';
-
-    _schedulePendingInviteDialogIfReady();
+void _queuePendingInviteDialog({
+  required String inviteId,
+  required String planId,
+  String? actionToken,
+  String? title,
+  String? body,
+}) {
+  if (kDebugMode) {
+    debugPrint(
+      '[InviteModal] queue request inviteId=$inviteId planId=$planId mounted=$mounted restoring=$_restoring appShell=$_appShellReady visible=$_inviteDialogVisible',
+    );
   }
 
-  void _schedulePendingInviteDialogIfReady() {
+  if (!mounted) {
+    _storePendingInviteGlobally(
+      inviteId: inviteId,
+      planId: planId,
+      actionToken: actionToken,
+      title: title,
+      body: body,
+    );
+    if (kDebugMode) {
+      debugPrint('[InviteModal] stored in global buffer inviteId=$inviteId planId=$planId');
+    }
+    _scheduleGlobalInviteRootDialogFlush();
+    return;
+  }
+
+  _pendingDialogInviteId = inviteId;
+  _pendingDialogPlanId = planId;
+  _pendingDialogActionToken = actionToken;
+  _pendingDialogTitle = (title == null || title.trim().isEmpty)
+      ? kInviteDialogDefaultTitle
+      : title;
+  _pendingDialogBody = body ?? '';
+
+  _schedulePendingInviteDialogIfReady();
+}
+
+static void _storePendingInviteGlobally({
+  required String inviteId,
+  required String planId,
+  String? actionToken,
+  String? title,
+  String? body,
+}) {
+  _globalInviteId = inviteId;
+  _globalPlanId = planId;
+  _globalInviteActionToken = actionToken;
+  _globalInviteTitle = title;
+  _globalInviteBody = body;
+}
+
+static void _scheduleGlobalInviteRootDialogFlush() {
+  _globalInviteFlushTimer?.cancel();
+  _globalInviteFlushTimer = Timer(const Duration(milliseconds: 120), () {
+    _globalInviteFlushTimer = null;
+    unawaited(_tryFlushGlobalInviteViaRootNavigator());
+  });
+}
+
+static Future<void> _tryFlushGlobalInviteViaRootNavigator() async {
+  final inviteId = _globalInviteId;
+  final planId = _globalPlanId;
+  if (inviteId == null || inviteId.isEmpty || planId == null || planId.isEmpty) {
+    return;
+  }
+  if (_globalInviteDialogVisible || _globalInviteActionProcessing) {
+    return;
+  }
+
+  final navState = App.navigatorKey.currentState;
+  final navContext = App.navigatorKey.currentContext;
+  if (navState == null || navContext == null) {
+    if (kDebugMode) {
+      debugPrint('[InviteModal] root navigator not ready, retry global flush');
+    }
+    _scheduleGlobalInviteRootDialogFlush();
+    return;
+  }
+
+  final dialogTitle = (_globalInviteTitle == null || _globalInviteTitle!.trim().isEmpty)
+      ? kInviteDialogDefaultTitle
+      : _globalInviteTitle!;
+  final dialogBody = _globalInviteBody ?? '';
+  final actionToken = _globalInviteActionToken;
+
+  // Clear buffer before showing to avoid duplicate dialogs from duplicate callbacks.
+  _globalInviteId = null;
+  _globalPlanId = null;
+  _globalInviteActionToken = null;
+  _globalInviteTitle = null;
+  _globalInviteBody = null;
+
+  _globalInviteDialogVisible = true;
+  if (kDebugMode) {
+    debugPrint('[InviteModal] show via root navigator inviteId=$inviteId planId=$planId');
+  }
+
+  String? action;
+  try {
+    action = await showDialog<String>(
+      context: navContext,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(dialogTitle),
+          content: Text(
+            dialogBody.isEmpty ? kInviteDialogDefaultBody : dialogBody,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop('DECLINE'),
+              child: const Text('Отклонить'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop('ACCEPT'),
+              child: const Text('Принять'),
+            ),
+          ],
+        );
+      },
+    );
+  } finally {
+    _globalInviteDialogVisible = false;
+  }
+
+  if (action != 'ACCEPT' && action != 'DECLINE') {
+    // Re-queue same invite if dialog was interrupted.
+    _storePendingInviteGlobally(
+      inviteId: inviteId,
+      planId: planId,
+      actionToken: actionToken,
+      title: dialogTitle,
+      body: dialogBody,
+    );
+    _scheduleGlobalInviteRootDialogFlush();
+    return;
+  }
+
+  await _handleInternalInviteActionFromRoot(
+    inviteId: inviteId,
+    planId: planId,
+    action: action!,
+    actionToken: actionToken,
+  );
+}
+
+static Future<void> _handleInternalInviteActionFromRoot({
+  required String inviteId,
+  required String planId,
+  required String action,
+  String? actionToken,
+}) async {
+  if (_globalInviteActionProcessing) {
+    if (kDebugMode) {
+      debugPrint('[InviteAction] root ignored: already processing inviteId=$inviteId action=$action');
+    }
+    return;
+  }
+
+  _globalInviteActionProcessing = true;
+  final supabase = Supabase.instance.client;
+
+  try {
+    final currentUser = await supabase.rpc('current_user');
+    String? userId;
+    if (currentUser is Map) {
+      userId = (Map<String, dynamic>.from(currentUser)['id'] ?? '').toString();
+    }
+    if (userId == null || userId.isEmpty) {
+      final toastCtx = App.navigatorKey.currentContext;
+      if (toastCtx != null) {
+        await showCenterToast(toastCtx, message: 'Не удалось определить пользователя', isError: true);
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      debugPrint('[InviteAction] root rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId actionToken=${actionToken == null ? 'null' : 'present'}');
+    }
+
+    await supabase.rpc(
+      'respond_plan_internal_invite_v1',
+      params: {
+        'p_app_user_id': userId,
+        'p_invite_id': inviteId,
+        'p_action': action,
+      },
+    );
+
+    if (kDebugMode) {
+      debugPrint('[InviteAction] root rpc success inviteId=$inviteId action=$action planId=$planId');
+    }
+
+    final toastCtx = App.navigatorKey.currentContext;
+    if (action == 'ACCEPT') {
+      await _openPlanDetailsFromRootNavigator(
+        planId,
+        userId: userId,
+        toastMessage: kInviteAcceptedToast,
+      );
+    } else {
+      if (toastCtx != null) {
+        await showCenterToast(toastCtx, message: kInviteDeclinedToast);
+      }
+    }
+  } on PostgrestException catch (e) {
+    final toastCtx = App.navigatorKey.currentContext;
+    if (toastCtx != null) {
+      await showCenterToast(toastCtx, message: e.message, isError: true);
+    }
+  } catch (e) {
+    final toastCtx = App.navigatorKey.currentContext;
+    if (toastCtx != null) {
+      await showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true);
+    }
+  } finally {
+    _globalInviteActionProcessing = false;
+    // If another invite arrived while action was processing, flush it.
+    _scheduleGlobalInviteRootDialogFlush();
+  }
+}
+
+static Future<void> _openPlanDetailsFromRootNavigator(
+  String planId, {
+  required String userId,
+  String? toastMessage,
+}) async {
+  if (kDebugMode) {
+    debugPrint('[InviteNav] root open details requested planId=$planId userId=$userId');
+  }
+
+  final nav = App.navigatorKey.currentState;
+  if (nav == null) return;
+
+  final PlansRepository repo = PlansRepositoryImpl(Supabase.instance.client);
+
+  Route<T> noAnimRoute<T>(Widget child) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, __, ___) => child,
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+    );
+  }
+
+  nav.push(
+    noAnimRoute(
+      PlansScreen(appUserId: userId),
+    ),
+  );
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final nav2 = App.navigatorKey.currentState;
+    if (nav2 == null) return;
+
+    unawaited(
+      nav2.push(
+        MaterialPageRoute(
+          builder: (_) => PlanDetailsScreen(
+            appUserId: userId,
+            planId: planId,
+            repository: repo,
+          ),
+        ),
+      ),
+    );
+
+    if (toastMessage != null && toastMessage.isNotEmpty) {
+      Future<void>.delayed(const Duration(milliseconds: 350), () async {
+        final toastCtx = App.navigatorKey.currentContext;
+        if (toastCtx == null) return;
+        await showCenterToast(toastCtx, message: toastMessage);
+      });
+    }
+  });
+}
+
+void _schedulePendingInviteDialogIfReady() {
     if (!mounted) return;
-    if (_restoring) return;
-    if (!_appShellReady) return;
-    if (_inviteDialogVisible) return;
+    if (_restoring) {
+      if (kDebugMode) {
+        debugPrint('[InviteModal] wait: restoring=true');
+      }
+      return;
+    }
+    if (_inviteDialogVisible) {
+      if (kDebugMode) {
+        debugPrint('[InviteModal] wait: dialog already visible');
+      }
+      return;
+    }
     if (_pendingDialogInviteId == null || _pendingDialogPlanId == null) return;
 
+    if (kDebugMode) {
+      debugPrint(
+        '[InviteModal] schedule show inviteId=$_pendingDialogInviteId planId=$_pendingDialogPlanId appShell=$_appShellReady',
+      );
+    }
+
     _pendingInviteDialogTimer?.cancel();
-    unawaited(_showPendingInviteDialogNow());
+    _pendingInviteDialogTimer = Timer(const Duration(milliseconds: 40), () {
+      _pendingInviteDialogTimer = null;
+      unawaited(_showPendingInviteDialogNow());
+    });
   }
 
   Future<void> _showPendingInviteDialogNow() async {
@@ -389,22 +719,29 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   Future<void> _handleInternalInviteAction({
     required String inviteId,
-    required String action,
     required String planId,
+    required String action,
     String? actionToken,
   }) async {
-    if (_processingInviteAction) return;
-    _processingInviteAction = true;
+    if (_processingInviteAction) {
+      if (kDebugMode) {
+        debugPrint('[InviteAction] ignored: already processing inviteId=$inviteId action=$action');
+      }
+      return;
+    }
 
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('[InviteAction] ignored: userId missing inviteId=$inviteId action=$action');
+      }
+      return;
+    }
+
+    _processingInviteAction = true;
     try {
-      final userId = _userId;
-      if (userId == null || userId.isEmpty) {
-        if (mounted) {
-          unawaited(showCenterToast(context,
-              message: 'Пользователь не готов. Повторите еще раз.',
-              isError: true));
-        }
-        return;
+      if (kDebugMode) {
+        debugPrint('[InviteAction] rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId');
       }
 
       await _supabase.rpc(
@@ -416,26 +753,40 @@ class _BootstrapGateState extends State<BootstrapGate>
         },
       );
 
-      if (!mounted) return;
+      if (kDebugMode) {
+        debugPrint('[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId mounted=$mounted appShell=$_appShellReady');
+      }
 
       if (action == 'ACCEPT') {
-        // Важно: не открываем детали напрямую в момент RPC-ответа,
-        // потому что это может происходить до полной готовности shell-а.
-        // Кладём навигацию в pending и даём BootstrapGate открыть детали,
-        // когда app shell уже восстановлен.
+        if (kDebugMode) {
+          debugPrint('[InviteAction] queue open details inviteId=$inviteId planId=$planId');
+        }
         _queuePendingPlanOpen(
           planId,
           toastMessage: kInviteAcceptedToast,
         );
       } else if (action == 'DECLINE') {
-        unawaited(showCenterToast(context, message: kInviteDeclinedToast));
+        final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+        if (toastCtx != null) {
+          unawaited(showCenterToast(toastCtx, message: kInviteDeclinedToast));
+        }
       }
     } on PostgrestException catch (e) {
-      if (!mounted) return;
-      unawaited(showCenterToast(context, message: e.message, isError: true));
+      if (kDebugMode) {
+        debugPrint('[InviteAction] PostgrestException inviteId=$inviteId action=$action message=${e.message}');
+      }
+      final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+      if (toastCtx != null) {
+        unawaited(showCenterToast(toastCtx, message: e.message, isError: true));
+      }
     } catch (e) {
-      if (!mounted) return;
-      unawaited(showCenterToast(context, message: 'Ошибка: $e', isError: true));
+      if (kDebugMode) {
+        debugPrint('[InviteAction] error inviteId=$inviteId action=$action error=$e');
+      }
+      final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+      if (toastCtx != null) {
+        unawaited(showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
+      }
     } finally {
       _processingInviteAction = false;
     }
@@ -446,6 +797,9 @@ class _BootstrapGateState extends State<BootstrapGate>
     String? toastMessage,
   }) async {
     final userId = _userId;
+    if (kDebugMode) {
+      debugPrint('[InviteNav] open details requested planId=$planId userId=$userId');
+    }
     if (userId == null || userId.isEmpty) return;
 
     final nav = App.navigatorKey.currentState;
@@ -497,6 +851,9 @@ class _BootstrapGateState extends State<BootstrapGate>
     String planId, {
     String? toastMessage,
   }) {
+    if (kDebugMode) {
+      debugPrint('[InviteNav] queue plan open planId=$planId toast=$toastMessage');
+    }
     if (mounted) {
       setState(() {
         _pendingOpenPlanId = planId;
@@ -513,8 +870,16 @@ class _BootstrapGateState extends State<BootstrapGate>
   void _schedulePendingPlanOpenIfReady() {
     final planId = _pendingOpenPlanId;
     if (planId == null || planId.isEmpty) return;
-    if (_restoring) return;
-    if (!_appShellReady) return;
+    if (_restoring) {
+      if (kDebugMode) {
+        debugPrint('[InviteNav] wait: restoring=true planId=$planId');
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      debugPrint('[InviteNav] schedule open planId=$planId appShell=$_appShellReady');
+    }
 
     _pendingPlanOpenTimer?.cancel();
 
@@ -547,6 +912,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       // If user restored while app was backgrounded, flush pending invite UI/actions.
       _schedulePendingInviteDialogIfReady();
       _schedulePendingPlanOpenIfReady();
+      _scheduleGlobalInviteRootDialogFlush();
     }
   }
 
@@ -779,6 +1145,10 @@ class _BootstrapGateState extends State<BootstrapGate>
     _retryTimer?.cancel();
     _pendingPlanOpenTimer?.cancel();
 
+    if (kDebugMode) {
+      debugPrint('[Bootstrap] _restore start mounted=$mounted');
+    }
+
     final session = _supabase.auth.currentSession;
 
     // ===== USER =====
@@ -803,6 +1173,9 @@ class _BootstrapGateState extends State<BootstrapGate>
           _postIdentityFlowsRerunRequested = false;
         });
 
+        if (kDebugMode) {
+          debugPrint('[Bootstrap] _restore auth done userId=${_userId ?? row['id']}');
+        }
         _runPostIdentityFlows();
         return;
       }
@@ -826,6 +1199,9 @@ class _BootstrapGateState extends State<BootstrapGate>
         _postIdentityFlowsRerunRequested = false;
       });
 
+      if (kDebugMode) {
+        debugPrint('[Bootstrap] _restore guest done userId=$_userId');
+      }
       _runPostIdentityFlows();
       return;
     }
@@ -842,6 +1218,9 @@ class _BootstrapGateState extends State<BootstrapGate>
       _homeVisibleAt = null;
       _postIdentityFlowsRerunRequested = false;
     });
+    if (kDebugMode) {
+      debugPrint('[Bootstrap] _restore onboarding state');
+    }
   }
 
   void _finishOnboarding(Map<String, dynamic> result) {
@@ -894,6 +1273,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (!mounted) return;
       _schedulePendingPlanOpenIfReady();
       _schedulePendingInviteDialogIfReady();
+      _scheduleGlobalInviteRootDialogFlush();
     });
   }
 
@@ -932,6 +1312,8 @@ class _BootstrapGateState extends State<BootstrapGate>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _schedulePendingPlanOpenIfReady();
+        _schedulePendingInviteDialogIfReady();
+        _scheduleGlobalInviteRootDialogFlush();
       });
 
       return HomeScreen(
