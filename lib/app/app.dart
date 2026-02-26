@@ -84,6 +84,12 @@ class _BootstrapGateState extends State<BootstrapGate>
   RealtimeChannel? _inboxInvitesChannel;
   String? _inboxInvitesChannelUserId;
 
+  RealtimeSubscribeStatus? _inboxInvitesLastStatus;
+  Timer? _inboxInvitesRetryTimer;
+  int _inboxInvitesRetryAttempt = 0;
+  bool _inboxInvitesEnsureInProgress = false;
+  bool _inboxInvitesEnsureRerunRequested = false;
+
   bool _restoring = true;
   bool _inviteDialogVisible = false;
 
@@ -360,128 +366,183 @@ class _BootstrapGateState extends State<BootstrapGate>
     );
   }
 
-  void _ensureInboxInvitesRealtimeSubscribed() {
+  Future<void> _ensureInboxInvitesRealtimeSubscribed() async {
     // Canonical C (foreground): consume server-fact INBOX deliveries via Realtime.
     // A/B are preserved (they already work via push-tap + intent bridge / pending dialog).
-    if (!mounted) return;
+    // NOTE: do not gate realtime by `mounted` here.
     if (_restoring) return;
     if (!_appShellReady) return;
 
     final userId = _userId;
     if (userId == null || userId.isEmpty) return;
 
-    // Already subscribed for this user.
-    if (_inboxInvitesChannel != null && _inboxInvitesChannelUserId == userId) {
+    // Prevent concurrent ensure() races (can happen on resume + appShellReady).
+    if (_inboxInvitesEnsureInProgress) {
+      _inboxInvitesEnsureRerunRequested = true;
       return;
     }
+    _inboxInvitesEnsureInProgress = true;
+    _inboxInvitesEnsureRerunRequested = false;
 
-    // User switched or channel not ready yet.
-    _disposeInboxInvitesRealtimeSubscription();
-    _inboxInvitesChannelUserId = userId;
+    try {
+      // Already subscribed for this user and channel is healthy.
+      if (_inboxInvitesChannel != null &&
+          _inboxInvitesChannelUserId == userId &&
+          _inboxInvitesLastStatus == RealtimeSubscribeStatus.subscribed) {
+        return;
+      }
 
-    if (kDebugMode) {
-      debugPrint('[INBOX] subscribe notification_deliveries (userId=$userId)');
-    }
+      // IMPORTANT: await removeChannel to avoid a race where old dispose closes the new channel.
+      await _disposeInboxInvitesRealtimeSubscription();
 
-    final channel = _supabase.channel('inbox_invites_$userId');
+      _inboxInvitesChannelUserId = userId;
 
-    channel.onPostgresChanges(
-      event: PostgresChangeEvent.insert,
-      schema: 'public',
-      table: 'notification_deliveries',
-      callback: (payload) {
-        try {
-          final newRow = payload.newRecord;
-          if (newRow.isEmpty) return;
+      // Some SDK versions require explicit realtime.connect() call.
+      try {
+        (_supabase.realtime as dynamic).connect();
+      } catch (_) {
+        // ignore (connect() may not exist / may already be connected)
+      }
 
-          // RLS should already scope rows to this user.
-          final deliveryChannel = (newRow['channel'] ?? '').toString();
-          final status = (newRow['status'] ?? '').toString();
+      if (kDebugMode) {
+        debugPrint('[INBOX] subscribe notification_deliveries (userId=$userId)');
+      }
 
-          // We only care about INBOX pending deliveries.
-          if (deliveryChannel != 'INBOX') return;
-          if (status.isNotEmpty && status != 'PENDING') return;
+      final channel = _supabase.channel('inbox_invites_$userId');
 
-          Map<String, dynamic> payloadMap = <String, dynamic>{};
-          final payloadRaw = newRow['payload'];
-          if (payloadRaw is Map) {
-            payloadMap = Map<String, dynamic>.from(payloadRaw);
-          } else if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
-            try {
-              final decoded = jsonDecode(payloadRaw);
-              if (decoded is Map) {
-                payloadMap = Map<String, dynamic>.from(decoded);
+      channel.onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'notification_deliveries',
+        callback: (payload) {
+          try {
+            final newRow = payload.newRecord;
+            if (newRow.isEmpty) return;
+
+            // Hard-safety: never react to deliveries for other user ids.
+            final rowUserId =
+                (newRow['user_id'] ?? newRow['userId'] ?? '').toString();
+            if (rowUserId.isNotEmpty && rowUserId != userId) {
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] ignore delivery for other user rowUserId=$rowUserId currentUserId=$userId',
+                );
               }
-            } catch (_) {
-              // ignore malformed payload
+              return;
+            }
+
+            final deliveryChannel = (newRow['channel'] ?? '').toString();
+            final status = (newRow['status'] ?? '').toString();
+
+            if (deliveryChannel != 'INBOX') return;
+            if (status.isNotEmpty && status != 'PENDING') return;
+
+            Map<String, dynamic> payloadMap = <String, dynamic>{};
+            final payloadRaw = newRow['payload'];
+            if (payloadRaw is Map) {
+              payloadMap = Map<String, dynamic>.from(payloadRaw);
+            } else if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
+              try {
+                final decoded = jsonDecode(payloadRaw);
+                if (decoded is Map) {
+                  payloadMap = Map<String, dynamic>.from(decoded);
+                }
+              } catch (_) {
+                // ignore malformed payload
+              }
+            }
+
+            // Canonical: only show modal for invitee-invite (has actions[]), not for owner-result (has action).
+            final payloadType = (payloadMap['type'] ?? '').toString();
+            if (payloadType.isNotEmpty && payloadType != 'PLAN_INTERNAL_INVITE') {
+              return;
+            }
+
+            final actionsRaw = payloadMap['actions'];
+            final isInviteWithActions =
+                actionsRaw is List && actionsRaw.isNotEmpty;
+            if (!isInviteWithActions) return;
+
+            if (payloadMap.containsKey('action')) return;
+
+            final inviteId = (payloadMap['invite_id'] ??
+                    payloadMap['inviteId'] ??
+                    newRow['invite_id'] ??
+                    '')
+                .toString();
+            final planId =
+                (payloadMap['plan_id'] ?? payloadMap['planId'] ?? newRow['plan_id'] ?? '')
+                    .toString();
+            final actionToken =
+                (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
+                    .toString();
+            final title = (payloadMap['title'] ?? '').toString();
+            final body = (payloadMap['body'] ?? '').toString();
+
+            if (inviteId.isEmpty || planId.isEmpty) return;
+
+            if (kDebugMode) {
+              debugPrint(
+                '[INBOX] delivery insert inviteId=$inviteId planId=$planId status=$status payloadType=$payloadType',
+              );
+            }
+
+            InviteUiCoordinator.instance.enqueue(
+              InviteUiRequest(
+                inviteId: inviteId,
+                planId: planId,
+                title: title.isEmpty ? kInviteDialogDefaultTitle : title,
+                body: body,
+                actionToken: actionToken.isEmpty ? null : actionToken,
+                source: InviteUiSource.foreground,
+              ),
+            );
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('[INBOX] handler error: $e');
             }
           }
+        },
+      );
 
-          // Canonical: we only show modal for actual invites, not for "invite response" messages.
-          // Invite payload has: type=PLAN_INTERNAL_INVITE and actions=[ACCEPT,DECLINE]
-          final payloadType = (payloadMap['type'] ?? '').toString();
-          if (payloadType.isNotEmpty && payloadType != 'PLAN_INTERNAL_INVITE') return;
-
-          final actionsRaw = payloadMap['actions'];
-          final isInviteWithActions = actionsRaw is List && actionsRaw.isNotEmpty;
-          if (!isInviteWithActions) return;
-
-          // Some rows represent "Ответ на приглашение" and contain `action` instead of `actions`.
-          // Those are informational and must NOT open the accept/decline modal.
-          if (payloadMap.containsKey('action')) return;
-
-          final inviteId = (payloadMap['invite_id'] ??
-                  payloadMap['inviteId'] ??
-                  newRow['invite_id'] ??
-                  '')
-              .toString();
-          final planId =
-              (payloadMap['plan_id'] ?? payloadMap['planId'] ?? newRow['plan_id'] ?? '')
-                  .toString();
-          final actionToken =
-              (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '').toString();
-          final title = (payloadMap['title'] ?? '').toString();
-          final body = (payloadMap['body'] ?? '').toString();
-
-          if (inviteId.isEmpty || planId.isEmpty) return;
-
-          if (kDebugMode) {
-            debugPrint(
-              '[INBOX] delivery insert inviteId=$inviteId planId=$planId status=$status payloadType=$payloadType',
-            );
-          }
-
-          InviteUiCoordinator.instance.enqueue(
-            InviteUiRequest(
-              inviteId: inviteId,
-              planId: planId,
-              title: title.isEmpty ? kInviteDialogDefaultTitle : title,
-              body: body,
-              actionToken: actionToken.isEmpty ? null : actionToken,
-              source: InviteUiSource.foreground,
-            ),
-          );
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('[INBOX] handler error: $e');
-          }
+      _inboxInvitesChannel = channel;
+      channel.subscribe((status, [error]) {
+        _inboxInvitesLastStatus = status;
+        if (kDebugMode) {
+          debugPrint('[INBOX] realtime status=$status error=$error');
         }
-      },
-    );
 
-    _inboxInvitesChannel = channel;
-    channel.subscribe((status, [error]) {
-      if (kDebugMode) {
-        debugPrint('[INBOX] realtime status=$status error=$error');
+        if (status == RealtimeSubscribeStatus.subscribed) {
+          _resetInboxInvitesRealtimeRetry();
+          return;
+        }
+
+        // If channel closes/errors/times out, schedule retry.
+        if (status == RealtimeSubscribeStatus.closed ||
+            status == RealtimeSubscribeStatus.channelError ||
+            status == RealtimeSubscribeStatus.timedOut ||
+            error != null) {
+          _scheduleInboxInvitesRealtimeRetry(
+            reason: 'subscribe_status_$status',
+            error: error,
+          );
+        }
+      });
+    } finally {
+      _inboxInvitesEnsureInProgress = false;
+      if (_inboxInvitesEnsureRerunRequested) {
+        _inboxInvitesEnsureRerunRequested = false;
+        unawaited(_ensureInboxInvitesRealtimeSubscribed());
       }
-    });
-
+    }
   }
 
   Future<void> _disposeInboxInvitesRealtimeSubscription() async {
     final ch = _inboxInvitesChannel;
     _inboxInvitesChannel = null;
     _inboxInvitesChannelUserId = null;
+    _inboxInvitesLastStatus = null;
+    _resetInboxInvitesRealtimeRetry();
     if (ch == null) return;
 
     try {
@@ -490,6 +551,42 @@ class _BootstrapGateState extends State<BootstrapGate>
       // ignore dispose errors
     }
   }
+
+  void _scheduleInboxInvitesRealtimeRetry({
+    required String reason,
+    Object? error,
+  }) {
+    if (_restoring) return;
+    if (!_appShellReady) return;
+
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+
+    _inboxInvitesRetryTimer?.cancel();
+
+    // Exponential backoff: 300ms, 600ms, 1200ms... capped at 5s.
+    final attempt = _inboxInvitesRetryAttempt.clamp(0, 6);
+    final delayMs = (300 * (1 << attempt)).clamp(300, 5000);
+
+    _inboxInvitesRetryAttempt = (_inboxInvitesRetryAttempt + 1).clamp(0, 20);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[INBOX] schedule retry in ${delayMs}ms (attempt=$_inboxInvitesRetryAttempt) reason=$reason error=$error',
+      );
+    }
+
+    _inboxInvitesRetryTimer = Timer(Duration(milliseconds: delayMs), () {
+      unawaited(_ensureInboxInvitesRealtimeSubscribed());
+    });
+  }
+
+  void _resetInboxInvitesRealtimeRetry() {
+    _inboxInvitesRetryAttempt = 0;
+    _inboxInvitesRetryTimer?.cancel();
+    _inboxInvitesRetryTimer = null;
+  }
+
 
 
   void _queuePendingInviteDialog({
@@ -641,7 +738,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       );
 
       if (kDebugMode) {
-        debugPrint('[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId mounted=$mounted appShell=$_appShellReady');
+        debugPrint('[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId appShell=$_appShellReady');
       }
 
       if (action == 'ACCEPT') {
@@ -653,7 +750,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           toastMessage: kInviteAcceptedToast,
         );
       } else if (action == 'DECLINE') {
-        final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+        final toastCtx = App.navigatorKey.currentContext;
         if (toastCtx != null) {
           unawaited(showCenterToast(toastCtx, message: kInviteDeclinedToast));
         }
@@ -662,7 +759,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (kDebugMode) {
         debugPrint('[InviteAction] PostgrestException inviteId=$inviteId action=$action message=${e.message}');
       }
-      final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+      final toastCtx = App.navigatorKey.currentContext;
       if (toastCtx != null) {
         unawaited(showCenterToast(toastCtx, message: e.message, isError: true));
       }
@@ -670,7 +767,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (kDebugMode) {
         debugPrint('[InviteAction] error inviteId=$inviteId action=$action error=$e');
       }
-      final toastCtx = App.navigatorKey.currentContext ?? (mounted ? context : null);
+      final toastCtx = App.navigatorKey.currentContext;
       if (toastCtx != null) {
         unawaited(showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
       }
@@ -1144,7 +1241,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
 
-    _ensureInboxInvitesRealtimeSubscribed();
+    unawaited(_ensureInboxInvitesRealtimeSubscribed());
 
     _homeVisibleAt ??= DateTime.now();
 
