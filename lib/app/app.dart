@@ -23,6 +23,7 @@ import '../features/home/home_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
+import 'invite_ui_coordinator.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -64,17 +65,6 @@ class _BootstrapGateState extends State<BootstrapGate>
   static const MethodChannel _notificationIntentChannel =
       MethodChannel('centry/notification_intents');
 
-// Global UI relay (UI-only): handles invite taps that arrive on stale callbacks.
-static String? _globalInviteId;
-static String? _globalPlanId;
-static String? _globalInviteActionToken;
-static String? _globalInviteTitle;
-static String? _globalInviteBody;
-static Timer? _globalInviteFlushTimer;
-static bool _globalInviteDialogVisible = false;
-static bool _globalInviteActionProcessing = false;
-
-
   // UI strings (keep centralized to avoid drift)
   static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';
   static const String kInviteDialogDefaultBody =
@@ -90,6 +80,9 @@ static bool _globalInviteActionProcessing = false;
 
   // ✅ Foreground message listener
   StreamSubscription<RemoteMessage>? _fcmMessageSub;
+  // ✅ Realtime INBOX intake (foreground canonical path)
+  RealtimeChannel? _inboxInvitesChannel;
+  String? _inboxInvitesChannelUserId;
 
   bool _restoring = true;
   bool _inviteDialogVisible = false;
@@ -137,6 +130,28 @@ static bool _globalInviteActionProcessing = false;
 
     WidgetsBinding.instance.addObserver(this);
 
+    InviteUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
+    InviteUiCoordinator.instance.configure(
+      onAction: (request, decision) async {
+        await _handleInternalInviteAction(
+          inviteId: request.inviteId,
+          planId: request.planId,
+          action: decision == InviteUiDecision.accept ? 'ACCEPT' : 'DECLINE',
+          actionToken: request.actionToken,
+        );
+        // Existing app.dart flow already handles toast/navigation (server-first RPC -> UI reaction).
+        return const InviteUiActionResult.success();
+      },
+      onOpenPlan: (planId) async {},
+      onToast: (message) async {},
+      onError: (error, stackTrace) async {
+        if (kDebugMode) {
+          debugPrint('[InviteCoordinator] error: $error');
+        }
+      },
+    );
+    InviteUiCoordinator.instance.setRootUiReady(false);
+
     unawaited(GeoService.instance.refresh());
 
     _initAuthListener();
@@ -181,50 +196,69 @@ static bool _globalInviteActionProcessing = false;
           }
         }
 
-        // 2) Notification tap routing for local notification OPEN action (payload JSON in extras.payload)
-        final actionId = (extras['actionId'] ?? extras['action_id'] ?? '')
-            .toString()
-            .trim()
-            .toUpperCase();
+        // 2) Notification tap routing (background tap on local notification)
+        final actionId =
+            (extras['actionId'] ?? extras['action_id'] ?? '').toString().trim().toUpperCase();
 
         Map<String, dynamic> payload = <String, dynamic>{};
         final payloadRaw = extras['payload'];
         if (payloadRaw is Map) {
           payload = Map<String, dynamic>.from(payloadRaw);
         } else if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
-          final decoded = jsonDecode(payloadRaw);
-          if (decoded is Map) {
-            payload = Map<String, dynamic>.from(decoded);
+          try {
+            final decoded = jsonDecode(payloadRaw);
+            if (decoded is Map) {
+              payload = Map<String, dynamic>.from(decoded);
+            }
+          } catch (_) {
+            // ignore malformed payload
           }
         }
 
-        final inviteId = (payload['invite_id'] ?? extras['invite_id'] ?? '')
-            .toString()
-            .trim();
-        final planId = (payload['plan_id'] ?? extras['plan_id'] ?? '')
-            .toString()
-            .trim();
-        final title = (payload['title'] ?? '').toString();
-        final body = (payload['body'] ?? '').toString();
+        if (actionId == 'OPEN') {
+          final inviteId =
+              (payload['invite_id'] ?? extras['invite_id'] ?? '').toString();
+          final planId =
+              (payload['plan_id'] ?? extras['plan_id'] ?? '').toString();
+          final title = (payload['title'] ?? '').toString();
+          final body = (payload['body'] ?? '').toString();
 
-        if (actionId == 'OPEN' && inviteId.isNotEmpty && planId.isNotEmpty) {
-          if (kDebugMode) {
-            debugPrint(
-              '[IntentBridge] queue invite dialog from intent inviteId=$inviteId planId=$planId mounted=$mounted',
-            );
+          if (inviteId.isNotEmpty && planId.isNotEmpty) {
+            // Coordinator нужен только для background-like сценария:
+            // - stale callback после resume (mounted == false)
+            // - или app shell уже поднят (background/foreground running app)
+            // Для cold start (restoring=true, appShell=false) НЕ перехватываем здесь,
+            // чтобы остался baseline-путь launchFromNotif -> local invite flow
+            // с показом модалки после прохождения Home -> Feed.
+            final shouldRouteViaCoordinator = !mounted || (_appShellReady && !_restoring);
+
+            if (kDebugMode) {
+              debugPrint(
+                '[IntentBridge] invite OPEN inviteId=$inviteId planId=$planId '
+                'mounted=$mounted restoring=$_restoring appShell=$_appShellReady '
+                'viaCoordinator=$shouldRouteViaCoordinator',
+              );
+            }
+
+            if (shouldRouteViaCoordinator) {
+              InviteUiCoordinator.instance.enqueue(
+                InviteUiRequest(
+                  inviteId: inviteId,
+                  planId: planId,
+                  title: title,
+                  body: body,
+                  source: InviteUiSource.backgroundIntent,
+                ),
+              );
+              return;
+            }
           }
-          _queuePendingInviteDialog(
-            inviteId: inviteId,
-            planId: planId,
-            title: title,
-            body: body,
-          );
-          return;
         }
 
-        // Legacy internal-invite body taps are ignored by canon.
         final type = (extras['type'] ?? '').toString();
+        final planId = (extras['plan_id'] ?? '').toString();
         if (type == 'PLAN_INTERNAL_INVITE' && planId.isNotEmpty) {
+          // Canon: tap on invite body does nothing (no ACCEPT/DECLINE, no nav).
           return;
         }
       } catch (e) {
@@ -326,312 +360,165 @@ static bool _globalInviteActionProcessing = false;
     );
   }
 
-void _queuePendingInviteDialog({
-  required String inviteId,
-  required String planId,
-  String? actionToken,
-  String? title,
-  String? body,
-}) {
-  if (kDebugMode) {
-    debugPrint(
-      '[InviteModal] queue request inviteId=$inviteId planId=$planId mounted=$mounted restoring=$_restoring appShell=$_appShellReady visible=$_inviteDialogVisible',
-    );
-  }
-
-  if (!mounted) {
-    _storePendingInviteGlobally(
-      inviteId: inviteId,
-      planId: planId,
-      actionToken: actionToken,
-      title: title,
-      body: body,
-    );
-    if (kDebugMode) {
-      debugPrint('[InviteModal] stored in global buffer inviteId=$inviteId planId=$planId');
-    }
-    _scheduleGlobalInviteRootDialogFlush();
-    return;
-  }
-
-  _pendingDialogInviteId = inviteId;
-  _pendingDialogPlanId = planId;
-  _pendingDialogActionToken = actionToken;
-  _pendingDialogTitle = (title == null || title.trim().isEmpty)
-      ? kInviteDialogDefaultTitle
-      : title;
-  _pendingDialogBody = body ?? '';
-
-  _schedulePendingInviteDialogIfReady();
-}
-
-static void _storePendingInviteGlobally({
-  required String inviteId,
-  required String planId,
-  String? actionToken,
-  String? title,
-  String? body,
-}) {
-  _globalInviteId = inviteId;
-  _globalPlanId = planId;
-  _globalInviteActionToken = actionToken;
-  _globalInviteTitle = title;
-  _globalInviteBody = body;
-}
-
-static void _scheduleGlobalInviteRootDialogFlush() {
-  _globalInviteFlushTimer?.cancel();
-  _globalInviteFlushTimer = Timer(const Duration(milliseconds: 120), () {
-    _globalInviteFlushTimer = null;
-    unawaited(_tryFlushGlobalInviteViaRootNavigator());
-  });
-}
-
-static Future<void> _tryFlushGlobalInviteViaRootNavigator() async {
-  final inviteId = _globalInviteId;
-  final planId = _globalPlanId;
-  if (inviteId == null || inviteId.isEmpty || planId == null || planId.isEmpty) {
-    return;
-  }
-  if (_globalInviteDialogVisible || _globalInviteActionProcessing) {
-    return;
-  }
-
-  final navState = App.navigatorKey.currentState;
-  final navContext = App.navigatorKey.currentContext;
-  if (navState == null || navContext == null) {
-    if (kDebugMode) {
-      debugPrint('[InviteModal] root navigator not ready, retry global flush');
-    }
-    _scheduleGlobalInviteRootDialogFlush();
-    return;
-  }
-
-  final dialogTitle = (_globalInviteTitle == null || _globalInviteTitle!.trim().isEmpty)
-      ? kInviteDialogDefaultTitle
-      : _globalInviteTitle!;
-  final dialogBody = _globalInviteBody ?? '';
-  final actionToken = _globalInviteActionToken;
-
-  // Clear buffer before showing to avoid duplicate dialogs from duplicate callbacks.
-  _globalInviteId = null;
-  _globalPlanId = null;
-  _globalInviteActionToken = null;
-  _globalInviteTitle = null;
-  _globalInviteBody = null;
-
-  _globalInviteDialogVisible = true;
-  if (kDebugMode) {
-    debugPrint('[InviteModal] show via root navigator inviteId=$inviteId planId=$planId');
-  }
-
-  String? action;
-  try {
-    action = await showDialog<String>(
-      context: navContext,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(dialogTitle),
-          content: Text(
-            dialogBody.isEmpty ? kInviteDialogDefaultBody : dialogBody,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop('DECLINE'),
-              child: const Text('Отклонить'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(ctx).pop('ACCEPT'),
-              child: const Text('Принять'),
-            ),
-          ],
-        );
-      },
-    );
-  } finally {
-    _globalInviteDialogVisible = false;
-  }
-
-  if (action != 'ACCEPT' && action != 'DECLINE') {
-    // Re-queue same invite if dialog was interrupted.
-    _storePendingInviteGlobally(
-      inviteId: inviteId,
-      planId: planId,
-      actionToken: actionToken,
-      title: dialogTitle,
-      body: dialogBody,
-    );
-    _scheduleGlobalInviteRootDialogFlush();
-    return;
-  }
-
-  await _handleInternalInviteActionFromRoot(
-    inviteId: inviteId,
-    planId: planId,
-    action: action!,
-    actionToken: actionToken,
-  );
-}
-
-static Future<void> _handleInternalInviteActionFromRoot({
-  required String inviteId,
-  required String planId,
-  required String action,
-  String? actionToken,
-}) async {
-  if (_globalInviteActionProcessing) {
-    if (kDebugMode) {
-      debugPrint('[InviteAction] root ignored: already processing inviteId=$inviteId action=$action');
-    }
-    return;
-  }
-
-  _globalInviteActionProcessing = true;
-  final supabase = Supabase.instance.client;
-
-  try {
-    final currentUser = await supabase.rpc('current_user');
-    String? userId;
-    if (currentUser is Map) {
-      userId = (Map<String, dynamic>.from(currentUser)['id'] ?? '').toString();
-    }
-    if (userId == null || userId.isEmpty) {
-      final toastCtx = App.navigatorKey.currentContext;
-      if (toastCtx != null) {
-        await showCenterToast(toastCtx, message: 'Не удалось определить пользователя', isError: true);
-      }
-      return;
-    }
-
-    if (kDebugMode) {
-      debugPrint('[InviteAction] root rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId actionToken=${actionToken == null ? 'null' : 'present'}');
-    }
-
-    await supabase.rpc(
-      'respond_plan_internal_invite_v1',
-      params: {
-        'p_app_user_id': userId,
-        'p_invite_id': inviteId,
-        'p_action': action,
-      },
-    );
-
-    if (kDebugMode) {
-      debugPrint('[InviteAction] root rpc success inviteId=$inviteId action=$action planId=$planId');
-    }
-
-    final toastCtx = App.navigatorKey.currentContext;
-    if (action == 'ACCEPT') {
-      await _openPlanDetailsFromRootNavigator(
-        planId,
-        userId: userId,
-        toastMessage: kInviteAcceptedToast,
-      );
-    } else {
-      if (toastCtx != null) {
-        await showCenterToast(toastCtx, message: kInviteDeclinedToast);
-      }
-    }
-  } on PostgrestException catch (e) {
-    final toastCtx = App.navigatorKey.currentContext;
-    if (toastCtx != null) {
-      await showCenterToast(toastCtx, message: e.message, isError: true);
-    }
-  } catch (e) {
-    final toastCtx = App.navigatorKey.currentContext;
-    if (toastCtx != null) {
-      await showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true);
-    }
-  } finally {
-    _globalInviteActionProcessing = false;
-    // If another invite arrived while action was processing, flush it.
-    _scheduleGlobalInviteRootDialogFlush();
-  }
-}
-
-static Future<void> _openPlanDetailsFromRootNavigator(
-  String planId, {
-  required String userId,
-  String? toastMessage,
-}) async {
-  if (kDebugMode) {
-    debugPrint('[InviteNav] root open details requested planId=$planId userId=$userId');
-  }
-
-  final nav = App.navigatorKey.currentState;
-  if (nav == null) return;
-
-  final PlansRepository repo = PlansRepositoryImpl(Supabase.instance.client);
-
-  Route<T> noAnimRoute<T>(Widget child) {
-    return PageRouteBuilder<T>(
-      pageBuilder: (_, __, ___) => child,
-      transitionDuration: Duration.zero,
-      reverseTransitionDuration: Duration.zero,
-    );
-  }
-
-  nav.push(
-    noAnimRoute(
-      PlansScreen(appUserId: userId),
-    ),
-  );
-
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    final nav2 = App.navigatorKey.currentState;
-    if (nav2 == null) return;
-
-    unawaited(
-      nav2.push(
-        MaterialPageRoute(
-          builder: (_) => PlanDetailsScreen(
-            appUserId: userId,
-            planId: planId,
-            repository: repo,
-          ),
-        ),
-      ),
-    );
-
-    if (toastMessage != null && toastMessage.isNotEmpty) {
-      Future<void>.delayed(const Duration(milliseconds: 350), () async {
-        final toastCtx = App.navigatorKey.currentContext;
-        if (toastCtx == null) return;
-        await showCenterToast(toastCtx, message: toastMessage);
-      });
-    }
-  });
-}
-
-void _schedulePendingInviteDialogIfReady() {
+  void _ensureInboxInvitesRealtimeSubscribed() {
+    // Canonical C (foreground): consume server-fact INBOX deliveries via Realtime.
+    // A/B are preserved (they already work via push-tap + intent bridge / pending dialog).
     if (!mounted) return;
-    if (_restoring) {
-      if (kDebugMode) {
-        debugPrint('[InviteModal] wait: restoring=true');
-      }
+    if (_restoring) return;
+    if (!_appShellReady) return;
+
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+
+    // Already subscribed for this user.
+    if (_inboxInvitesChannel != null && _inboxInvitesChannelUserId == userId) {
       return;
     }
-    if (_inviteDialogVisible) {
-      if (kDebugMode) {
-        debugPrint('[InviteModal] wait: dialog already visible');
-      }
-      return;
+
+    // User switched or channel not ready yet.
+    _disposeInboxInvitesRealtimeSubscription();
+    _inboxInvitesChannelUserId = userId;
+
+    if (kDebugMode) {
+      debugPrint('[INBOX] subscribe notification_deliveries (userId=$userId)');
     }
+
+    final channel = _supabase.channel('inbox_invites_$userId');
+
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'notification_deliveries',
+      callback: (payload) {
+        try {
+          final newRow = payload.newRecord;
+          if (newRow.isEmpty) return;
+
+          // RLS should already scope rows to this user.
+          final deliveryChannel = (newRow['channel'] ?? '').toString();
+          final status = (newRow['status'] ?? '').toString();
+
+          // We only care about INBOX pending deliveries.
+          if (deliveryChannel != 'INBOX') return;
+          if (status.isNotEmpty && status != 'PENDING') return;
+
+          Map<String, dynamic> payloadMap = <String, dynamic>{};
+          final payloadRaw = newRow['payload'];
+          if (payloadRaw is Map) {
+            payloadMap = Map<String, dynamic>.from(payloadRaw);
+          } else if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
+            try {
+              final decoded = jsonDecode(payloadRaw);
+              if (decoded is Map) {
+                payloadMap = Map<String, dynamic>.from(decoded);
+              }
+            } catch (_) {
+              // ignore malformed payload
+            }
+          }
+
+          // Canonical: we only show modal for actual invites, not for "invite response" messages.
+          // Invite payload has: type=PLAN_INTERNAL_INVITE and actions=[ACCEPT,DECLINE]
+          final payloadType = (payloadMap['type'] ?? '').toString();
+          if (payloadType.isNotEmpty && payloadType != 'PLAN_INTERNAL_INVITE') return;
+
+          final actionsRaw = payloadMap['actions'];
+          final isInviteWithActions = actionsRaw is List && actionsRaw.isNotEmpty;
+          if (!isInviteWithActions) return;
+
+          // Some rows represent "Ответ на приглашение" and contain `action` instead of `actions`.
+          // Those are informational and must NOT open the accept/decline modal.
+          if (payloadMap.containsKey('action')) return;
+
+          final inviteId = (payloadMap['invite_id'] ??
+                  payloadMap['inviteId'] ??
+                  newRow['invite_id'] ??
+                  '')
+              .toString();
+          final planId =
+              (payloadMap['plan_id'] ?? payloadMap['planId'] ?? newRow['plan_id'] ?? '')
+                  .toString();
+          final actionToken =
+              (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '').toString();
+          final title = (payloadMap['title'] ?? '').toString();
+          final body = (payloadMap['body'] ?? '').toString();
+
+          if (inviteId.isEmpty || planId.isEmpty) return;
+
+          if (kDebugMode) {
+            debugPrint(
+              '[INBOX] delivery insert inviteId=$inviteId planId=$planId status=$status payloadType=$payloadType',
+            );
+          }
+
+          InviteUiCoordinator.instance.enqueue(
+            InviteUiRequest(
+              inviteId: inviteId,
+              planId: planId,
+              title: title.isEmpty ? kInviteDialogDefaultTitle : title,
+              body: body,
+              actionToken: actionToken.isEmpty ? null : actionToken,
+              source: InviteUiSource.foreground,
+            ),
+          );
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[INBOX] handler error: $e');
+          }
+        }
+      },
+    );
+
+    _inboxInvitesChannel = channel;
+    channel.subscribe((status, [error]) {
+      if (kDebugMode) {
+        debugPrint('[INBOX] realtime status=$status error=$error');
+      }
+    });
+
+  }
+
+  Future<void> _disposeInboxInvitesRealtimeSubscription() async {
+    final ch = _inboxInvitesChannel;
+    _inboxInvitesChannel = null;
+    _inboxInvitesChannelUserId = null;
+    if (ch == null) return;
+
+    try {
+      await _supabase.removeChannel(ch);
+    } catch (_) {
+      // ignore dispose errors
+    }
+  }
+
+
+  void _queuePendingInviteDialog({
+    required String inviteId,
+    required String planId,
+    String? actionToken,
+    String? title,
+    String? body,
+  }) {
+    _pendingDialogInviteId = inviteId;
+    _pendingDialogPlanId = planId;
+    _pendingDialogActionToken = actionToken;
+    _pendingDialogTitle = (title == null || title.trim().isEmpty)
+        ? kInviteDialogDefaultTitle
+        : title;
+    _pendingDialogBody = body ?? '';
+
+    _schedulePendingInviteDialogIfReady();
+  }
+
+  void _schedulePendingInviteDialogIfReady() {
+    if (!mounted) return;
+    if (_restoring) return;
+    if (!_appShellReady) return;
+    if (_inviteDialogVisible) return;
     if (_pendingDialogInviteId == null || _pendingDialogPlanId == null) return;
 
-    if (kDebugMode) {
-      debugPrint(
-        '[InviteModal] schedule show inviteId=$_pendingDialogInviteId planId=$_pendingDialogPlanId appShell=$_appShellReady',
-      );
-    }
-
     _pendingInviteDialogTimer?.cancel();
-    _pendingInviteDialogTimer = Timer(const Duration(milliseconds: 40), () {
-      _pendingInviteDialogTimer = null;
-      unawaited(_showPendingInviteDialogNow());
-    });
+    unawaited(_showPendingInviteDialogNow());
   }
 
   Future<void> _showPendingInviteDialogNow() async {
@@ -870,16 +757,8 @@ void _schedulePendingInviteDialogIfReady() {
   void _schedulePendingPlanOpenIfReady() {
     final planId = _pendingOpenPlanId;
     if (planId == null || planId.isEmpty) return;
-    if (_restoring) {
-      if (kDebugMode) {
-        debugPrint('[InviteNav] wait: restoring=true planId=$planId');
-      }
-      return;
-    }
-
-    if (kDebugMode) {
-      debugPrint('[InviteNav] schedule open planId=$planId appShell=$_appShellReady');
-    }
+    if (_restoring) return;
+    if (!_appShellReady) return;
 
     _pendingPlanOpenTimer?.cancel();
 
@@ -912,7 +791,6 @@ void _schedulePendingInviteDialogIfReady() {
       // If user restored while app was backgrounded, flush pending invite UI/actions.
       _schedulePendingInviteDialogIfReady();
       _schedulePendingPlanOpenIfReady();
-      _scheduleGlobalInviteRootDialogFlush();
     }
   }
 
@@ -1145,10 +1023,6 @@ void _schedulePendingInviteDialogIfReady() {
     _retryTimer?.cancel();
     _pendingPlanOpenTimer?.cancel();
 
-    if (kDebugMode) {
-      debugPrint('[Bootstrap] _restore start mounted=$mounted');
-    }
-
     final session = _supabase.auth.currentSession;
 
     // ===== USER =====
@@ -1162,6 +1036,9 @@ void _schedulePendingInviteDialogIfReady() {
 
         if (!mounted) return;
 
+        if (_inboxInvitesChannelUserId != (row['id'] as String)) {
+          unawaited(_disposeInboxInvitesRealtimeSubscription());
+        }
         setState(() {
           _userId = row['id'] as String;
           _nickname = row['nickname'] as String? ?? '';
@@ -1172,10 +1049,8 @@ void _schedulePendingInviteDialogIfReady() {
           _homeVisibleAt = null;
           _postIdentityFlowsRerunRequested = false;
         });
+        InviteUiCoordinator.instance.setRootUiReady(false);
 
-        if (kDebugMode) {
-          debugPrint('[Bootstrap] _restore auth done userId=${_userId ?? row['id']}');
-        }
         _runPostIdentityFlows();
         return;
       }
@@ -1188,6 +1063,9 @@ void _schedulePendingInviteDialogIfReady() {
     final snapshot = await _storage.read();
     if (snapshot != null && snapshot.state == 'GUEST') {
       if (!mounted) return;
+      if (_inboxInvitesChannelUserId != snapshot.id) {
+        unawaited(_disposeInboxInvitesRealtimeSubscription());
+      }
       setState(() {
         _userId = snapshot.id;
         _nickname = snapshot.nickname;
@@ -1198,16 +1076,15 @@ void _schedulePendingInviteDialogIfReady() {
         _homeVisibleAt = null;
         _postIdentityFlowsRerunRequested = false;
       });
+      InviteUiCoordinator.instance.setRootUiReady(false);
 
-      if (kDebugMode) {
-        debugPrint('[Bootstrap] _restore guest done userId=$_userId');
-      }
       _runPostIdentityFlows();
       return;
     }
 
     // ===== ONBOARDING =====
     if (!mounted) return;
+    unawaited(_disposeInboxInvitesRealtimeSubscription());
     setState(() {
       _userId = null;
       _nickname = null;
@@ -1218,9 +1095,7 @@ void _schedulePendingInviteDialogIfReady() {
       _homeVisibleAt = null;
       _postIdentityFlowsRerunRequested = false;
     });
-    if (kDebugMode) {
-      debugPrint('[Bootstrap] _restore onboarding state');
-    }
+    InviteUiCoordinator.instance.setRootUiReady(false);
   }
 
   void _finishOnboarding(Map<String, dynamic> result) {
@@ -1259,6 +1134,7 @@ void _schedulePendingInviteDialogIfReady() {
       _appShellReady = false;
       _homeVisibleAt = null;
     });
+    InviteUiCoordinator.instance.setRootUiReady(false);
 
     _runPostIdentityFlows();
   }
@@ -1266,6 +1142,9 @@ void _schedulePendingInviteDialogIfReady() {
   void _onAppShellReady() {
     if (_appShellReady) return;
     _appShellReady = true;
+    InviteUiCoordinator.instance.setRootUiReady(true);
+
+    _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();
 
@@ -1273,7 +1152,6 @@ void _schedulePendingInviteDialogIfReady() {
       if (!mounted) return;
       _schedulePendingPlanOpenIfReady();
       _schedulePendingInviteDialogIfReady();
-      _scheduleGlobalInviteRootDialogFlush();
     });
   }
 
@@ -1297,6 +1175,7 @@ void _schedulePendingInviteDialogIfReady() {
     _fcmTokenSub?.cancel();
     _fcmMessageSub?.cancel();
     _pendingInviteDialogTimer?.cancel();
+    _disposeInboxInvitesRealtimeSubscription();
     super.dispose();
   }
 
@@ -1312,8 +1191,6 @@ void _schedulePendingInviteDialogIfReady() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _schedulePendingPlanOpenIfReady();
-        _schedulePendingInviteDialogIfReady();
-        _scheduleGlobalInviteRootDialogFlush();
       });
 
       return HomeScreen(
