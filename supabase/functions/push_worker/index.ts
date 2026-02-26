@@ -104,6 +104,13 @@ async function markDelivery(deliveryId: string, patch: Record<string, unknown>) 
   });
 }
 
+async function writeDeliveryDebug(deliveryId: string, debugObj: Record<string, unknown>) {
+  await sbFetch(`/rest/v1/notification_deliveries?id=eq.${deliveryId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ debug: debugObj }),
+  });
+}
+
 async function disableToken(token: string) {
   await sbFetch(`/rest/v1/user_device_tokens?token=eq.${encodeURIComponent(token)}`, {
     method: "PATCH",
@@ -130,6 +137,12 @@ function isInternalInviteResult(payload: Record<string, unknown>): boolean {
 
   const action = String(payload["action"] ?? "").trim().toUpperCase();
   return action === "ACCEPT" || action === "DECLINE";
+}
+
+function safeShort(text: string, maxLen: number): string {
+  const s = String(text ?? "");
+  if (s.length <= maxLen) return s;
+  return s.slice(0, maxLen) + "…";
 }
 
 serve(async () => {
@@ -163,6 +176,12 @@ serve(async () => {
     const tokens = (await tRes.json()) as DeviceToken[];
     if (!tRes.ok || !Array.isArray(tokens) || tokens.length === 0) {
       await markDelivery(deliveryId, { status: "FAILED", reason: "No device tokens" });
+      await writeDeliveryDebug(deliveryId, {
+        at: new Date().toISOString(),
+        stage: "tokens",
+        ok: false,
+        error: "No device tokens",
+      });
       processed++;
       continue;
     }
@@ -170,8 +189,17 @@ serve(async () => {
     const internalInvite = isPlanInternalInvite(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
 
+    // ✅ Canon:
+    // - Invitee interactive invite (ACCEPT/DECLINE buttons) must be STRICT DATA-ONLY.
+    //   No top-level `notification` and no `android.notification`.
+    // - Owner result notifications can include OS notification safely.
+    const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
+    const shouldIncludeNotification = !isInviteeInteractiveInvite;
+
     let anyOk = false;
     let lastErr = "";
+
+    const debugAttempts: Array<Record<string, unknown>> = [];
 
     for (const t of tokens) {
       const dataPayload: Record<string, string> = {
@@ -186,15 +214,6 @@ serve(async () => {
         // optional marker for clients/debug
         internal_invite_mode: inviteResultForOwner ? "OWNER_RESULT" : "INVITEE_INVITE",
       };
-
-      // ✅ Canon:
-      // - Invitee interactive invite (ACCEPT/DECLINE buttons) must be STRICT DATA-ONLY.
-      //   No top-level `notification` and no `android.notification`,
-      //   otherwise some Android/MIUI builds may show a system notification
-      //   (without buttons) in parallel with Flutter local notification.
-      // - Owner result notifications can include OS notification safely.
-      const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
-      const shouldIncludeNotification = !isInviteeInteractiveInvite;
 
       const androidConfig = shouldIncludeNotification
         ? {
@@ -217,29 +236,55 @@ serve(async () => {
         },
       };
 
-      const fRes = await fetch(
-        `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "content-type": "application/json",
+      // For diagnostics only (no secrets): booleans + status/error
+      const hasTopNotification = shouldIncludeNotification;
+      const hasAndroidNotification = shouldIncludeNotification;
+
+      let attemptOk = false;
+      let httpStatus: number | null = null;
+      let errShort: string | null = null;
+
+      try {
+        const fRes = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(message),
           },
-          body: JSON.stringify(message),
-        },
-      );
+        );
 
-      if (fRes.ok) {
-        anyOk = true;
-        continue;
+        httpStatus = fRes.status;
+
+        if (fRes.ok) {
+          attemptOk = true;
+          anyOk = true;
+        } else {
+          const errText = await fRes.text();
+          lastErr = errText;
+          errShort = safeShort(errText, 300);
+
+          if (isUnregisteredFcmError(errText)) {
+            await disableToken(t.token);
+          }
+        }
+      } catch (e) {
+        lastErr = String(e);
+        errShort = safeShort(String(e), 300);
       }
 
-      const errText = await fRes.text();
-      lastErr = errText;
-
-      if (isUnregisteredFcmError(errText)) {
-        await disableToken(t.token);
-      }
+      debugAttempts.push({
+        platform: String(t.platform ?? ""),
+        include_notification: shouldIncludeNotification,
+        top_notification: hasTopNotification,
+        android_notification: hasAndroidNotification,
+        fcm_http_status: httpStatus,
+        ok: attemptOk,
+        error: errShort,
+      });
     }
 
     await markDelivery(
@@ -248,6 +293,19 @@ serve(async () => {
         ? { status: "SENT", reason: null }
         : { status: "FAILED", reason: lastErr || "FCM send failed" },
     );
+
+    await writeDeliveryDebug(deliveryId, {
+      at: new Date().toISOString(),
+      delivery_id: deliveryId,
+      user_id: userId,
+      classification: {
+        internal_invite: internalInvite,
+        invite_result_for_owner: inviteResultForOwner,
+        invitee_interactive: isInviteeInteractiveInvite,
+        include_notification: shouldIncludeNotification,
+      },
+      attempts: debugAttempts,
+    });
 
     processed++;
   }
