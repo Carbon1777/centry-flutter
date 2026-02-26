@@ -326,8 +326,40 @@ class _BootstrapGateState extends State<BootstrapGate>
       }) async {
         final normalized = action.trim().toUpperCase();
 
-        // ✅ New canon: system push only opens app. Product actions happen in in-app modal.
+        // ✅ Canon: system push only opens app. Product actions happen in in-app modal.
         if (normalized == 'OPEN') {
+          final t = (title ?? '').trim().toLowerCase();
+          final b = (body ?? '').trim().toLowerCase();
+
+          // Backward-compatible heuristic:
+          // owner-result local notification payload previously arrived here as OPEN without explicit kind/action.
+          final looksLikeOwnerResult = t.contains('приглашение принято') ||
+              t.contains('приглашение отклонено') ||
+              b.contains('принял приглашение') ||
+              b.contains('отклонил приглашение') ||
+              b.contains('приглашение принято') ||
+              b.contains('приглашение отклонено');
+
+          if (looksLikeOwnerResult) {
+            final actionValue = (t.contains('принято') || b.contains('принял'))
+                ? 'ACCEPT'
+                : 'DECLINE';
+
+            InviteUiCoordinator.instance.enqueueOwnerResult(
+              OwnerResultUiRequest(
+                inviteId: inviteId,
+                planId: planId,
+                action: actionValue,
+                title: actionValue == 'ACCEPT'
+                    ? 'Приглашение принято'
+                    : 'Приглашение отклонено',
+                body: body,
+                source: InviteUiSource.backgroundIntent,
+              ),
+            );
+            return;
+          }
+
           _queuePendingInviteDialog(
             inviteId: inviteId,
             planId: planId,
@@ -454,18 +486,25 @@ class _BootstrapGateState extends State<BootstrapGate>
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'notification_deliveries',
+        filter: 'user_id=eq.$userId',
         callback: (payload) {
           try {
             final newRow = payload.newRecord;
             if (newRow.isEmpty) return;
 
             // Hard-safety: never react to deliveries for other user ids.
-            final rowUserId =
-                (newRow['user_id'] ?? newRow['userId'] ?? '').toString();
+            // NOTE: newRecord keys may come as snake_case or camelCase depending on client/runtime.
+            final rowUserId = (newRow['user_id'] ??
+                    newRow['userId'] ??
+                    newRow['userID'] ??
+                    newRow['userid'] ??
+                    '')
+                .toString();
+
             if (rowUserId.isNotEmpty && rowUserId != userId) {
               if (kDebugMode) {
                 debugPrint(
-                  '[INBOX] ignore delivery for other user rowUserId=$rowUserId currentUserId=$userId',
+                  '[INBOX] ignore delivery for other user rowUserId=$rowUserId currentUserId=$userId keys=${newRow.keys.toList()}',
                 );
               }
               return;
@@ -492,41 +531,85 @@ class _BootstrapGateState extends State<BootstrapGate>
               }
             }
 
-            // Canonical: only show modal for invitee-invite (has actions[]), not for owner-result (has action).
+            // Canonical routing:
+            // - owner-result: payload.action = ACCEPT|DECLINE  -> owner-result info modal (Close only)
+            // - invitee-invite: payload.actions[] present       -> invitee modal (Accept/Decline)
+            //
+            // Everything else is ignored.
             final payloadType = (payloadMap['type'] ?? '').toString();
             if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE') {
               return;
             }
 
+            final ownerAction =
+                (payloadMap['action'] ?? payloadMap['owner_action'] ?? '')
+                    .toString()
+                    .trim()
+                    .toUpperCase();
+            final isOwnerResult =
+                ownerAction == 'ACCEPT' || ownerAction == 'DECLINE';
+
             final actionsRaw = payloadMap['actions'];
             final isInviteWithActions =
                 actionsRaw is List && actionsRaw.isNotEmpty;
-            if (!isInviteWithActions) return;
 
-            if (payloadMap.containsKey('action')) return;
+            if (!isOwnerResult && !isInviteWithActions) {
+              return;
+            }
 
             final inviteId = (payloadMap['invite_id'] ??
                     payloadMap['inviteId'] ??
                     newRow['invite_id'] ??
+                    newRow['inviteId'] ??
                     '')
                 .toString();
             final planId = (payloadMap['plan_id'] ??
                     payloadMap['planId'] ??
                     newRow['plan_id'] ??
+                    newRow['planId'] ??
                     '')
                 .toString();
-            final actionToken =
-                (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
-                    .toString();
-            final title = (payloadMap['title'] ?? '').toString();
-            final body = (payloadMap['body'] ?? '').toString();
 
             if (inviteId.isEmpty || planId.isEmpty) return;
 
+            final title = (payloadMap['title'] ?? '').toString();
+            final body = (payloadMap['body'] ?? '').toString();
+
+            if (isOwnerResult) {
+              final computedTitle = ownerAction == 'ACCEPT'
+                  ? 'Приглашение принято'
+                  : 'Приглашение отклонено';
+
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] owner-result insert inviteId=$inviteId planId=$planId action=$ownerAction',
+                );
+              }
+
+              InviteUiCoordinator.instance.enqueueOwnerResult(
+                OwnerResultUiRequest(
+                  inviteId: inviteId,
+                  planId: planId,
+                  action: ownerAction,
+                  title: title.isEmpty ? computedTitle : title,
+                  body: body,
+                  source: InviteUiSource.foreground,
+                ),
+              );
+              return;
+            }
+
+            // invitee-invite
+            if (payloadMap.containsKey('action')) return;
+
+            final actionToken =
+                (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
+                    .toString();
+
             if (kDebugMode) {
               debugPrint(
-                '[INBOX] delivery insert inviteId=$inviteId planId=$planId status=$status payloadType=$payloadType',
+                '[INBOX] invite insert inviteId=$inviteId planId=$planId payloadType=$payloadType',
               );
             }
 
