@@ -84,11 +84,14 @@ class _BootstrapGateState extends State<BootstrapGate>
   RealtimeChannel? _inboxInvitesChannel;
   String? _inboxInvitesChannelUserId;
 
-  RealtimeSubscribeStatus? _inboxInvitesLastStatus;
-  Timer? _inboxInvitesRetryTimer;
-  int _inboxInvitesRetryAttempt = 0;
+  // Realtime subscribe ensure() serialization + last status (infrastructure only)
   bool _inboxInvitesEnsureInProgress = false;
   bool _inboxInvitesEnsureRerunRequested = false;
+  RealtimeSubscribeStatus? _inboxInvitesLastStatus;
+
+  // Realtime retry backoff for INBOX channel health.
+  Timer? _inboxInvitesRealtimeRetryTimer;
+  int _inboxInvitesRealtimeRetryAttempt = 0;
 
   bool _restoring = true;
   bool _inviteDialogVisible = false;
@@ -203,8 +206,10 @@ class _BootstrapGateState extends State<BootstrapGate>
         }
 
         // 2) Notification tap routing (background tap on local notification)
-        final actionId =
-            (extras['actionId'] ?? extras['action_id'] ?? '').toString().trim().toUpperCase();
+        final actionId = (extras['actionId'] ?? extras['action_id'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
 
         Map<String, dynamic> payload = <String, dynamic>{};
         final payloadRaw = extras['payload'];
@@ -236,26 +241,60 @@ class _BootstrapGateState extends State<BootstrapGate>
             // Для cold start (restoring=true, appShell=false) НЕ перехватываем здесь,
             // чтобы остался baseline-путь launchFromNotif -> local invite flow
             // с показом модалки после прохождения Home -> Feed.
-            final shouldRouteViaCoordinator = !mounted || (_appShellReady && !_restoring);
+            final kindStr = (payload['kind'] ?? '').toString();
+            final hasOwnerAction =
+                (payload['action'] ?? '').toString().isNotEmpty;
+            final isOwnerResult = kindStr == 'OWNER_RESULT' || hasOwnerAction;
+
+            // Route owner-result via coordinator even on cold start.
+            final shouldRouteViaCoordinator =
+                isOwnerResult || !mounted || (_appShellReady && !_restoring);
 
             if (kDebugMode) {
               debugPrint(
                 '[IntentBridge] invite OPEN inviteId=$inviteId planId=$planId '
                 'mounted=$mounted restoring=$_restoring appShell=$_appShellReady '
-                'viaCoordinator=$shouldRouteViaCoordinator',
+                'viaCoordinator=$shouldRouteViaCoordinator isOwnerResult=$isOwnerResult',
               );
             }
 
             if (shouldRouteViaCoordinator) {
-              InviteUiCoordinator.instance.enqueue(
-                InviteUiRequest(
-                  inviteId: inviteId,
-                  planId: planId,
-                  title: title,
-                  body: body,
-                  source: InviteUiSource.backgroundIntent,
-                ),
-              );
+              final kind = (payload['kind'] ?? extras['kind'] ?? '')
+                  .toString()
+                  .trim()
+                  .toUpperCase();
+              final actionValue =
+                  (payload['action'] ?? '').toString().trim().toUpperCase();
+
+              final isOwnerResult = kind == 'OWNER_RESULT' ||
+                  ((actionValue == 'ACCEPT' || actionValue == 'DECLINE'));
+
+              if (isOwnerResult) {
+                final ownerTitle = actionValue == 'ACCEPT'
+                    ? 'Приглашение принято'
+                    : 'Приглашение отклонено';
+
+                InviteUiCoordinator.instance.enqueueOwnerResult(
+                  OwnerResultUiRequest(
+                    inviteId: inviteId,
+                    planId: planId,
+                    action: actionValue.isEmpty ? 'DECLINE' : actionValue,
+                    title: ownerTitle,
+                    body: body,
+                    source: InviteUiSource.backgroundIntent,
+                  ),
+                );
+              } else {
+                InviteUiCoordinator.instance.enqueue(
+                  InviteUiRequest(
+                    inviteId: inviteId,
+                    planId: planId,
+                    title: title,
+                    body: body,
+                    source: InviteUiSource.backgroundIntent,
+                  ),
+                );
+              }
               return;
             }
           }
@@ -405,7 +444,8 @@ class _BootstrapGateState extends State<BootstrapGate>
       }
 
       if (kDebugMode) {
-        debugPrint('[INBOX] subscribe notification_deliveries (userId=$userId)');
+        debugPrint(
+            '[INBOX] subscribe notification_deliveries (userId=$userId)');
       }
 
       final channel = _supabase.channel('inbox_invites_$userId');
@@ -454,7 +494,8 @@ class _BootstrapGateState extends State<BootstrapGate>
 
             // Canonical: only show modal for invitee-invite (has actions[]), not for owner-result (has action).
             final payloadType = (payloadMap['type'] ?? '').toString();
-            if (payloadType.isNotEmpty && payloadType != 'PLAN_INTERNAL_INVITE') {
+            if (payloadType.isNotEmpty &&
+                payloadType != 'PLAN_INTERNAL_INVITE') {
               return;
             }
 
@@ -470,9 +511,11 @@ class _BootstrapGateState extends State<BootstrapGate>
                     newRow['invite_id'] ??
                     '')
                 .toString();
-            final planId =
-                (payloadMap['plan_id'] ?? payloadMap['planId'] ?? newRow['plan_id'] ?? '')
-                    .toString();
+            final planId = (payloadMap['plan_id'] ??
+                    payloadMap['planId'] ??
+                    newRow['plan_id'] ??
+                    '')
+                .toString();
             final actionToken =
                 (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
                     .toString();
@@ -537,6 +580,46 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
   }
 
+  void _resetInboxInvitesRealtimeRetry() {
+    _inboxInvitesRealtimeRetryAttempt = 0;
+    _inboxInvitesRealtimeRetryTimer?.cancel();
+    _inboxInvitesRealtimeRetryTimer = null;
+  }
+
+  void _scheduleInboxInvitesRealtimeRetry({
+    required String reason,
+    Object? error,
+  }) {
+    // Avoid multiple timers stacking.
+    _inboxInvitesRealtimeRetryTimer?.cancel();
+
+    _inboxInvitesRealtimeRetryAttempt += 1;
+    final attempt = _inboxInvitesRealtimeRetryAttempt;
+
+    // Exponential backoff: 300ms, 600ms, 1200ms, 2400ms, 4800ms (cap 5000ms).
+    var delayMs = 300;
+    for (var i = 1; i < attempt; i++) {
+      delayMs *= 2;
+      if (delayMs >= 5000) {
+        delayMs = 5000;
+        break;
+      }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[INBOX] schedule retry in ${delayMs}ms (attempt=$attempt) reason=$reason error=$error',
+      );
+    }
+
+    _inboxInvitesRealtimeRetryTimer =
+        Timer(Duration(milliseconds: delayMs), () {
+      if (_restoring) return;
+      if (!_appShellReady) return;
+      unawaited(_ensureInboxInvitesRealtimeSubscribed());
+    });
+  }
+
   Future<void> _disposeInboxInvitesRealtimeSubscription() async {
     final ch = _inboxInvitesChannel;
     _inboxInvitesChannel = null;
@@ -551,43 +634,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       // ignore dispose errors
     }
   }
-
-  void _scheduleInboxInvitesRealtimeRetry({
-    required String reason,
-    Object? error,
-  }) {
-    if (_restoring) return;
-    if (!_appShellReady) return;
-
-    final userId = _userId;
-    if (userId == null || userId.isEmpty) return;
-
-    _inboxInvitesRetryTimer?.cancel();
-
-    // Exponential backoff: 300ms, 600ms, 1200ms... capped at 5s.
-    final attempt = _inboxInvitesRetryAttempt.clamp(0, 6);
-    final delayMs = (300 * (1 << attempt)).clamp(300, 5000);
-
-    _inboxInvitesRetryAttempt = (_inboxInvitesRetryAttempt + 1).clamp(0, 20);
-
-    if (kDebugMode) {
-      debugPrint(
-        '[INBOX] schedule retry in ${delayMs}ms (attempt=$_inboxInvitesRetryAttempt) reason=$reason error=$error',
-      );
-    }
-
-    _inboxInvitesRetryTimer = Timer(Duration(milliseconds: delayMs), () {
-      unawaited(_ensureInboxInvitesRealtimeSubscribed());
-    });
-  }
-
-  void _resetInboxInvitesRealtimeRetry() {
-    _inboxInvitesRetryAttempt = 0;
-    _inboxInvitesRetryTimer?.cancel();
-    _inboxInvitesRetryTimer = null;
-  }
-
-
 
   void _queuePendingInviteDialog({
     required String inviteId,
@@ -709,7 +755,8 @@ class _BootstrapGateState extends State<BootstrapGate>
   }) async {
     if (_processingInviteAction) {
       if (kDebugMode) {
-        debugPrint('[InviteAction] ignored: already processing inviteId=$inviteId action=$action');
+        debugPrint(
+            '[InviteAction] ignored: already processing inviteId=$inviteId action=$action');
       }
       return;
     }
@@ -717,7 +764,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     final userId = _userId;
     if (userId == null || userId.isEmpty) {
       if (kDebugMode) {
-        debugPrint('[InviteAction] ignored: userId missing inviteId=$inviteId action=$action');
+        debugPrint(
+            '[InviteAction] ignored: userId missing inviteId=$inviteId action=$action');
       }
       return;
     }
@@ -725,7 +773,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     _processingInviteAction = true;
     try {
       if (kDebugMode) {
-        debugPrint('[InviteAction] rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId');
+        debugPrint(
+            '[InviteAction] rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId');
       }
 
       await _supabase.rpc(
@@ -738,12 +787,14 @@ class _BootstrapGateState extends State<BootstrapGate>
       );
 
       if (kDebugMode) {
-        debugPrint('[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId appShell=$_appShellReady');
+        debugPrint(
+            '[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId appShell=$_appShellReady');
       }
 
       if (action == 'ACCEPT') {
         if (kDebugMode) {
-          debugPrint('[InviteAction] queue open details inviteId=$inviteId planId=$planId');
+          debugPrint(
+              '[InviteAction] queue open details inviteId=$inviteId planId=$planId');
         }
         _queuePendingPlanOpen(
           planId,
@@ -757,7 +808,8 @@ class _BootstrapGateState extends State<BootstrapGate>
       }
     } on PostgrestException catch (e) {
       if (kDebugMode) {
-        debugPrint('[InviteAction] PostgrestException inviteId=$inviteId action=$action message=${e.message}');
+        debugPrint(
+            '[InviteAction] PostgrestException inviteId=$inviteId action=$action message=${e.message}');
       }
       final toastCtx = App.navigatorKey.currentContext;
       if (toastCtx != null) {
@@ -765,11 +817,13 @@ class _BootstrapGateState extends State<BootstrapGate>
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[InviteAction] error inviteId=$inviteId action=$action error=$e');
+        debugPrint(
+            '[InviteAction] error inviteId=$inviteId action=$action error=$e');
       }
       final toastCtx = App.navigatorKey.currentContext;
       if (toastCtx != null) {
-        unawaited(showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
+        unawaited(
+            showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
       }
     } finally {
       _processingInviteAction = false;
@@ -782,7 +836,8 @@ class _BootstrapGateState extends State<BootstrapGate>
   }) async {
     final userId = _userId;
     if (kDebugMode) {
-      debugPrint('[InviteNav] open details requested planId=$planId userId=$userId');
+      debugPrint(
+          '[InviteNav] open details requested planId=$planId userId=$userId');
     }
     if (userId == null || userId.isEmpty) return;
 
@@ -836,7 +891,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     String? toastMessage,
   }) {
     if (kDebugMode) {
-      debugPrint('[InviteNav] queue plan open planId=$planId toast=$toastMessage');
+      debugPrint(
+          '[InviteNav] queue plan open planId=$planId toast=$toastMessage');
     }
     if (mounted) {
       setState(() {
@@ -1241,7 +1297,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
 
-    unawaited(_ensureInboxInvitesRealtimeSubscribed());
+    _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();
 
