@@ -96,6 +96,22 @@ class InviteUiActionResult {
         );
 }
 
+@immutable
+class InviteUiToastRequest {
+  final String message;
+  final String? planId;
+  final InviteUiSource source;
+
+  const InviteUiToastRequest({
+    required this.message,
+    this.planId,
+    this.source = InviteUiSource.unknown,
+  });
+
+  @override
+  String toString() => 'InviteUiToastRequest(message=$message, planId=$planId, source=$source)';
+}
+
 typedef InviteUiActionHandler = Future<InviteUiActionResult> Function(
   InviteUiRequest request,
   InviteUiDecision decision,
@@ -126,6 +142,8 @@ class InviteUiCoordinator {
   static final InviteUiCoordinator instance = InviteUiCoordinator._();
 
   final Queue<InviteUiRequest> _queue = Queue<InviteUiRequest>();
+  final Queue<InviteUiToastRequest> _toastQueue = Queue<InviteUiToastRequest>();
+
   final Set<String> _queuedInviteIds = <String>{};
   final Set<String> _handledInviteIds = <String>{};
 
@@ -203,6 +221,24 @@ class InviteUiCoordinator {
       'queueSize=${_queue.length}',
     );
 
+    _scheduleFlush();
+  }
+
+  /// Показать информационное сообщение (toast/snackbar) последовательно, без перетирания.
+  /// Используется, например, для уведомлений владельца плана: "принято/отклонено".
+  void enqueueToast({
+    required String message,
+    String? planId,
+    InviteUiSource source = InviteUiSource.unknown,
+  }) {
+    final m = message.trim();
+    if (m.isEmpty) return;
+
+    _toastQueue.addLast(
+      InviteUiToastRequest(message: m, planId: planId, source: source),
+    );
+
+    _log('enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}');
     _scheduleFlush();
   }
 
