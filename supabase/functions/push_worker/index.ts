@@ -188,13 +188,13 @@ serve(async () => {
 
     const internalInvite = isPlanInternalInvite(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
-
-    // ✅ Canon:
-    // - Invitee interactive invite (ACCEPT/DECLINE buttons) must be STRICT DATA-ONLY.
-    //   No top-level `notification` and no `android.notification`.
-    // - Owner result notifications can include OS notification safely.
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
-    const shouldIncludeNotification = !isInviteeInteractiveInvite;
+
+    // ✅ Canon (server-first UX):
+    // - Any PLAN_INTERNAL_INVITE delivery (invitee invite OR owner result) must be STRICT DATA-ONLY.
+    //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
+    // - Other notification types may include OS notification.
+    const shouldIncludeNotification = !internalInvite;
 
     let anyOk = false;
     let lastErr = "";

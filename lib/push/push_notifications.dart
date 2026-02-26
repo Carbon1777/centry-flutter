@@ -239,23 +239,41 @@ class PushNotifications {
     final planId = (m.data['plan_id'] ?? '').toString();
     if (inviteId.isEmpty || planId.isEmpty) return;
 
-    final title = 'Вас пригласили в план';
-    final body = (m.data['body'] ?? '').toString().trim().isNotEmpty
-        ? (m.data['body'] ?? '').toString()
-        : 'Откройте приложение, чтобы посмотреть приглашение.';
+    final ownerAction = (m.data['action'] ?? '').toString().trim().toUpperCase();
+    final isOwnerResult = ownerAction == 'ACCEPT' || ownerAction == 'DECLINE';
 
+    final title = isOwnerResult
+        ? (ownerAction == 'ACCEPT'
+            ? 'Приглашение принято'
+            : 'Приглашение отклонено')
+        : 'Вас пригласили в план';
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final body = rawBody.isNotEmpty
+        ? rawBody
+        : (isOwnerResult
+            ? 'Откройте приложение, чтобы посмотреть результат.'
+            : 'Откройте приложение, чтобы посмотреть приглашение.');
+
+    // Payload is consumed by app routing. Keep it explicit.
     final payload = jsonEncode({
       'invite_id': inviteId,
       'plan_id': planId,
       'title': title,
       'body': body,
+      'kind': isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE',
+      if (isOwnerResult) 'action': ownerAction,
     });
 
-    final id = inviteId.hashCode & 0x7fffffff;
+    // Avoid overwriting invite notification with owner-result for the same invite id.
+    final idSeed = isOwnerResult ? '$inviteId:$ownerAction' : inviteId;
+    final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
     if (kDebugMode) {
-      debugPrint('[PushNotifications] local.cancel($id) then show($id) inviteId=$inviteId');
+      debugPrint(
+        '[PushNotifications] local.cancel($id) then show($id) inviteId=$inviteId kind=${isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE'}',
+      );
     }
 
     const android = AndroidNotificationDetails(

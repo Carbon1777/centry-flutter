@@ -112,6 +112,31 @@ class InviteUiToastRequest {
   String toString() => 'InviteUiToastRequest(message=$message, planId=$planId, source=$source)';
 }
 
+
+@immutable
+class OwnerResultUiRequest {
+  final String inviteId;
+  final String planId;
+  final String action; // ACCEPT | DECLINE
+  final String? title;
+  final String? body;
+  final InviteUiSource source;
+
+  const OwnerResultUiRequest({
+    required this.inviteId,
+    required this.planId,
+    required this.action,
+    this.title,
+    this.body,
+    this.source = InviteUiSource.unknown,
+  });
+
+  String get dedupKey => '$inviteId:$action';
+
+  @override
+  String toString() => 'OwnerResultUiRequest(inviteId=$inviteId, planId=$planId, action=$action, source=$source)';
+}
+
 typedef InviteUiActionHandler = Future<InviteUiActionResult> Function(
   InviteUiRequest request,
   InviteUiDecision decision,
@@ -142,10 +167,14 @@ class InviteUiCoordinator {
   static final InviteUiCoordinator instance = InviteUiCoordinator._();
 
   final Queue<InviteUiRequest> _queue = Queue<InviteUiRequest>();
+  final Queue<OwnerResultUiRequest> _ownerResultQueue = Queue<OwnerResultUiRequest>();
   final Queue<InviteUiToastRequest> _toastQueue = Queue<InviteUiToastRequest>();
 
   final Set<String> _queuedInviteIds = <String>{};
   final Set<String> _handledInviteIds = <String>{};
+
+  final Set<String> _queuedOwnerResultKeys = <String>{};
+  final Set<String> _handledOwnerResultKeys = <String>{};
 
   GlobalKey<NavigatorState>? _navigatorKey;
 
@@ -226,7 +255,39 @@ class InviteUiCoordinator {
 
   /// Показать информационное сообщение (toast/snackbar) последовательно, без перетирания.
   /// Используется, например, для уведомлений владельца плана: "принято/отклонено".
-  void enqueueToast({
+  
+  /// Добавить owner-result (ACCEPT/DECLINE) в очередь инфо-модалок (без дублей по inviteId+action).
+  /// Канон: owner-result НЕ должен открывать accept/decline модалку. Только информационная модалка с кнопкой "Закрыть".
+  void enqueueOwnerResult(OwnerResultUiRequest request) {
+    if (request.inviteId.isEmpty || request.planId.isEmpty) {
+      _log('enqueueOwnerResult ignored: empty inviteId/planId');
+      return;
+    }
+
+    final key = request.dedupKey;
+
+    if (_handledOwnerResultKeys.contains(key)) {
+      _log('enqueueOwnerResult ignored: already handled key=$key');
+      return;
+    }
+
+    if (_queuedOwnerResultKeys.contains(key)) {
+      _log('enqueueOwnerResult ignored: already queued key=$key');
+      return;
+    }
+
+    _ownerResultQueue.add(request);
+    _queuedOwnerResultKeys.add(key);
+
+    _log(
+      'enqueue owner-result inviteId=${request.inviteId} planId=${request.planId} action=${request.action} '
+      'source=${request.source} queueSize=${_ownerResultQueue.length}',
+    );
+
+    _scheduleFlush();
+  }
+
+void enqueueToast({
     required String message,
     String? planId,
     InviteUiSource source = InviteUiSource.unknown,
@@ -247,8 +308,13 @@ class InviteUiCoordinator {
     _retryTimer?.cancel();
     _retryTimer = null;
     _queue.clear();
+    _ownerResultQueue.clear();
+    _toastQueue.clear();
+
     _queuedInviteIds.clear();
     _handledInviteIds.clear();
+    _queuedOwnerResultKeys.clear();
+    _handledOwnerResultKeys.clear();
     _dialogVisible = false;
     _isFlushing = false;
     _log('resetForDebug');
@@ -289,15 +355,26 @@ class InviteUiCoordinator {
           return;
         }
 
-        if (_queue.isEmpty) {
-          return;
+        if (_queue.isNotEmpty) {
+          final request = _queue.removeFirst();
+          _queuedInviteIds.remove(request.inviteId);
+
+          await _showDialogFor(request);
+          // loop — если в очереди есть еще invite, покажем следующий
+          continue;
         }
 
-        final request = _queue.removeFirst();
-        _queuedInviteIds.remove(request.inviteId);
+        if (_ownerResultQueue.isNotEmpty) {
+          final request = _ownerResultQueue.removeFirst();
+          _queuedOwnerResultKeys.remove(request.dedupKey);
 
-        await _showDialogFor(request);
-        // loop — если в очереди есть еще invite, покажем следующий
+          await _showOwnerResultDialogFor(request);
+          // loop — если в очереди есть еще owner-result, покажем следующий
+          continue;
+        }
+
+        // No dialogs left to show right now.
+        return;
       }
     } finally {
       _isFlushing = false;
@@ -446,6 +523,64 @@ class InviteUiCoordinator {
       await onError(error, stackTrace);
     } catch (_) {
       // Не валим coordinator из-за ошибки в логгере.
+    }
+  }
+
+
+  Future<void> _showOwnerResultDialogFor(OwnerResultUiRequest request) async {
+    final context = _navigatorKey!.currentContext!;
+
+    _dialogVisible = true;
+
+    final normalizedAction = request.action.trim().toUpperCase();
+    final isAccept = normalizedAction == 'ACCEPT';
+    final title = (request.title?.trim().isNotEmpty == true)
+        ? request.title!.trim()
+        : (isAccept ? 'Приглашение принято' : 'Приглашение отклонено');
+    final body = (request.body?.trim().isNotEmpty == true)
+        ? request.body!.trim()
+        : '';
+
+    _log(
+      'show owner-result dialog inviteId=${request.inviteId} planId=${request.planId} '
+      'action=${request.action} source=${request.source}',
+    );
+
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (dialogContext) {
+          final titleStyle = Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+                color: isAccept ? Colors.green : Colors.red,
+                fontWeight: FontWeight.w700,
+              );
+
+          return AlertDialog(
+            title: Text(title, style: titleStyle),
+            content: body.isNotEmpty ? Text(body) : null,
+            actionsAlignment: MainAxisAlignment.center,
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Закрыть'),
+              ),
+            ],
+          );
+        },
+      );
+
+      _handledOwnerResultKeys.add(request.dedupKey);
+    } catch (e, st) {
+      _handledOwnerResultKeys.add(request.dedupKey);
+      _onError?.call(e, st);
+      _log('owner-result dialog error: $e');
+    } finally {
+      _dialogVisible = false;
+      _scheduleFlush();
     }
   }
 
