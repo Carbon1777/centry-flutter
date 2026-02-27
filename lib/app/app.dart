@@ -24,6 +24,7 @@ import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
 import 'invite_ui_coordinator.dart';
+import 'plan_member_left_ui_coordinator.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -66,10 +67,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       MethodChannel('centry/notification_intents');
 
   // UI strings (keep centralized to avoid drift)
-  static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';
-  static const String kInviteDialogDefaultBody =
-      'Вас пригласили в план. Принять приглашение?';
-  static const String kInviteAcceptedToast = 'Приглашение принято';
+  static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';  static const String kInviteAcceptedToast = 'Приглашение принято';
   static const String kInviteDeclinedToast = 'Приглашение отклонено';
 
   StreamSubscription<AuthState>? _authSub;
@@ -94,7 +92,6 @@ class _BootstrapGateState extends State<BootstrapGate>
   int _inboxInvitesRealtimeRetryAttempt = 0;
 
   bool _restoring = true;
-  bool _inviteDialogVisible = false;
 
   String? _userId;
   String? _nickname;
@@ -116,14 +113,6 @@ class _BootstrapGateState extends State<BootstrapGate>
   // Post-identity pipeline guards (avoid reentry/loops).
   bool _postIdentityFlowsRunning = false;
   bool _postIdentityFlowsRerunRequested = false;
-
-  // ✅ Pending internal invite dialog (open-only push -> in-app modal)
-  String? _pendingDialogInviteId;
-  String? _pendingDialogPlanId;
-  String? _pendingDialogActionToken;
-  String? _pendingDialogTitle;
-  String? _pendingDialogBody;
-  Timer? _pendingInviteDialogTimer;
 
   // ✅ Push token registration guards (UI-only, no business logic)
   bool _registeringDeviceToken = false;
@@ -160,6 +149,11 @@ class _BootstrapGateState extends State<BootstrapGate>
       },
     );
     InviteUiCoordinator.instance.setRootUiReady(false);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+
+    // ✅ Separate layer: owner notifications about member leaving a plan.
+    PlanMemberLeftUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
 
     unawaited(GeoService.instance.refresh());
 
@@ -360,12 +354,15 @@ class _BootstrapGateState extends State<BootstrapGate>
             return;
           }
 
-          _queuePendingInviteDialog(
-            inviteId: inviteId,
-            planId: planId,
-            actionToken: actionToken,
-            title: title,
-            body: body,
+          InviteUiCoordinator.instance.enqueue(
+            InviteUiRequest(
+              inviteId: inviteId,
+              planId: planId,
+              actionToken: actionToken,
+              title: title,
+              body: body,
+              source: InviteUiSource.backgroundIntent,
+            ),
           );
           return;
         }
@@ -375,7 +372,27 @@ class _BootstrapGateState extends State<BootstrapGate>
           debugPrint('[InviteModal] ignore local notif action=$normalized');
         }
       },
-    );
+    
+      onPlanMemberLeftOpen: ({
+        required String planId,
+        required String leftUserId,
+        String? leftNickname,
+        String? planTitle,
+        String? title,
+        String? body,
+      }) async {
+        PlanMemberLeftUiCoordinator.instance.enqueue(
+          PlanMemberLeftUiRequest(
+            planId: planId,
+            leftUserId: leftUserId,
+            leftNickname: (leftNickname ?? '').trim().isEmpty ? null : (leftNickname ?? '').trim(),
+            planTitle: (planTitle ?? '').trim().isEmpty ? null : (planTitle ?? '').trim(),
+            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
+            body: ((body ?? '').trim().isEmpty || (body ?? '').trim() == 'Один из участников покинул план.') ? null : (body ?? '').trim(),
+            source: PlanMemberLeftUiSource.backgroundIntent,
+          ),
+        );
+      },);
   }
 
   void _initFcmForegroundMessages() {
@@ -397,6 +414,9 @@ class _BootstrapGateState extends State<BootstrapGate>
 
       // In-app modal is canonical. Queue it and show only after welcome/home phase.
       _queueInternalInviteDialogFromRemoteMessage(m);
+
+      // ✅ Separate layer: in-app info modal when a member leaves a plan.
+      _queuePlanMemberLeftDialogFromRemoteMessage(m);
     });
   }
 
@@ -428,14 +448,64 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     if (inviteId.isEmpty || planId.isEmpty) return;
 
-    _queuePendingInviteDialog(
-      inviteId: inviteId,
-      planId: planId,
-      actionToken: actionToken.isEmpty ? null : actionToken,
-      title: title,
-      body: body,
+    InviteUiCoordinator.instance.enqueue(
+      InviteUiRequest(
+        inviteId: inviteId,
+        planId: planId,
+        actionToken: actionToken.isEmpty ? null : actionToken,
+        title: title,
+        body: body,
+        source: InviteUiSource.foreground,
+      ),
     );
   }
+
+  
+void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
+  if (!PushNotifications.isPlanMemberLeft(m)) return;
+
+  final planId = (m.data['plan_id'] ?? '').toString();
+  final leftUserId =
+      (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
+  final leftNickname =
+      (m.data['left_nickname'] ?? m.data['member_nickname'] ?? '').toString();
+  final planTitle =
+      (m.data['plan_title'] ?? m.data['planTitle'] ?? '').toString();
+
+  if (planId.isEmpty || leftUserId.isEmpty) return;
+
+  final title = (m.data['title'] ?? m.notification?.title ?? '').toString();
+  final body = (m.data['body'] ?? m.notification?.body ?? '').toString();
+
+  if (kDebugMode) {
+    debugPrint(
+      '[PlanMemberLeft] enqueue from foreground push planId=$planId leftUserId=$leftUserId',
+    );
+  }
+
+  final cleanLeftNickname =
+      leftNickname.trim().isEmpty ? null : leftNickname.trim();
+  final cleanPlanTitle = planTitle.trim().isEmpty ? null : planTitle.trim();
+  final cleanTitle = title.trim().isEmpty ? null : title.trim();
+
+  final bodyTrim = body.trim();
+  final cleanBody = (bodyTrim.isEmpty || bodyTrim == 'Один из участников покинул план.')
+      ? null
+      : bodyTrim;
+
+  PlanMemberLeftUiCoordinator.instance.enqueue(
+    PlanMemberLeftUiRequest(
+      planId: planId,
+      leftUserId: leftUserId,
+      leftNickname: cleanLeftNickname,
+      planTitle: cleanPlanTitle,
+      title: cleanTitle,
+      body: cleanBody,
+      source: PlanMemberLeftUiSource.foreground,
+    ),
+  );
+}
+
 
   Future<void> _ensureInboxInvitesRealtimeSubscribed() async {
     // Canonical C (foreground): consume server-fact INBOX deliveries via Realtime.
@@ -447,7 +517,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     final userId = _userId;
     if (userId == null || userId.isEmpty) return;
 
-    // Prevent concurrent ensure() races (can happen on resume + appShellReady).
+    // Prevent concurrent ensure() races (resume + appShellReady + retry timers).
     if (_inboxInvitesEnsureInProgress) {
       _inboxInvitesEnsureRerunRequested = true;
       return;
@@ -456,15 +526,41 @@ class _BootstrapGateState extends State<BootstrapGate>
     _inboxInvitesEnsureRerunRequested = false;
 
     try {
-      // Already subscribed for this user and channel is healthy.
-      if (_inboxInvitesChannel != null &&
-          _inboxInvitesChannelUserId == userId &&
+      final existingChannel = _inboxInvitesChannel;
+      final sameUserChannel =
+          existingChannel != null && _inboxInvitesChannelUserId == userId;
+
+      // Already subscribed and healthy.
+      if (sameUserChannel &&
           _inboxInvitesLastStatus == RealtimeSubscribeStatus.subscribed) {
         return;
       }
 
-      // IMPORTANT: await removeChannel to avoid a race where old dispose closes the new channel.
-      await _disposeInboxInvitesRealtimeSubscription();
+      // If we have an existing channel for this user and a retry is already scheduled,
+      // do not thrash by recreating the channel again.
+      if (sameUserChannel && _inboxInvitesRealtimeRetryTimer != null) {
+        return;
+      }
+
+      // If we have an existing channel for this user and it's currently in a non-terminal
+      // state (e.g. subscribing/joining), let it settle; status callback will schedule retry if needed.
+      if (sameUserChannel &&
+          _inboxInvitesLastStatus != null &&
+          _inboxInvitesLastStatus != RealtimeSubscribeStatus.closed &&
+          _inboxInvitesLastStatus != RealtimeSubscribeStatus.channelError &&
+          _inboxInvitesLastStatus != RealtimeSubscribeStatus.timedOut) {
+        return;
+      }
+
+      // Decide whether we need to recreate the channel:
+      // - user changed: hard reset (retry attempt resets)
+      // - same user but channel is closed/error/timedOut: recreate WITHOUT resetting retry attempt
+      final shouldResetRetryAttempt = !sameUserChannel;
+      if (existingChannel != null) {
+        await _disposeInboxInvitesRealtimeSubscription(
+          resetRetry: shouldResetRetryAttempt,
+        );
+      }
 
       _inboxInvitesChannelUserId = userId;
 
@@ -486,7 +582,11 @@ class _BootstrapGateState extends State<BootstrapGate>
         event: PostgresChangeEvent.insert,
         schema: 'public',
         table: 'notification_deliveries',
-        filter: 'user_id=eq.$userId',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'user_id',
+          value: userId,
+        ),
         callback: (payload) {
           try {
             final newRow = payload.newRecord;
@@ -510,11 +610,40 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-            final deliveryChannel = (newRow['channel'] ?? '').toString();
-            final status = (newRow['status'] ?? '').toString();
+            final deliveryChannel = (newRow['channel'] ??
+                    newRow['Channel'] ??
+                    newRow['delivery_channel'] ??
+                    newRow['deliveryChannel'] ??
+                    '')
+                .toString()
+                .trim()
+                .toUpperCase();
+            final status = (newRow['status'] ??
+                    newRow['Status'] ??
+                    newRow['delivery_status'] ??
+                    newRow['deliveryStatus'] ??
+                    '')
+                .toString()
+                .trim()
+                .toUpperCase();
 
-            if (deliveryChannel != 'INBOX') return;
-            if (status.isNotEmpty && status != 'PENDING') return;
+            if (deliveryChannel != 'INBOX') {
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] ignore non-INBOX delivery channel=$deliveryChannel status=$status keys=${newRow.keys.toList()}',
+                );
+              }
+              return;
+            }
+
+            if (status.isNotEmpty && status != 'PENDING') {
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] ignore non-PENDING delivery status=$status keys=${newRow.keys.toList()}',
+                );
+              }
+              return;
+            }
 
             Map<String, dynamic> payloadMap = <String, dynamic>{};
             final payloadRaw = newRow['payload'];
@@ -537,12 +666,83 @@ class _BootstrapGateState extends State<BootstrapGate>
             //
             // Everything else is ignored.
             final payloadType = (payloadMap['type'] ?? '').toString();
+
+            if (kDebugMode) {
+              debugPrint(
+                '[INBOX] insert delivery parsed type=$payloadType payloadKeys=${payloadMap.keys.toList()}',
+              );
+              if (payloadType.trim().isEmpty) {
+                debugPrint(
+                  '[INBOX] insert delivery has empty payloadType payloadRawType=${payloadRaw.runtimeType} rowKeys=${newRow.keys.toList()}',
+                );
+              }
+            }
             if (payloadType.isNotEmpty &&
-                payloadType != 'PLAN_INTERNAL_INVITE') {
+                payloadType != 'PLAN_INTERNAL_INVITE' &&
+                payloadType != 'PLAN_MEMBER_LEFT') {
               return;
             }
 
-            final ownerAction =
+            // ✅ Separate layer: PLAN_MEMBER_LEFT -> in-app info modal (foreground).
+            if (payloadType == 'PLAN_MEMBER_LEFT') {
+              final planId = (payloadMap['plan_id'] ??
+                      payloadMap['planId'] ??
+                      newRow['plan_id'] ??
+                      newRow['planId'] ??
+                      '')
+                  .toString();
+              final leftUserId = (payloadMap['left_user_id'] ??
+                      payloadMap['leftUserId'] ??
+                      payloadMap['left_userId'] ??
+                      '')
+                  .toString();
+              if (planId.isEmpty || leftUserId.isEmpty) return;
+
+              
+final title = (payloadMap['title'] ?? '').toString();
+final body = (payloadMap['body'] ?? '').toString();
+final leftNickname = (payloadMap['left_nickname'] ??
+        payloadMap['leftNickname'] ??
+        '')
+    .toString();
+final planTitle = (payloadMap['plan_title'] ??
+        payloadMap['planTitle'] ??
+        '')
+    .toString();
+
+if (kDebugMode) {
+  debugPrint(
+    '[INBOX] plan-member-left insert planId=$planId leftUserId=$leftUserId',
+  );
+}
+
+final cleanLeftNickname =
+    leftNickname.trim().isEmpty ? null : leftNickname.trim();
+final cleanPlanTitle =
+    planTitle.trim().isEmpty ? null : planTitle.trim();
+final cleanTitle = title.trim().isEmpty ? null : title.trim();
+
+final bodyTrim = body.trim();
+final cleanBody =
+    (bodyTrim.isEmpty || bodyTrim == 'Один из участников покинул план.')
+        ? null
+        : bodyTrim;
+
+PlanMemberLeftUiCoordinator.instance.enqueue(
+  PlanMemberLeftUiRequest(
+    planId: planId,
+    leftUserId: leftUserId,
+    leftNickname: cleanLeftNickname,
+    planTitle: cleanPlanTitle,
+    title: cleanTitle,
+    body: cleanBody,
+    source: PlanMemberLeftUiSource.foreground,
+  ),
+);
+return;
+            }
+
+final ownerAction =
                 (payloadMap['action'] ?? payloadMap['owner_action'] ?? '')
                     .toString()
                     .trim()
@@ -643,7 +843,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           return;
         }
 
-        // If channel closes/errors/times out, schedule retry.
+        // If channel closes/errors/times out, schedule retry (single-timer, no thrash).
         if (status == RealtimeSubscribeStatus.closed ||
             status == RealtimeSubscribeStatus.channelError ||
             status == RealtimeSubscribeStatus.timedOut ||
@@ -673,8 +873,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     required String reason,
     Object? error,
   }) {
-    // Avoid multiple timers stacking.
-    _inboxInvitesRealtimeRetryTimer?.cancel();
+    // Single active timer: do not stack and do not thrash on rapid status flaps.
+    if (_inboxInvitesRealtimeRetryTimer != null) return;
 
     _inboxInvitesRealtimeRetryAttempt += 1;
     final attempt = _inboxInvitesRealtimeRetryAttempt;
@@ -697,18 +897,30 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     _inboxInvitesRealtimeRetryTimer =
         Timer(Duration(milliseconds: delayMs), () {
+      // Mark timer as consumed before running ensure() so status flaps can schedule next one.
+      _inboxInvitesRealtimeRetryTimer = null;
+
       if (_restoring) return;
       if (!_appShellReady) return;
       unawaited(_ensureInboxInvitesRealtimeSubscribed());
     });
   }
 
-  Future<void> _disposeInboxInvitesRealtimeSubscription() async {
+  Future<void> _disposeInboxInvitesRealtimeSubscription({
+    bool resetRetry = true,
+  }) async {
     final ch = _inboxInvitesChannel;
     _inboxInvitesChannel = null;
     _inboxInvitesChannelUserId = null;
     _inboxInvitesLastStatus = null;
-    _resetInboxInvitesRealtimeRetry();
+
+    // Always stop any pending retry timer. Optionally keep attempt counter for backoff continuity.
+    _inboxInvitesRealtimeRetryTimer?.cancel();
+    _inboxInvitesRealtimeRetryTimer = null;
+    if (resetRetry) {
+      _inboxInvitesRealtimeRetryAttempt = 0;
+    }
+
     if (ch == null) return;
 
     try {
@@ -716,118 +928,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     } catch (_) {
       // ignore dispose errors
     }
-  }
-
-  void _queuePendingInviteDialog({
-    required String inviteId,
-    required String planId,
-    String? actionToken,
-    String? title,
-    String? body,
-  }) {
-    _pendingDialogInviteId = inviteId;
-    _pendingDialogPlanId = planId;
-    _pendingDialogActionToken = actionToken;
-    _pendingDialogTitle = (title == null || title.trim().isEmpty)
-        ? kInviteDialogDefaultTitle
-        : title;
-    _pendingDialogBody = body ?? '';
-
-    _schedulePendingInviteDialogIfReady();
-  }
-
-  void _schedulePendingInviteDialogIfReady() {
-    if (!mounted) return;
-    if (_restoring) return;
-    if (!_appShellReady) return;
-    if (_inviteDialogVisible) return;
-    if (_pendingDialogInviteId == null || _pendingDialogPlanId == null) return;
-
-    _pendingInviteDialogTimer?.cancel();
-    unawaited(_showPendingInviteDialogNow());
-  }
-
-  Future<void> _showPendingInviteDialogNow() async {
-    if (!mounted) return;
-    if (_inviteDialogVisible) return;
-
-    final inviteId = _pendingDialogInviteId;
-    final planId = _pendingDialogPlanId;
-    final actionToken = _pendingDialogActionToken;
-    final title = _pendingDialogTitle ?? kInviteDialogDefaultTitle;
-    final body = _pendingDialogBody ?? '';
-
-    if (inviteId == null ||
-        inviteId.isEmpty ||
-        planId == null ||
-        planId.isEmpty) {
-      return;
-    }
-
-    _inviteDialogVisible = true;
-
-    await Future<void>.delayed(Duration.zero);
-
-    if (!mounted) {
-      _inviteDialogVisible = false;
-      return;
-    }
-
-    String? dialogAction;
-
-    try {
-      dialogAction = await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          return AlertDialog(
-            title: Text(title),
-            content: Text(
-              body.isEmpty ? kInviteDialogDefaultBody : body,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(ctx).pop('DECLINE');
-                },
-                child: const Text('Отклонить'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.of(ctx).pop('ACCEPT');
-                },
-                child: const Text('Принять'),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
-      _inviteDialogVisible = false;
-    }
-
-    if (dialogAction != 'ACCEPT' && dialogAction != 'DECLINE') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _schedulePendingInviteDialogIfReady();
-      });
-      return;
-    }
-
-    _pendingDialogInviteId = null;
-    _pendingDialogPlanId = null;
-    _pendingDialogActionToken = null;
-    _pendingDialogTitle = null;
-    _pendingDialogBody = null;
-
-    final resolvedAction = dialogAction!;
-
-    await _handleInternalInviteAction(
-      inviteId: inviteId,
-      action: resolvedAction,
-      planId: planId,
-      actionToken: actionToken,
-    );
   }
 
   Future<void> _handleInternalInviteAction({
@@ -947,8 +1047,8 @@ class _BootstrapGateState extends State<BootstrapGate>
       final nav2 = App.navigatorKey.currentState;
       if (nav2 == null) return;
 
-      unawaited(
-        nav2.push(
+      unawaited(() async {
+        final changed = await nav2.push<bool>(
           MaterialPageRoute(
             builder: (_) => PlanDetailsScreen(
               appUserId: userId,
@@ -956,8 +1056,28 @@ class _BootstrapGateState extends State<BootstrapGate>
               repository: repo,
             ),
           ),
-        ),
-      );
+        );
+
+        if (kDebugMode) {
+          debugPrint(
+              '[InviteNav] PlanDetails popped changed=$changed planId=$planId');
+        }
+
+        // If the user left/deleted the plan inside details (server-confirmed),
+        // force-refresh the Plans screen snapshot so a "dead" card cannot linger.
+        if (changed == true) {
+          final nav3 = App.navigatorKey.currentState;
+          if (nav3 == null) return;
+
+          // We are now back on PlansScreen (PlanDetails popped). Replace the route
+          // with a fresh instance to trigger canonical refetch in initState.
+          nav3.pushReplacement(
+            noAnimRoute(
+              PlansScreen(appUserId: userId),
+            ),
+          );
+        }
+      }());
 
       if (toastMessage != null && toastMessage.isNotEmpty) {
         Future<void>.delayed(const Duration(milliseconds: 350), () async {
@@ -1025,8 +1145,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       unawaited(_ensureDeviceTokenRegistered());
 
       // If user restored while app was backgrounded, flush pending invite UI/actions.
-      _schedulePendingInviteDialogIfReady();
-      _schedulePendingPlanOpenIfReady();
+            _schedulePendingPlanOpenIfReady();
     }
   }
 
@@ -1164,8 +1283,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       // After identity becomes available (AUTH/GUEST/onboarding), kick off pending UI-only flows.
       await _ensureDeviceTokenRegistered();
       await _tryConsumePendingPlanInvite();
-      _schedulePendingInviteDialogIfReady();
-      _schedulePendingPlanOpenIfReady();
+            _schedulePendingPlanOpenIfReady();
     } finally {
       _postIdentityFlowsRunning = false;
       if (_postIdentityFlowsRerunRequested) {
@@ -1273,7 +1391,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         if (!mounted) return;
 
         if (_inboxInvitesChannelUserId != (row['id'] as String)) {
-          unawaited(_disposeInboxInvitesRealtimeSubscription());
+          await _disposeInboxInvitesRealtimeSubscription();
         }
         setState(() {
           _userId = row['id'] as String;
@@ -1286,6 +1404,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           _postIdentityFlowsRerunRequested = false;
         });
         InviteUiCoordinator.instance.setRootUiReady(false);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
 
         _runPostIdentityFlows();
         return;
@@ -1300,7 +1419,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (snapshot != null && snapshot.state == 'GUEST') {
       if (!mounted) return;
       if (_inboxInvitesChannelUserId != snapshot.id) {
-        unawaited(_disposeInboxInvitesRealtimeSubscription());
+        await _disposeInboxInvitesRealtimeSubscription();
       }
       setState(() {
         _userId = snapshot.id;
@@ -1313,6 +1432,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         _postIdentityFlowsRerunRequested = false;
       });
       InviteUiCoordinator.instance.setRootUiReady(false);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
 
       _runPostIdentityFlows();
       return;
@@ -1320,7 +1440,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     // ===== ONBOARDING =====
     if (!mounted) return;
-    unawaited(_disposeInboxInvitesRealtimeSubscription());
+    await _disposeInboxInvitesRealtimeSubscription();
     setState(() {
       _userId = null;
       _nickname = null;
@@ -1332,6 +1452,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       _postIdentityFlowsRerunRequested = false;
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
   }
 
   void _finishOnboarding(Map<String, dynamic> result) {
@@ -1371,6 +1492,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       _homeVisibleAt = null;
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
 
     _runPostIdentityFlows();
   }
@@ -1379,6 +1501,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (_appShellReady) return;
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
+    PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
     _ensureInboxInvitesRealtimeSubscribed();
 
@@ -1387,8 +1510,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _schedulePendingPlanOpenIfReady();
-      _schedulePendingInviteDialogIfReady();
-    });
+          });
   }
 
   void _consumePendingOpenPlanId() {
@@ -1410,7 +1532,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     _linkSub?.cancel();
     _fcmTokenSub?.cancel();
     _fcmMessageSub?.cancel();
-    _pendingInviteDialogTimer?.cancel();
     _disposeInboxInvitesRealtimeSubscription();
     super.dispose();
   }

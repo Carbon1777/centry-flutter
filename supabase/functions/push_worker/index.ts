@@ -139,6 +139,10 @@ function isInternalInviteResult(payload: Record<string, unknown>): boolean {
   return action === "ACCEPT" || action === "DECLINE";
 }
 
+function isPlanMemberLeft(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PLAN_MEMBER_LEFT";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -187,33 +191,52 @@ serve(async () => {
     }
 
     const internalInvite = isPlanInternalInvite(payload);
+    const memberLeft = isPlanMemberLeft(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
     // ✅ Canon (server-first UX):
-    // - Any PLAN_INTERNAL_INVITE delivery (invitee invite OR owner result) must be STRICT DATA-ONLY.
+    // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
     //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
+    // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
     // - Other notification types may include OS notification.
-    const shouldIncludeNotification = !internalInvite;
-
+    const shouldIncludeNotification = !(internalInvite || memberLeft);
     let anyOk = false;
     let lastErr = "";
 
     const debugAttempts: Array<Record<string, unknown>> = [];
 
     for (const t of tokens) {
-      const dataPayload: Record<string, string> = {
-        type: "PLAN_INTERNAL_INVITE",
-        invite_id: String(payload["invite_id"] ?? ""),
-        plan_id: String(payload["plan_id"] ?? ""),
+      const type = String(payload["type"] ?? "");
+      const baseData: Record<string, string> = {
+        type: type.length > 0 ? type : "UNKNOWN",
         title: String(payload["title"] ?? title),
         body: String(payload["body"] ?? body),
-        action: String(payload["action"] ?? ""),
-        // critical for token-path (DECLINE without UI; ACCEPT can use token too)
-        action_token: String(payload["action_token"] ?? ""),
-        // optional marker for clients/debug
-        internal_invite_mode: inviteResultForOwner ? "OWNER_RESULT" : "INVITEE_INVITE",
+        plan_id: String(payload["plan_id"] ?? ""),
       };
+
+      const dataPayload: Record<string, string> = internalInvite
+        ? {
+            type: "PLAN_INTERNAL_INVITE",
+            invite_id: String(payload["invite_id"] ?? ""),
+            plan_id: String(payload["plan_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+            action: String(payload["action"] ?? ""),
+            // critical for token-path (DECLINE without UI; ACCEPT can use token too)
+            action_token: String(payload["action_token"] ?? ""),
+            // optional marker for clients/debug
+            internal_invite_mode: inviteResultForOwner ? "OWNER_RESULT" : "INVITEE_INVITE",
+          }
+        : memberLeft
+        ? {
+            type: "PLAN_MEMBER_LEFT",
+            plan_id: String(payload["plan_id"] ?? ""),
+            left_user_id: String(payload["left_user_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : baseData;
 
       const androidConfig = shouldIncludeNotification
         ? {

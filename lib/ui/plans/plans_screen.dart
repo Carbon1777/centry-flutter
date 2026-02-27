@@ -34,6 +34,10 @@ class _PlansScreenState extends State<PlansScreen>
   List<PlanSummaryDto> _activePlans = [];
   List<PlanSummaryDto> _archivePlans = [];
 
+  /// UI-wiring: plan IDs that must be hidden immediately after a confirmed leave/delete.
+  /// Added only when PlanDetailsScreen returns `pop(true)` (server-confirmed change).
+  final Set<String> _hiddenPlanIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -128,7 +132,12 @@ class _PlansScreenState extends State<PlansScreen>
     final appUserId = await _resolveDomainAppUserId();
     if (appUserId == null) return;
 
-    await Navigator.of(context).push(
+    debugPrint('[PlansScreen] opening details planId=${plan.id}');
+    // print() as a fallback in case debugPrint is filtered out.
+    // ignore: avoid_print
+    print('[PlansScreen] opening details planId=${plan.id}');
+
+    final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => PlanDetailsScreen(
           appUserId: appUserId,
@@ -138,7 +147,30 @@ class _PlansScreenState extends State<PlansScreen>
       ),
     );
 
+    debugPrint('[PlansScreen] details result changed=$changed for planId=${plan.id}');
+    // ignore: avoid_print
+    print('[PlansScreen] details result changed=$changed for planId=${plan.id}');
+
+    if (!mounted) return;
+
+    if (changed == true) {
+      // Server confirmed the user left/deleted the plan (PlanDetailsScreen popped with `true`).
+      // Immediately hide the plan to prevent tapping a "dead" card while the list refetch catches up.
+      setState(() {
+        _hiddenPlanIds.add(plan.id);
+      });
+    }
+
     await _loadAll();
+
+    // Eventual consistency guard: sometimes the immediate refetch can return a stale snapshot.
+    // Do a single delayed refetch after a confirmed change.
+    if (changed == true) {
+      Future<void>.delayed(const Duration(milliseconds: 900), () async {
+        if (!mounted) return;
+        await _loadAll();
+      });
+    }
   }
 
   Future<void> _createPlan() async {
@@ -250,13 +282,13 @@ class _PlansScreenState extends State<PlansScreen>
         children: [
           _PlansList(
             loading: _loadingActive,
-            plans: _activePlans,
+            plans: _activePlans.where((p) => !_hiddenPlanIds.contains(p.id)).toList(),
             emptyText: 'Нет активных планов',
             onTap: _openDetails,
           ),
           _PlansList(
             loading: _loadingArchive,
-            plans: _archivePlans,
+            plans: _archivePlans.where((p) => !_hiddenPlanIds.contains(p.id)).toList(),
             emptyText: 'Архив пуст',
             onTap: _openDetails,
           ),

@@ -407,23 +407,36 @@ void enqueueToast({
         useRootNavigator: true,
         builder: (dialogContext) {
           return AlertDialog(
-            title: Text(request.title?.trim().isNotEmpty == true
-                ? request.title!.trim()
-                : 'Приглашение в план'),
-            content: Text(request.body?.trim().isNotEmpty == true
-                ? request.body!.trim()
-                : 'Вас пригласили в план'),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+            titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+            contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+            actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            title: Text(
+              request.title?.trim().isNotEmpty == true
+                  ? request.title!.trim()
+                  : 'Приглашение в план',
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+              child: Text(
+                request.body?.trim().isNotEmpty == true
+                    ? request.body!.trim()
+                    : 'Вас пригласили в план',
+                style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                      fontSize: 16,
+                      height: 1.3,
+                    ),
+              ),
+            ),
             actions: [
               TextButton(
-                onPressed: () =>
-                    Navigator.of(dialogContext, rootNavigator: true)
-                        .pop(InviteUiDecision.decline),
+                onPressed: () => Navigator.of(dialogContext, rootNavigator: true)
+                    .pop(InviteUiDecision.decline),
                 child: const Text('Отклонить'),
               ),
               FilledButton(
-                onPressed: () =>
-                    Navigator.of(dialogContext, rootNavigator: true)
-                        .pop(InviteUiDecision.accept),
+                onPressed: () => Navigator.of(dialogContext, rootNavigator: true)
+                    .pop(InviteUiDecision.accept),
                 child: const Text('Принять'),
               ),
             ],
@@ -480,7 +493,12 @@ void enqueueToast({
       }
 
       if (result.message != null && result.message!.trim().isNotEmpty) {
-        await onToast(result.message!.trim());
+        var m = result.message!.trim();
+        // UI-only hint: decline should look negative even if outer toast uses a generic "success" icon.
+        if (decision == InviteUiDecision.decline && !m.startsWith('⛔')) {
+          m = '⛔ $m';
+        }
+        await onToast(m);
       }
 
       if (result.success &&
@@ -558,18 +576,33 @@ void enqueueToast({
               );
 
           return AlertDialog(
-            title: Text(title, style: titleStyle),
-            content: body.isNotEmpty ? Text(body) : null,
-            actionsAlignment: MainAxisAlignment.center,
-            actions: <Widget>[
-              TextButton(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('Закрыть'),
-              ),
-            ],
-          );
+             insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+             titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+             contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+             actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+             title: Text(title, style: titleStyle),
+             content: body.isNotEmpty
+                 ? ConstrainedBox(
+                     constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+                     child: Text(
+                       body,
+                       style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                             fontSize: 16,
+                             height: 1.3,
+                           ),
+                     ),
+                   )
+                 : null,
+             actionsAlignment: MainAxisAlignment.center,
+             actions: <Widget>[
+               TextButton(
+                 onPressed: () {
+                   Navigator.of(dialogContext).pop();
+                 },
+                 child: const Text('Закрыть'),
+               ),
+             ],
+           );
         },
       );
 
