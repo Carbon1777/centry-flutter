@@ -1,6 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+bool _looksNegativeToastMessage(String message) {
+  final m = message.toLowerCase();
+  return m.contains('отклон') ||
+      m.contains('declin') ||
+      m.contains('rejected') ||
+      m.contains('denied') ||
+      m.contains('⛔') ||
+      m.contains('❌');
+}
+
+
 Future<void> showCenterToast(
   BuildContext context, {
   required String message,
@@ -23,12 +34,14 @@ Future<void> showCenterToast(
     pageBuilder: (ctx, anim1, anim2) {
       final theme = Theme.of(ctx);
 
-      final bg = isError ? const Color(0xFF2A1212) : const Color(0xFF14161A);
-      final border =
-          isError ? const Color(0xFF5C2A2A) : const Color(0xFF2A2E36);
-      final icon = isError ? Icons.error_outline : Icons.check_circle_outline;
-      final iconColor =
-          isError ? const Color(0xFFFF6B6B) : const Color(0xFF7EE787);
+      final effectiveIsError = isError || _looksNegativeToastMessage(message);
+
+            final bg = effectiveIsError ? const Color(0xFF2A1212) : const Color(0xFF14161A);
+            final border =
+          effectiveIsError ? const Color(0xFF5C2A2A) : const Color(0xFF2A2E36);
+            final icon = effectiveIsError ? Icons.cancel : Icons.check_circle_outline;
+            final iconColor =
+          effectiveIsError ? const Color(0xFFFF6B6B) : const Color(0xFF7EE787);
 
       return SafeArea(
         child: Center(

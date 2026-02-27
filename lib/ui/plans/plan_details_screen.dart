@@ -2,6 +2,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'plan_members_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -49,11 +51,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
 
   String _humanizeError(Object e) {
-    if (e is PostgrestException) {
-      // Server-first: server message is canonical UX text.
-      return e.message;
-    }
-    return e.toString();
+    return _userMessageForError(e);
   }
 
   // Server-driven permission flags (client is dumb). No local fallbacks.
@@ -143,6 +141,28 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
+
+  String _userMessageForError(Object e) {
+    // Server-first UX: never show raw backend exceptions to the user.
+    if (e is PostgrestException) {
+      // PostgrestException fields are not consistently typed across versions; normalize to strings.
+      final code = (e.code ?? '').toString().toUpperCase();
+      final msg = e.message.toString().toLowerCase();
+      final details = (e.details ?? '').toString().toLowerCase();
+
+      final isAccessDenied =
+          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
+
+      if (isAccessDenied) {
+        return 'План больше недоступен или у вас нет доступа.';
+      }
+
+      return 'Не удалось загрузить план. Попробуйте ещё раз.';
+    }
+
+    return 'Не удалось загрузить план. Проверьте соединение и попробуйте ещё раз.';
+  }
+
   Future<void> _refreshSilentlyIfPossible() async {
     if (!mounted) return;
 
@@ -178,7 +198,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       _details = d;
     } catch (e) {
       _details = null;
-      _error = e.toString();
+      _error = _userMessageForError(e);
       debugPrint('[PlanDetailsScreen] load error: $e');
     }
 
@@ -762,7 +782,7 @@ Future<void> _editTitle() async {
           ? const Center(child: CircularProgressIndicator())
           : _details == null
               ? _ErrorState(
-                  error: _error ?? 'Unknown error',
+                  userMessage: _error ?? 'Не удалось загрузить план.',
                   onRetry: () => _load(showSpinner: true),
                 )
               : _Body(
@@ -1098,10 +1118,10 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  final String error;
+  final String userMessage;
   final VoidCallback onRetry;
 
-  const _ErrorState({required this.error, required this.onRetry});
+  const _ErrorState({required this.userMessage, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1114,9 +1134,9 @@ class _ErrorState extends StatelessWidget {
             const Text('Не удалось загрузить план'),
             const SizedBox(height: 10),
             Text(
-              error,
+              userMessage,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 10),
             ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
