@@ -46,51 +46,6 @@ class PushNotifications {
     }
   }
 
-  static Map<String, dynamic>? _tryDecodeJsonObject(String raw) {
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    } catch (_) {
-      // ignore
-    }
-    return null;
-  }
-
-  static Map<String, dynamic> _normalizePayloadMap(Map<String, dynamic> base) {
-    // Some server stacks wrap the actual payload into a "payload" (stringified JSON) field.
-    // Or nest data into {"data": {...}}. We merge it to ensure we always read canonical keys.
-    final out = Map<String, dynamic>.from(base);
-
-    void mergeIfJsonField(String key) {
-      final v = out[key];
-      if (v is String && v.trim().isNotEmpty) {
-        final decoded = _tryDecodeJsonObject(v.trim());
-        if (decoded != null) {
-          // Canon: decoded payload should override shallow fields.
-          out.addAll(decoded);
-        }
-      } else if (v is Map) {
-        out.addAll(Map<String, dynamic>.from(v));
-      }
-    }
-
-    mergeIfJsonField('payload');
-    mergeIfJsonField('data');
-
-    return out;
-  }
-
-  static String _readString(Map<String, dynamic> map, List<String> keys) {
-    for (final k in keys) {
-      final v = map[k];
-      if (v == null) continue;
-      final s = v.toString();
-      if (s.isNotEmpty) return s;
-    }
-    return '';
-  }
-
   /// Оставляем для совместимости/возможного использования в других потоках.
   static Future<void> respondInternalInviteByToken({
     required String actionToken,
@@ -185,7 +140,8 @@ class PushNotifications {
 
       // Canon: for internal invite push no product actions in system notification.
       // Both tap on body and tap on "Посмотреть" route to OPEN.
-      final normalizedAction = actionId.isEmpty ? kInviteActionOpen : actionId;
+      final normalizedAction =
+          actionId.isEmpty ? kInviteActionOpen : actionId;
 
       if (normalizedAction != kInviteActionOpen) {
         return;
@@ -194,97 +150,73 @@ class PushNotifications {
       final raw = resp.payload;
       if (raw == null || raw.isEmpty) return;
 
-      Map<String, dynamic>? decodedMap;
+      Map<String, dynamic>? map;
       try {
         final decoded = jsonDecode(raw);
-        if (decoded is Map<String, dynamic>) decodedMap = decoded;
-        if (decoded is Map) decodedMap = Map<String, dynamic>.from(decoded);
+        if (decoded is Map<String, dynamic>) map = decoded;
+        if (decoded is Map) map = Map<String, dynamic>.from(decoded);
       } catch (_) {
-        decodedMap = null;
+        map = null;
       }
-      if (decodedMap == null) return;
+      if (map == null) return;
 
-      // Important: server payload can be wrapped into {"payload":"{...json...}"} or {"data":{...}}.
-      final data = _normalizePayloadMap(decodedMap);
-
-      final kind = _readString(data, const ['kind', 'type']).trim();
-      final planId = _readString(data, const ['plan_id', 'planId']).trim();
-      final notifTitle = _readString(data, const ['title']).trim();
-      final notifBody = _readString(data, const ['body']).trim();
+      final kind = (map['kind'] ?? map['type'] ?? '').toString().trim();
+      final planId = (map['plan_id'] ?? '').toString();
+      final notifTitle = (map['title'] ?? '').toString().trim();
+      final notifBody = (map['body'] ?? '').toString().trim();
 
       if (kind == 'PLAN_MEMBER_LEFT') {
-        final leftUserId = _readString(
-          data,
-          const [
-            'left_user_id',
-            'leftUserId',
-            'member_user_id',
-            'memberUserId'
-          ],
-        ).trim();
-        final leftNickname = _readString(
-          data,
-          const [
-            'left_nickname',
-            'leftNickname',
-            'member_nickname',
-            'memberNickname'
-          ],
-        ).trim();
-        final planTitle = _readString(
-          data,
-          const ['plan_title', 'planTitle', 'plan_name', 'planName'],
-        ).trim();
-
+        final leftUserId = (map['left_user_id'] ?? map['member_user_id'] ?? '').toString();
+        final leftNickname = (map['left_nickname'] ?? map['member_nickname'] ?? '').toString().trim();
+        final planTitle = (map['plan_title'] ?? '').toString().trim();
         if (planId.isEmpty || leftUserId.isEmpty) return;
-
         if (kDebugMode) {
           debugPrint(
-            '[LocalNotifUI] PLAN_MEMBER_LEFT open planId=$planId leftUserId=$leftUserId leftNickname="$leftNickname" planTitle="$planTitle"',
+            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId',
           );
         }
-
-        await onPlanMemberLeftOpen?.call(
+        final cb = onPlanMemberLeftOpen;
+        if (cb == null) return;
+        await cb(
           planId: planId,
           leftUserId: leftUserId,
-          leftNickname: leftNickname.isNotEmpty ? leftNickname : null,
-          planTitle: planTitle.isNotEmpty ? planTitle : null,
-          title: notifTitle.isNotEmpty ? notifTitle : null,
-          body: notifBody.isNotEmpty ? notifBody : null,
+          leftNickname: leftNickname.isEmpty ? null : leftNickname,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
         );
         return;
       }
 
-      // Default: treat as internal invite (both invitee invite and owner result are OPEN-only).
-      final inviteId =
-          _readString(data, const ['invite_id', 'inviteId']).trim();
+      // Default: internal invite / owner-result.
+      final inviteId = (map['invite_id'] ?? '').toString();
       if (inviteId.isEmpty || planId.isEmpty) return;
 
-      final action = _readString(data, const ['action']).trim();
-      final actionToken =
-          _readString(data, const ['action_token', 'actionToken']).trim();
+      if (kDebugMode) {
+        debugPrint(
+          '[PushNotifications] open invite_id=$inviteId plan_id=$planId',
+        );
+      }
 
       await onInviteAction(
         inviteId: inviteId,
-        action: action.isNotEmpty ? action : kInviteActionOpen,
+        action: kInviteActionOpen,
         planId: planId,
-        actionToken: actionToken.isNotEmpty ? actionToken : null,
-        title: notifTitle.isNotEmpty ? notifTitle : null,
-        body: notifBody.isNotEmpty ? notifBody : null,
+        actionToken: null,
+        title: notifTitle.isEmpty ? null : notifTitle,
+        body: notifBody.isEmpty ? null : notifBody,
       );
     }
 
     await _local.initialize(
       settings,
-      onDidReceiveNotificationResponse: handleResponse,
-      onDidReceiveBackgroundNotificationResponse: handleResponse,
+      onDidReceiveNotificationResponse: (resp) async {
+        await handleResponse(resp);
+      },
     );
 
     await _ensureAndroidChannelCreated();
 
-    if (kDebugMode) debugPrint('[PushNotifications] init done (UI)');
-
-    // Handle app launch from notification (terminated → open).
     final launch = await _local.getNotificationAppLaunchDetails();
     final resp = launch?.notificationResponse;
     if (kDebugMode) {
@@ -315,28 +247,20 @@ class PushNotifications {
   }
 
   static bool isInternalInvite(RemoteMessage m) {
-    final data = _normalizePayloadMap(Map<String, dynamic>.from(m.data));
-
-    final t = _readString(data, const ['type', 'kind']).trim();
+    final t = (m.data['type'] ?? '').toString();
     if (t == 'PLAN_INTERNAL_INVITE') return true;
 
-    final inviteId = _readString(data, const ['invite_id', 'inviteId']).trim();
-    final planId = _readString(data, const ['plan_id', 'planId']).trim();
+    final inviteId = (m.data['invite_id'] ?? '').toString();
+    final planId = (m.data['plan_id'] ?? '').toString();
     return inviteId.isNotEmpty && planId.isNotEmpty;
   }
 
   static bool isPlanMemberLeft(RemoteMessage m) {
-    final data = _normalizePayloadMap(Map<String, dynamic>.from(m.data));
-
-    final t = _readString(data, const ['type', 'kind']).trim();
+    final t = (m.data['type'] ?? '').toString();
     if (t == 'PLAN_MEMBER_LEFT') return true;
 
-    final planId = _readString(data, const ['plan_id', 'planId']).trim();
-    final leftUserId = _readString(
-      data,
-      const ['left_user_id', 'leftUserId', 'member_user_id', 'memberUserId'],
-    ).trim();
-
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final leftUserId = (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
     return planId.isNotEmpty && leftUserId.isNotEmpty;
   }
 
@@ -353,14 +277,11 @@ class PushNotifications {
 
     if (!isInternalInvite(m)) return;
 
-    final data = _normalizePayloadMap(Map<String, dynamic>.from(m.data));
-
-    final inviteId = _readString(data, const ['invite_id', 'inviteId']).trim();
-    final planId = _readString(data, const ['plan_id', 'planId']).trim();
+    final inviteId = (m.data['invite_id'] ?? '').toString();
+    final planId = (m.data['plan_id'] ?? '').toString();
     if (inviteId.isEmpty || planId.isEmpty) return;
 
-    final ownerAction =
-        _readString(data, const ['action']).trim().toUpperCase();
+    final ownerAction = (m.data['action'] ?? '').toString().trim().toUpperCase();
     final isOwnerResult = ownerAction == 'ACCEPT' || ownerAction == 'DECLINE';
 
     final title = isOwnerResult
@@ -369,7 +290,7 @@ class PushNotifications {
             : 'Приглашение отклонено')
         : 'Вас пригласили в план';
 
-    final rawBody = _readString(data, const ['body']).trim();
+    final rawBody = (m.data['body'] ?? '').toString().trim();
     final body = rawBody.isNotEmpty
         ? rawBody
         : (isOwnerResult
@@ -443,40 +364,26 @@ class PushNotifications {
 
     if (!isPlanMemberLeft(m)) return;
 
-    final data = _normalizePayloadMap(Map<String, dynamic>.from(m.data));
-
-    final planId = _readString(data, const ['plan_id', 'planId']).trim();
-    final leftUserId = _readString(
-      data,
-      const ['left_user_id', 'leftUserId', 'member_user_id', 'memberUserId'],
-    ).trim();
-
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final leftUserId =
+        (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
     if (planId.isEmpty || leftUserId.isEmpty) return;
 
-    final leftNickname = _readString(
-      data,
-      const [
-        'left_nickname',
-        'leftNickname',
-        'member_nickname',
-        'memberNickname'
-      ],
-    ).trim();
-    final planTitle = _readString(
-      data,
-      const ['plan_title', 'planTitle', 'plan_name', 'planName'],
-    ).trim();
+    final leftNickname = (m.data['left_nickname'] ?? m.data['member_nickname'] ?? '')
+        .toString()
+        .trim();
+    final planTitle = (m.data['plan_title'] ?? m.data['plan_name'] ?? '')
+        .toString()
+        .trim();
 
-    // Canon: title/body must come from server when provided.
-    final serverTitle = _readString(data, const ['title']).trim();
-    final serverBody = _readString(data, const ['body']).trim();
+    // Canon: title/body should come from server; fallbacks are only for safety.
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'Участник покинул план';
 
-    final title =
-        serverTitle.isNotEmpty ? serverTitle : 'Участник покинул план';
-
-    // Safety fallback only if server did not provide body.
-    final computedBody = serverBody.isNotEmpty
-        ? serverBody
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final computedBody = rawBody.isNotEmpty
+        ? rawBody
         : (() {
             if (leftNickname.isNotEmpty && planTitle.isNotEmpty) {
               return '$leftNickname покинул(а) план "$planTitle".';
@@ -487,25 +394,17 @@ class PushNotifications {
             return 'Откройте приложение, чтобы посмотреть.';
           })();
 
-    // Local notification payload must contain canonical keys for in-app routing.
     final payload = jsonEncode({
       'kind': 'PLAN_MEMBER_LEFT',
-      'type': 'PLAN_MEMBER_LEFT',
       'plan_id': planId,
       'left_user_id': leftUserId,
       if (leftNickname.isNotEmpty) 'left_nickname': leftNickname,
-      if (planTitle.isNotEmpty) 'plan_title': planTitle,
-      if (serverTitle.isNotEmpty) 'title': serverTitle,
-      if (serverBody.isNotEmpty) 'body': serverBody,
-      // Store shown text for UI safety (not product source of truth).
-      'shown_title': title,
-      'shown_body': computedBody,
+      'title': title,
+      'body': computedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = msgId.isNotEmpty
-        ? 'left:$planId:$leftUserId:$msgId'
-        : 'left:$planId:$leftUserId';
+    final idSeed = msgId.isNotEmpty ? 'left:$planId:$leftUserId:$msgId' : 'left:$planId:$leftUserId';
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
@@ -553,8 +452,7 @@ class PushNotifications {
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     if (kDebugMode) {
-      debugPrint(
-          '[FCM-BG] received id=${message.messageId} sentAt=${message.sentTime}');
+      debugPrint('[FCM-BG] received id=${message.messageId} sentAt=${message.sentTime}');
       debugPrint('[FCM-BG] data=${message.data}');
       debugPrint(
         '[FCM-BG] notificationTitle=${message.notification?.title} notificationBody=${message.notification?.body}',
