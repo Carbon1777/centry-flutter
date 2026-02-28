@@ -15,11 +15,9 @@ class PlanMemberRemovedUiRequest {
   final String removedUserId;
   final String ownerUserId;
 
-  /// Optional server-provided fields for better UX text.
   final String? ownerNickname;
   final String? planTitle;
 
-  /// Optional pre-rendered text from the server/push.
   final String? title;
   final String? body;
 
@@ -43,10 +41,6 @@ class PlanMemberRemovedUiRequest {
   }
 }
 
-/// Separate layer (parallel to InviteUiCoordinator and PlanMemberLeftUiCoordinator):
-/// - queues events
-/// - deduplicates
-/// - shows a simple in-app info modal when root UI is ready
 class PlanMemberRemovedUiCoordinator {
   PlanMemberRemovedUiCoordinator._();
 
@@ -66,16 +60,13 @@ class PlanMemberRemovedUiCoordinator {
 
   void setRootUiReady(bool ready) {
     _rootUiReady = ready;
-    if (ready) {
-      _tryShowNext();
-    }
+    if (ready) _tryShowNext();
   }
 
   void enqueue(PlanMemberRemovedUiRequest request) {
     final key = request.dedupKey();
     if (_dedup.contains(key)) return;
 
-    // Keep dedup set bounded.
     _dedup.add(key);
     while (_dedup.length > 200) {
       _dedup.remove(_dedup.first);
@@ -103,7 +94,6 @@ class PlanMemberRemovedUiCoordinator {
       );
     }
 
-    // No await: keep the queue flowing via then().
     showDialog<void>(
       context: ctx,
       barrierDismissible: false,
@@ -119,14 +109,12 @@ class PlanMemberRemovedUiCoordinator {
   }
 
   String _resolveBody(PlanMemberRemovedUiRequest r) {
-    // If server already provided body, keep it (server-first).
     final body = (r.body ?? '').trim();
     if (body.isNotEmpty) return body;
 
     final ownerNick = (r.ownerNickname ?? '').trim();
     final plan = (r.planTitle ?? '').trim();
 
-    // Contract UX: "Создатель «Ник» удалил вас из плана «Название плана»."
     if (ownerNick.isNotEmpty && plan.isNotEmpty) {
       return 'Создатель «$ownerNick» удалил вас из плана «$plan».';
     }
