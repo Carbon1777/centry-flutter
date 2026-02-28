@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum InviteUiSource {
   foreground,
@@ -534,6 +535,52 @@ void enqueueToast({
     }
   }
 
+
+  Future<void> _ackOwnerResultDeliveryIfPossible(OwnerResultUiRequest request) async {
+    // Server-first contract: when owner-result is shown in foreground, we must ACK the corresponding INBOX delivery
+    // so that server can suppress the redundant PUSH for the same event.
+    final client = Supabase.instance.client;
+    final authUserId = client.auth.currentUser?.id;
+    final authUserIdNorm = authUserId?.trim();
+
+    if (authUserIdNorm == null || authUserIdNorm.isEmpty) {
+      _log(
+        'ack owner-result skipped: no auth user '
+        'inviteId=${request.inviteId} planId=${request.planId} action=${request.action}',
+      );
+      return;
+    }
+
+    final action = request.action.trim().toUpperCase();
+    if (action != 'ACCEPT' && action != 'DECLINE') {
+      _log(
+        'ack owner-result skipped: invalid action=${request.action} '
+        'inviteId=${request.inviteId} planId=${request.planId}',
+      );
+      return;
+    }
+
+    try {
+      await client.rpc(
+        'ack_plan_internal_invite_result_delivery_v1',
+        params: <String, dynamic>{
+          'p_app_user_id': authUserIdNorm,
+          'p_invite_id': request.inviteId,
+          'p_action': action,
+        },
+      );
+
+      _log(
+        'ack owner-result ok inviteId=${request.inviteId} planId=${request.planId} action=$action',
+      );
+    } catch (e, st) {
+      _log(
+        'ack owner-result error inviteId=${request.inviteId} planId=${request.planId} action=$action error=$e',
+      );
+      await _safeOnError(e, st);
+    }
+  }
+
   Future<void> _safeOnError(Object error, StackTrace stackTrace) async {
     final onError = _onError;
     if (onError == null) return;
@@ -605,6 +652,9 @@ void enqueueToast({
            );
         },
       );
+
+
+      await _ackOwnerResultDeliveryIfPossible(request);
 
       _handledOwnerResultKeys.add(request.dedupKey);
     } catch (e, st) {
