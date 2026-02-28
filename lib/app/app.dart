@@ -25,6 +25,7 @@ import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
 import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
+import 'plan_member_removed_ui_coordinator.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -154,6 +155,9 @@ class _BootstrapGateState extends State<BootstrapGate>
     // ✅ Separate layer: owner notifications about member leaving a plan.
     PlanMemberLeftUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+
+    PlanMemberRemovedUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
+    PlanMemberRemovedUiCoordinator.instance.setRootUiReady(false);
 
     unawaited(GeoService.instance.refresh());
 
@@ -300,6 +304,68 @@ class _BootstrapGateState extends State<BootstrapGate>
           // Canon: tap on invite body does nothing (no ACCEPT/DECLINE, no nav).
           return;
         }
+
+// PLAN_MEMBER_REMOVED: show in-app info modal using server-provided payload/extras.
+if (type == 'PLAN_MEMBER_REMOVED') {
+  // payload from extras['payload'] OR flattened extras keys (FCM sometimes flattens).
+  final payloadType = (payload['type'] ?? extras['type'] ?? '').toString().trim();
+  if (payloadType == 'PLAN_MEMBER_REMOVED') {
+    final removedPlanId = (payload['plan_id'] ??
+            payload['planId'] ??
+            extras['plan_id'] ??
+            extras['planId'] ??
+            '')
+        .toString();
+    final removedUserId = (payload['removed_user_id'] ??
+            payload['removedUserId'] ??
+            extras['removed_user_id'] ??
+            extras['removedUserId'] ??
+            '')
+        .toString();
+    final ownerUserId = (payload['owner_user_id'] ??
+            payload['ownerUserId'] ??
+            extras['owner_user_id'] ??
+            extras['ownerUserId'] ??
+            '')
+        .toString();
+
+    if (removedPlanId.isNotEmpty &&
+        removedUserId.isNotEmpty &&
+        ownerUserId.isNotEmpty) {
+      final ownerNickname = (payload['owner_nickname'] ??
+              payload['ownerNickname'] ??
+              extras['owner_nickname'] ??
+              extras['ownerNickname'] ??
+              '')
+          .toString()
+          .trim();
+      final planTitle = (payload['plan_title'] ??
+              payload['planTitle'] ??
+              extras['plan_title'] ??
+              extras['planTitle'] ??
+              '')
+          .toString()
+          .trim();
+      final title = (payload['title'] ?? extras['title'] ?? '').toString().trim();
+      final body = (payload['body'] ?? extras['body'] ?? '').toString().trim();
+
+      PlanMemberRemovedUiCoordinator.instance.enqueue(
+        PlanMemberRemovedUiRequest(
+          planId: removedPlanId,
+          removedUserId: removedUserId,
+          ownerUserId: ownerUserId,
+          ownerNickname: ownerNickname.isEmpty ? null : ownerNickname,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          title: title.isEmpty ? null : title,
+          body: body.isEmpty ? null : body,
+          source: PlanMemberRemovedUiSource.backgroundIntent,
+        ),
+      );
+      return;
+    }
+  }
+}
+
       } catch (e) {
         if (kDebugMode) {
           debugPrint('[IntentBridge] handler error: $e');
@@ -392,7 +458,34 @@ class _BootstrapGateState extends State<BootstrapGate>
             source: PlanMemberLeftUiSource.backgroundIntent,
           ),
         );
-      },);
+      },
+      onPlanMemberRemovedOpen: ({
+        required String planId,
+        required String removedUserId,
+        required String ownerUserId,
+        String? ownerNickname,
+        String? planTitle,
+        String? title,
+        String? body,
+      }) async {
+        PlanMemberRemovedUiCoordinator.instance.enqueue(
+          PlanMemberRemovedUiRequest(
+            planId: planId,
+            removedUserId: removedUserId,
+            ownerUserId: ownerUserId,
+            ownerNickname: (ownerNickname ?? '').trim().isEmpty
+                ? null
+                : (ownerNickname ?? '').trim(),
+            planTitle: (planTitle ?? '').trim().isEmpty
+                ? null
+                : (planTitle ?? '').trim(),
+            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
+            body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
+            source: PlanMemberRemovedUiSource.backgroundIntent,
+          ),
+        );
+      },
+    );
   }
 
   void _initFcmForegroundMessages() {
@@ -679,7 +772,8 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
             }
             if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE' &&
-                payloadType != 'PLAN_MEMBER_LEFT') {
+                payloadType != 'PLAN_MEMBER_LEFT' &&
+                payloadType != 'PLAN_MEMBER_REMOVED') {
               return;
             }
 
@@ -741,6 +835,66 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
 );
 return;
             }
+
+
+// ✅ Separate layer: PLAN_MEMBER_REMOVED -> in-app info modal (foreground).
+if (payloadType == 'PLAN_MEMBER_REMOVED') {
+  final planId = (payloadMap['plan_id'] ??
+          payloadMap['planId'] ??
+          newRow['plan_id'] ??
+          newRow['planId'] ??
+          '')
+      .toString();
+  final removedUserId = (payloadMap['removed_user_id'] ??
+          payloadMap['removedUserId'] ??
+          payloadMap['removed_userId'] ??
+          '')
+      .toString();
+  final ownerUserId = (payloadMap['owner_user_id'] ??
+          payloadMap['ownerUserId'] ??
+          payloadMap['owner_userId'] ??
+          '')
+      .toString();
+  if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) return;
+
+  final title = (payloadMap['title'] ?? '').toString();
+  final body = (payloadMap['body'] ?? '').toString();
+  final ownerNickname = (payloadMap['owner_nickname'] ??
+          payloadMap['ownerNickname'] ??
+          '')
+      .toString();
+  final planTitle = (payloadMap['plan_title'] ??
+          payloadMap['planTitle'] ??
+          '')
+      .toString();
+
+  if (kDebugMode) {
+    debugPrint(
+      '[INBOX] plan-member-removed insert planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId',
+    );
+  }
+
+  final cleanOwnerNickname =
+      ownerNickname.trim().isEmpty ? null : ownerNickname.trim();
+  final cleanPlanTitle =
+      planTitle.trim().isEmpty ? null : planTitle.trim();
+  final cleanTitle = title.trim().isEmpty ? null : title.trim();
+  final cleanBody = body.trim().isEmpty ? null : body.trim();
+
+  PlanMemberRemovedUiCoordinator.instance.enqueue(
+    PlanMemberRemovedUiRequest(
+      planId: planId,
+      removedUserId: removedUserId,
+      ownerUserId: ownerUserId,
+      ownerNickname: cleanOwnerNickname,
+      planTitle: cleanPlanTitle,
+      title: cleanTitle,
+      body: cleanBody,
+      source: PlanMemberRemovedUiSource.foreground,
+    ),
+  );
+  return;
+}
 
 final ownerAction =
                 (payloadMap['action'] ?? payloadMap['owner_action'] ?? '')
@@ -1503,6 +1657,7 @@ final ownerAction =
     InviteUiCoordinator.instance.setRootUiReady(true);
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
+    PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
     _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();

@@ -28,6 +28,8 @@ class _PlansScreenState extends State<PlansScreen>
   late final PlansRepository _repo;
   late final TabController _tabController;
 
+  RealtimeChannel? _inboxChannel;
+
   bool _loadingActive = true;
   bool _loadingArchive = true;
 
@@ -44,6 +46,8 @@ class _PlansScreenState extends State<PlansScreen>
     _repo = PlansRepositoryImpl(Supabase.instance.client);
     _tabController = TabController(length: 2, vsync: this);
     _loadAll();
+    // Realtime refresh: if membership changes (e.g., removed by owner), refresh list immediately.
+    Future<void>.microtask(_ensureInboxRealtimeSubscribed);
   }
 
   Future<Map<String, dynamic>?> _getDomainUserJson() async {
@@ -247,11 +251,72 @@ class _PlansScreenState extends State<PlansScreen>
     }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+Future<void> _ensureInboxRealtimeSubscribed() async {
+  // Avoid duplicate subscriptions.
+  if (_inboxChannel != null) return;
+
+  final appUserId = await _resolveDomainAppUserId();
+  if (!mounted) return;
+  if (appUserId == null || appUserId.isEmpty) return;
+
+
+  // Listen only to INBOX inserts for this user; payload contains the canonical type and plan_id.
+  final channel = Supabase.instance.client.channel('plans_inbox_$appUserId');
+  _inboxChannel = channel;
+
+  channel.onPostgresChanges(
+    event: PostgresChangeEvent.insert,
+    schema: 'public',
+    table: 'notification_deliveries',
+    filter: PostgresChangeFilter(
+      type: PostgresChangeFilterType.eq,
+      column: 'user_id',
+      value: appUserId,
+    ),
+    callback: (payload) async {
+      try {
+        final record = payload.newRecord;
+final channelValue = (record['channel'] ?? '').toString();
+        if (channelValue != 'INBOX') return;
+
+        final payloadJson = record['payload'];
+        if (payloadJson is! Map) return;
+
+        final type = (payloadJson['type'] ?? '').toString();
+        if (type != 'PLAN_MEMBER_REMOVED') return;
+
+        final planId = (payloadJson['plan_id'] ?? '').toString();
+        if (planId.isNotEmpty) {
+          // Hide immediately to prevent tapping a dead card before refetch completes.
+          if (mounted) {
+            setState(() {
+              _hiddenPlanIds.add(planId);
+            });
+          }
+        }
+
+        // Server-first: refetch canonical list from server.
+        await _loadAll();
+      } catch (e) {
+        debugPrint('[PlansScreen] inbox realtime handler error: $e');
+      }
+    },
+  );
+
+  await channel.subscribe();
+  debugPrint('[PlansScreen] subscribed inbox realtime for appUserId=$appUserId');
+}
+
+@override
+void dispose() {
+  final ch = _inboxChannel;
+  if (ch != null) {
+    Supabase.instance.client.removeChannel(ch);
+    _inboxChannel = null;
   }
+  _tabController.dispose();
+  super.dispose();
+}
 
   @override
   Widget build(BuildContext context) {

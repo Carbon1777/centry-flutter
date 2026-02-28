@@ -88,6 +88,7 @@ async function getAccessToken(): Promise<string> {
 
 type Delivery = {
   id: string;
+  event_id: string;
   user_id: string;
   payload: Record<string, unknown> | null;
 };
@@ -118,6 +119,19 @@ async function disableToken(token: string) {
   });
 }
 
+async function hasConsumedInbox(eventId: string, userId: string): Promise<boolean> {
+  const res = await sbFetch(
+    `/rest/v1/notification_deliveries?select=id&event_id=eq.${eventId}&user_id=eq.${userId}&channel=eq.INBOX&status=eq.CONSUMED&limit=1`,
+  );
+  const json = await res.json();
+  if (!res.ok) {
+    // Fail-open: if we can't verify CONSUMED, we must not silently drop notifications.
+    // We still record diagnostics in delivery.debug later.
+    return false;
+  }
+  return Array.isArray(json) && json.length > 0;
+}
+
 function isPlanInternalInvite(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
   if (t === "PLAN_INTERNAL_INVITE") return true;
@@ -143,6 +157,10 @@ function isPlanMemberLeft(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_MEMBER_LEFT";
 }
 
+function isPlanMemberRemoved(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PLAN_MEMBER_REMOVED";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -151,7 +169,7 @@ function safeShort(text: string, maxLen: number): string {
 
 serve(async () => {
   const dRes = await sbFetch(
-    `/rest/v1/notification_deliveries?select=id,user_id,payload&channel=eq.PUSH&status=eq.PENDING&limit=50&order=created_at.asc`,
+    `/rest/v1/notification_deliveries?select=id,event_id,user_id,payload&channel=eq.PUSH&status=eq.PENDING&limit=50&order=created_at.asc`,
   );
   const deliveries = (await dRes.json()) as Delivery[];
   if (!dRes.ok) {
@@ -168,8 +186,34 @@ serve(async () => {
 
   for (const d of deliveries) {
     const deliveryId = d.id;
+    const eventId = d.event_id;
     const userId = d.user_id;
     const payload = d.payload ?? {};
+
+    // ✅ Canon: if the event has already been consumed in-app (foreground modal shown + ACK),
+    // we must NEVER send a PUSH afterwards. We detect this via the INBOX delivery status.
+    //
+    // Rule: if INBOX(event_id,user_id) is CONSUMED -> skip PUSH and mark this PUSH delivery CONSUMED.
+    let inboxAlreadyConsumed = false;
+    try {
+      inboxAlreadyConsumed = await hasConsumedInbox(eventId, userId);
+    } catch {
+      inboxAlreadyConsumed = false;
+    }
+
+    if (inboxAlreadyConsumed) {
+      await markDelivery(deliveryId, { status: "CONSUMED", reason: "inbox_consumed" });
+      await writeDeliveryDebug(deliveryId, {
+        at: new Date().toISOString(),
+        stage: "preflight_skip",
+        ok: true,
+        reason: "inbox_consumed",
+        event_id: eventId,
+        user_id: userId,
+      });
+      processed++;
+      continue;
+    }
 
     const title = String(payload["title"] ?? "Centry");
     const body = String(payload["body"] ?? "");
@@ -192,6 +236,8 @@ serve(async () => {
 
     const internalInvite = isPlanInternalInvite(payload);
     const memberLeft = isPlanMemberLeft(payload);
+
+    const memberRemoved = isPlanMemberRemoved(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
@@ -200,7 +246,7 @@ serve(async () => {
     //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
     // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
     // - Other notification types may include OS notification.
-    const shouldIncludeNotification = !(internalInvite || memberLeft);
+    const shouldIncludeNotification = !(internalInvite || memberLeft || memberRemoved);
     let anyOk = false;
     let lastErr = "";
 
@@ -233,6 +279,17 @@ serve(async () => {
             type: "PLAN_MEMBER_LEFT",
             plan_id: String(payload["plan_id"] ?? ""),
             left_user_id: String(payload["left_user_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : memberRemoved
+        ? {
+            type: "PLAN_MEMBER_REMOVED",
+            plan_id: String(payload["plan_id"] ?? ""),
+            plan_title: String(payload["plan_title"] ?? ""),
+            owner_user_id: String(payload["owner_user_id"] ?? ""),
+            owner_nickname: String(payload["owner_nickname"] ?? ""),
+            removed_user_id: String(payload["removed_user_id"] ?? ""),
             title: String(payload["title"] ?? title),
             body: String(payload["body"] ?? body),
           }
@@ -312,9 +369,7 @@ serve(async () => {
 
     await markDelivery(
       deliveryId,
-      anyOk
-        ? { status: "SENT", reason: null }
-        : { status: "FAILED", reason: lastErr || "FCM send failed" },
+      anyOk ? { status: "SENT", reason: null } : { status: "FAILED", reason: lastErr || "FCM send failed" },
     );
 
     await writeDeliveryDebug(deliveryId, {

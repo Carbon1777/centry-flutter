@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -120,6 +119,15 @@ class PushNotifications {
       String? title,
       String? body,
     })? onPlanMemberLeftOpen,
+    Future<void> Function({
+      required String planId,
+      required String removedUserId,
+      required String ownerUserId,
+      String? ownerNickname,
+      String? planTitle,
+      String? title,
+      String? body,
+    })? onPlanMemberRemovedOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -187,6 +195,36 @@ class PushNotifications {
         );
         return;
       }
+
+      if (kind == 'PLAN_MEMBER_REMOVED') {
+        final removedUserId = (map['removed_user_id'] ?? '').toString();
+        final ownerUserId = (map['owner_user_id'] ?? '').toString();
+        final ownerNickname = (map['owner_nickname'] ?? '').toString().trim();
+        final planTitle = (map['plan_title'] ?? '').toString().trim();
+
+        if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) return;
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PushNotifications] open PLAN_MEMBER_REMOVED plan_id=$planId removed_user_id=$removedUserId owner_user_id=$ownerUserId',
+          );
+        }
+
+        final cb = onPlanMemberRemovedOpen;
+        if (cb == null) return;
+
+        await cb(
+          planId: planId,
+          removedUserId: removedUserId,
+          ownerUserId: ownerUserId,
+          ownerNickname: ownerNickname.isEmpty ? null : ownerNickname,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
+        );
+        return;
+      }
+
 
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
@@ -262,6 +300,17 @@ class PushNotifications {
     final planId = (m.data['plan_id'] ?? '').toString();
     final leftUserId = (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
     return planId.isNotEmpty && leftUserId.isNotEmpty;
+  }
+
+
+  static bool isPlanMemberRemoved(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    if (t == 'PLAN_MEMBER_REMOVED') return true;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final removedUserId = (m.data['removed_user_id'] ?? '').toString();
+    final ownerUserId = (m.data['owner_user_id'] ?? '').toString();
+    return planId.isNotEmpty && removedUserId.isNotEmpty && ownerUserId.isNotEmpty;
   }
 
   static Future<void> showInternalInvite(RemoteMessage m) async {
@@ -446,6 +495,108 @@ class PushNotifications {
     await _local.show(id, title, computedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
+
+  static Future<void> showPlanMemberRemoved(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showPlanMemberRemoved id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showPlanMemberRemoved data=${m.data}');
+      debugPrint(
+        '[PushNotifications] showPlanMemberRemoved notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
+      );
+    }
+
+    if (!PushNotifications.isPlanMemberRemoved(m)) return;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final removedUserId = (m.data['removed_user_id'] ?? '').toString();
+    final ownerUserId = (m.data['owner_user_id'] ?? '').toString();
+    if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) return;
+
+    final ownerNickname =
+        (m.data['owner_nickname'] ?? m.data['ownerName'] ?? '').toString().trim();
+    final planTitle =
+        (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
+
+    // Canon: title/body should come from server; fallbacks are only for safety.
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'Вас удалили из плана';
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final computedBody = rawBody.isNotEmpty
+        ? rawBody
+        : (() {
+            if (ownerNickname.isNotEmpty && planTitle.isNotEmpty) {
+              return 'Создатель «$ownerNickname» удалил вас из плана «$planTitle».';
+            }
+            if (ownerNickname.isNotEmpty) {
+              return 'Создатель «$ownerNickname» удалил вас из плана.';
+            }
+            if (planTitle.isNotEmpty) {
+              return 'Создатель удалил вас из плана «$planTitle».';
+            }
+            return 'Откройте приложение, чтобы посмотреть.';
+          })();
+
+    final payload = jsonEncode({
+      'kind': 'PLAN_MEMBER_REMOVED',
+      'plan_id': planId,
+      'removed_user_id': removedUserId,
+      'owner_user_id': ownerUserId,
+      if (ownerNickname.isNotEmpty) 'owner_nickname': ownerNickname,
+      if (planTitle.isNotEmpty) 'plan_title': planTitle,
+      'title': title,
+      'body': computedBody,
+    });
+
+    final msgId = (m.messageId ?? '').toString();
+    final idSeed = msgId.isNotEmpty
+        ? 'removed:$planId:$removedUserId:$msgId'
+        : 'removed:$planId:$removedUserId';
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    await _local.cancel(id);
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_REMOVED planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId',
+      );
+    }
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, computedBody, details, payload: payload);
+    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
+  }
+
 }
 
 @pragma('vm:entry-point')
@@ -462,6 +613,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.initForBackground();
     await PushNotifications.showInternalInvite(message);
     await PushNotifications.showPlanMemberLeft(message);
+    await PushNotifications.showPlanMemberRemoved(message);
   } catch (e) {
     if (kDebugMode) debugPrint('[FCM-BG] error: $e');
   }
