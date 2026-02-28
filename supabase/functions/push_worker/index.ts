@@ -7,49 +7,134 @@ const FCM_PROJECT_ID = Deno.env.get("FCM_PROJECT_ID")!;
 const FCM_CLIENT_EMAIL = Deno.env.get("FCM_CLIENT_EMAIL")!;
 const FCM_PRIVATE_KEY = (Deno.env.get("FCM_PRIVATE_KEY") || "").replace(/\\n/g, "\n");
 
-type DeviceToken = {
-  token: string;
-  platform: string; // android|ios
-};
+// Must match Android channel id in the app (MainActivity + Flutter local notifications)
+// Use a versioned id (Android doesn't upgrade importance for existing channels).
+const ANDROID_CHANNEL_ID = "centry_invites_v6";
 
-async function sbFetch(path: string, init?: RequestInit): Promise<Response> {
-  const url = `${SUPABASE_URL}${path}`;
-  const headers = new Headers(init?.headers || {});
-  headers.set("apikey", SUPABASE_SERVICE_ROLE_KEY);
-  headers.set("Authorization", `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`);
-  headers.set("Content-Type", "application/json");
-  return await fetch(url, { ...init, headers });
+async function sbFetch(path: string, init?: RequestInit) {
+  return fetch(`${SUPABASE_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init?.headers || {}),
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "content-type": "application/json",
+    },
+  });
 }
 
-async function markDelivery(
-  deliveryId: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
+function b64url(input: string) {
+  return btoa(input).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function getAccessToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = b64url(
+    JSON.stringify({
+      iss: FCM_CLIENT_EMAIL,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    }),
+  );
+
+  const unsigned = `${header}.${payload}`;
+
+  const pem = FCM_PRIVATE_KEY;
+  const keyData = pem
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s+/g, "");
+
+  const rawKey = Uint8Array.from(atob(keyData), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    rawKey.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(unsigned),
+  );
+
+  const signature = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const jwt = `${unsigned}.${signature}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) throw new Error(`OAuth token error: ${JSON.stringify(json)}`);
+  return json.access_token;
+}
+
+type Delivery = {
+  id: string;
+  user_id: string;
+  payload: Record<string, unknown> | null;
+};
+
+type DeviceToken = {
+  token: string;
+  platform: string;
+};
+
+async function markDelivery(deliveryId: string, patch: Record<string, unknown>) {
   await sbFetch(`/rest/v1/notification_deliveries?id=eq.${deliveryId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });
 }
 
-async function disableToken(token: string): Promise<void> {
-  await sbFetch(`/rest/v1/user_device_tokens?token=eq.${token}`, {
+async function writeDeliveryDebug(deliveryId: string, debugObj: Record<string, unknown>) {
+  await sbFetch(`/rest/v1/notification_deliveries?id=eq.${deliveryId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ debug: debugObj }),
+  });
+}
+
+async function disableToken(token: string) {
+  await sbFetch(`/rest/v1/user_device_tokens?token=eq.${encodeURIComponent(token)}`, {
     method: "PATCH",
     body: JSON.stringify({ enabled: false }),
   });
 }
 
-function isUnregisteredFcmError(errText: string): boolean {
-  const s = String(errText ?? "").toLowerCase();
-  return s.includes("unregistered") || s.includes("registration-token-not-registered");
+function isPlanInternalInvite(payload: Record<string, unknown>): boolean {
+  const t = String(payload["type"] ?? "");
+  if (t === "PLAN_INTERNAL_INVITE") return true;
+
+  const inviteId = String(payload["invite_id"] ?? "");
+  const planId = String(payload["plan_id"] ?? "");
+  return inviteId.length > 0 && planId.length > 0;
 }
 
-function isInternalInvite(payload: Record<string, unknown>): boolean {
-  return String(payload["type"] ?? "") === "PLAN_INTERNAL_INVITE";
+function isUnregisteredFcmError(text: string): boolean {
+  return text.includes('"UNREGISTERED"') || text.includes("UNREGISTERED");
 }
 
 function isInternalInviteResult(payload: Record<string, unknown>): boolean {
-  // Our canonical owner-result marker: payload.action = ACCEPT|DECLINE
-  // (Invitee invite may also have action token; owner-result is produced after invitee acts.)
+  const t = String(payload["type"] ?? "");
+  if (t !== "PLAN_INTERNAL_INVITE") return false;
+
   const action = String(payload["action"] ?? "").trim().toUpperCase();
   return action === "ACCEPT" || action === "DECLINE";
 }
@@ -64,90 +149,20 @@ function safeShort(text: string, maxLen: number): string {
   return s.slice(0, maxLen) + "…";
 }
 
-async function getAccessToken(): Promise<string> {
-  // Simple JWT service account flow for FCM v1.
-  // Keeping it compact; assumes correct env vars.
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const claimSet = {
-    iss: FCM_CLIENT_EMAIL,
-    scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 60 * 60,
-  };
-
-  const enc = (obj: unknown) =>
-    btoa(JSON.stringify(obj))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/g, "");
-
-  const unsigned = `${enc(header)}.${enc(claimSet)}`;
-
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    new TextEncoder().encode(FCM_PRIVATE_KEY),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const sigBuf = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    new TextEncoder().encode(unsigned),
-  );
-  const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-
-  const jwt = `${unsigned}.${sig}`;
-
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`oauth token error ${res.status}: ${await res.text()}`);
-  }
-  const json = await res.json();
-  return String(json.access_token);
-}
-
 serve(async () => {
   const dRes = await sbFetch(
     `/rest/v1/notification_deliveries?select=id,user_id,payload&channel=eq.PUSH&status=eq.PENDING&limit=50&order=created_at.asc`,
   );
-  const deliveries = (await dRes.json()) as Array<
-    { id: string; user_id: string; payload: Record<string, unknown> }
-  >;
-
+  const deliveries = (await dRes.json()) as Delivery[];
   if (!dRes.ok) {
-    return new Response(await dRes.text(), { status: 500 });
+    return new Response(JSON.stringify({ ok: false, error: deliveries }), { status: 500 });
   }
 
   if (!Array.isArray(deliveries) || deliveries.length === 0) {
-    return new Response(JSON.stringify({ ok: true, processed: 0 }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ ok: true, processed: 0 }), { status: 200 });
   }
 
-  let accessToken = "";
-  try {
-    accessToken = await getAccessToken();
-  } catch (e) {
-    return new Response(
-      JSON.stringify({ ok: false, error: `getAccessToken failed: ${String(e)}` }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
+  const accessToken = await getAccessToken();
 
   let processed = 0;
 
@@ -164,32 +179,21 @@ serve(async () => {
     );
     const tokens = (await tRes.json()) as DeviceToken[];
     if (!tRes.ok || !Array.isArray(tokens) || tokens.length === 0) {
-      await markDelivery(deliveryId, {
-        status: "SKIPPED",
-        reason: "NO_TOKENS",
+      await markDelivery(deliveryId, { status: "FAILED", reason: "No device tokens" });
+      await writeDeliveryDebug(deliveryId, {
+        at: new Date().toISOString(),
+        stage: "tokens",
+        ok: false,
+        error: "No device tokens",
       });
       processed++;
       continue;
     }
 
-    const internalInvite = isInternalInvite(payload);
+    const internalInvite = isPlanInternalInvite(payload);
     const memberLeft = isPlanMemberLeft(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
-
-    // PLAN_MEMBER_LEFT: enrich title/body with server-provided context (nickname + plan title) for local-notification UX.
-    const leftNickname = String(payload["left_nickname"] ?? "").trim();
-    const planTitle = String(payload["plan_title"] ?? "").trim();
-
-    const memberLeftTitle =
-      leftNickname.length > 0 ? `${leftNickname} покинул план` : String(payload["title"] ?? title);
-
-    const memberLeftBody =
-      leftNickname.length > 0 && planTitle.length > 0
-        ? `${leftNickname} покинул план «${planTitle}».`
-        : planTitle.length > 0
-          ? `Участник покинул план «${planTitle}».`
-          : String(payload["body"] ?? body);
 
     // ✅ Canon (server-first UX):
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
@@ -206,8 +210,8 @@ serve(async () => {
       const type = String(payload["type"] ?? "");
       const baseData: Record<string, string> = {
         type: type.length > 0 ? type : "UNKNOWN",
-        title: memberLeft ? memberLeftTitle : String(payload["title"] ?? title),
-        body: memberLeft ? memberLeftBody : String(payload["body"] ?? body),
+        title: String(payload["title"] ?? title),
+        body: String(payload["body"] ?? body),
         plan_id: String(payload["plan_id"] ?? ""),
       };
 
@@ -228,11 +232,9 @@ serve(async () => {
         ? {
             type: "PLAN_MEMBER_LEFT",
             plan_id: String(payload["plan_id"] ?? ""),
-            plan_title: planTitle,
             left_user_id: String(payload["left_user_id"] ?? ""),
-            left_nickname: leftNickname,
-            title: memberLeftTitle,
-            body: memberLeftBody,
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
           }
         : baseData;
 
@@ -240,50 +242,30 @@ serve(async () => {
         ? {
             priority: "HIGH",
             notification: {
-              title: String(payload["title"] ?? title),
-              body: String(payload["body"] ?? body),
+              channel_id: ANDROID_CHANNEL_ID,
+              sound: "default",
             },
           }
         : {
             priority: "HIGH",
           };
 
-      const apnsConfig = shouldIncludeNotification
-        ? {
-            headers: { "apns-priority": "10" },
-            payload: {
-              aps: {
-                alert: {
-                  title: String(payload["title"] ?? title),
-                  body: String(payload["body"] ?? body),
-                },
-                sound: "default",
-              },
-            },
-          }
-        : {
-            headers: { "apns-priority": "10" },
-            payload: {
-              aps: {
-                // data-only
-                "content-available": 1,
-              },
-            },
-          };
-
-      const msg = {
+      const message: Record<string, unknown> = {
         message: {
           token: t.token,
-          data: Object.fromEntries(
-            Object.entries(dataPayload).map(([k, v]) => [k, String(v)]),
-          ),
+          ...(shouldIncludeNotification ? { notification: { title, body } } : {}),
+          data: dataPayload,
           android: androidConfig,
-          apns: apnsConfig,
         },
       };
 
-      let errShort = "";
-      let ok = false;
+      // For diagnostics only (no secrets): booleans + status/error
+      const hasTopNotification = shouldIncludeNotification;
+      const hasAndroidNotification = shouldIncludeNotification;
+
+      let attemptOk = false;
+      let httpStatus: number | null = null;
+      let errShort: string | null = null;
 
       try {
         const fRes = await fetch(
@@ -292,14 +274,16 @@ serve(async () => {
             method: "POST",
             headers: {
               Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
+              "content-type": "application/json",
             },
-            body: JSON.stringify(msg),
+            body: JSON.stringify(message),
           },
         );
 
+        httpStatus = fRes.status;
+
         if (fRes.ok) {
-          ok = true;
+          attemptOk = true;
           anyOk = true;
         } else {
           const errText = await fRes.text();
@@ -318,35 +302,36 @@ serve(async () => {
       debugAttempts.push({
         platform: String(t.platform ?? ""),
         include_notification: shouldIncludeNotification,
-        internal_invite: internalInvite,
-        internal_invite_mode: internalInvite
-          ? (inviteResultForOwner ? "OWNER_RESULT" : "INVITEE_INVITE")
-          : null,
-        invitee_interactive_invite: isInviteeInteractiveInvite,
-        member_left: memberLeft,
-        ok,
-        err_short: errShort,
+        top_notification: hasTopNotification,
+        android_notification: hasAndroidNotification,
+        fcm_http_status: httpStatus,
+        ok: attemptOk,
+        error: errShort,
       });
     }
 
-    if (anyOk) {
-      await markDelivery(deliveryId, {
-        status: "SENT",
-        reason: null,
-        debug: { attempts: debugAttempts },
-      });
-    } else {
-      await markDelivery(deliveryId, {
-        status: "FAILED",
-        reason: safeShort(lastErr, 400),
-        debug: { attempts: debugAttempts },
-      });
-    }
+    await markDelivery(
+      deliveryId,
+      anyOk
+        ? { status: "SENT", reason: null }
+        : { status: "FAILED", reason: lastErr || "FCM send failed" },
+    );
+
+    await writeDeliveryDebug(deliveryId, {
+      at: new Date().toISOString(),
+      delivery_id: deliveryId,
+      user_id: userId,
+      classification: {
+        internal_invite: internalInvite,
+        invite_result_for_owner: inviteResultForOwner,
+        invitee_interactive: isInviteeInteractiveInvite,
+        include_notification: shouldIncludeNotification,
+      },
+      attempts: debugAttempts,
+    });
 
     processed++;
   }
 
-  return new Response(JSON.stringify({ ok: true, processed }), {
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(JSON.stringify({ ok: true, processed }), { status: 200 });
 });
