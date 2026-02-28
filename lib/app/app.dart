@@ -220,34 +220,6 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
 
-
-        // 2.a) PLAN_MEMBER_LEFT: route via the same server-generated payload as foreground (no local guessing).
-        final payloadType = (payload['type'] ?? extras['type'] ?? '').toString().trim();
-        if (payloadType == 'PLAN_MEMBER_LEFT') {
-          final planId = (payload['plan_id'] ?? payload['planId'] ?? extras['plan_id'] ?? '').toString();
-          final leftUserId = (payload['left_user_id'] ?? payload['leftUserId'] ?? extras['left_user_id'] ?? '').toString();
-          if (planId.isNotEmpty && leftUserId.isNotEmpty) {
-            final leftNickname = (payload['left_nickname'] ?? payload['leftNickname'] ?? '').toString().trim();
-            final planTitle = (payload['plan_title'] ?? payload['planTitle'] ?? '').toString().trim();
-            final title = (payload['title'] ?? '').toString().trim();
-            final body = (payload['body'] ?? '').toString().trim();
-
-            // NOTE: Keep body null when it's generic, so the coordinator can render a contextual message.
-            PlanMemberLeftUiCoordinator.instance.enqueue(
-              PlanMemberLeftUiRequest(
-                planId: planId,
-                leftUserId: leftUserId,
-                leftNickname: leftNickname.isEmpty ? null : leftNickname,
-                planTitle: planTitle.isEmpty ? null : planTitle,
-                title: title.isEmpty ? null : title,
-                body: (body.isEmpty || body == 'Один из участников покинул план.') ? null : body,
-                source: PlanMemberLeftUiSource.backgroundIntent,
-              ),
-            );
-            return;
-          }
-        }
-
         if (actionId == 'OPEN') {
           final inviteId =
               (payload['invite_id'] ?? extras['invite_id'] ?? '').toString();
