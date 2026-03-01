@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../ui/common/plan_member_removed_info_modal.dart';
 
@@ -34,10 +35,9 @@ class PlanMemberRemovedUiRequest {
     this.body,
   });
 
-  String dedupKey() {
-    return '$planId|$removedUserId|$ownerUserId|'
-        '${(title ?? '').trim()}|${(body ?? '').trim()}|'
-        '${(ownerNickname ?? '').trim()}|${(planTitle ?? '').trim()}';
+  String stableKey() {
+    // Stable identity of the event, without "body/title" noise.
+    return '$planId|$removedUserId|$ownerUserId';
   }
 }
 
@@ -48,7 +48,11 @@ class PlanMemberRemovedUiCoordinator {
       PlanMemberRemovedUiCoordinator._();
 
   final Queue<PlanMemberRemovedUiRequest> _queue = Queue();
-  final LinkedHashSet<String> _dedup = LinkedHashSet();
+
+  // ✅ Dedup with TTL to avoid double-modal due to race (INBOX + intent),
+  // but never block future real events with same text.
+  final Map<String, DateTime> _recent = <String, DateTime>{};
+  static const Duration _dedupTtl = Duration(seconds: 5);
 
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _rootUiReady = false;
@@ -64,15 +68,27 @@ class PlanMemberRemovedUiCoordinator {
   }
 
   void enqueue(PlanMemberRemovedUiRequest request) {
-    final key = request.dedupKey();
-    if (_dedup.contains(key)) return;
+    final now = DateTime.now();
+    _recent.removeWhere((_, ts) => now.difference(ts) > _dedupTtl);
 
-    _dedup.add(key);
-    while (_dedup.length > 200) {
-      _dedup.remove(_dedup.first);
+    final key = request.stableKey();
+    final last = _recent[key];
+    if (last != null && now.difference(last) <= _dedupTtl) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanMemberRemovedCoordinator] enqueue ignored (dedup ttl) key=$key ageMs=${now.difference(last).inMilliseconds}',
+        );
+      }
+      return;
     }
+    _recent[key] = now;
 
     _queue.add(request);
+    if (kDebugMode) {
+      debugPrint(
+        '[PlanMemberRemovedCoordinator] enqueue planId=${request.planId} removedUserId=${request.removedUserId} ownerUserId=${request.ownerUserId} source=${request.source} queueSize=${_queue.length}',
+      );
+    }
     _tryShowNext();
   }
 
@@ -81,14 +97,8 @@ class PlanMemberRemovedUiCoordinator {
     if (_showing) return;
     if (_queue.isEmpty) return;
 
-    final nav = _navigatorKey?.currentState;
-
-    // More robust context resolution:
-    // - currentContext exists when NavigatorState is mounted
-    // - overlay.context exists when overlay is available
-    final BuildContext? ctx =
-        _navigatorKey?.currentContext ?? nav?.overlay?.context;
-
+    final navState = _navigatorKey?.currentState;
+    final ctx = _navigatorKey?.currentContext ?? navState?.overlay?.context;
     if (ctx == null) {
       if (kDebugMode) {
         debugPrint(
@@ -107,13 +117,9 @@ class PlanMemberRemovedUiCoordinator {
       );
     }
 
-    // Show on next frame to avoid "during build" issues and to decouple from current screen transitions.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // It's possible that root UI got unmounted between enqueue and frame callback.
+    void doShow() {
       final nav2 = _navigatorKey?.currentState;
-      final BuildContext? ctx2 =
-          _navigatorKey?.currentContext ?? nav2?.overlay?.context;
-
+      final ctx2 = _navigatorKey?.currentContext ?? nav2?.overlay?.context;
       if (ctx2 == null) {
         _showing = false;
         _tryShowNext();
@@ -123,8 +129,7 @@ class PlanMemberRemovedUiCoordinator {
       showDialog<void>(
         context: ctx2,
         barrierDismissible: false,
-        // ✅ critical: ensure dialog is shown on the ROOT navigator,
-        // not on a nested (Plans/Details) navigator.
+        // ✅ critical: show on ROOT navigator (works from Places tab, etc.)
         useRootNavigator: true,
         builder: (_) {
           final title = (next.title ?? 'Вас удалили из плана').trim();
@@ -135,7 +140,17 @@ class PlanMemberRemovedUiCoordinator {
         _showing = false;
         _tryShowNext();
       });
-    });
+    }
+
+    // ✅ If UI thread is busy building a heavy frame (Places list),
+    // showing immediately can be delayed unpredictably.
+    // We show ASAP when idle; otherwise defer to next frame.
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle) {
+      Future.microtask(doShow);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => doShow());
+    }
   }
 
   String _resolveBody(PlanMemberRemovedUiRequest r) {
