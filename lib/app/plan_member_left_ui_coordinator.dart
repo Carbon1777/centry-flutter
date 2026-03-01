@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../ui/common/plan_member_left_info_modal.dart';
 
@@ -35,11 +36,13 @@ class PlanMemberLeftUiRequest {
   });
 
   String dedupKey() {
-    return '$planId|$leftUserId|${(title ?? '').trim()}|${(body ?? '').trim()}|${(leftNickname ?? '').trim()}|${(planTitle ?? '').trim()}';
+    return '$planId|$leftUserId|'
+        '${(title ?? '').trim()}|${(body ?? '').trim()}|'
+        '${(leftNickname ?? '').trim()}|${(planTitle ?? '').trim()}';
   }
 }
 
-/// Separate layer (parallel to InviteUiCoordinator):
+/// Separate layer:
 /// - queues events
 /// - deduplicates
 /// - shows a simple in-app info modal when root UI is ready
@@ -55,6 +58,8 @@ class PlanMemberLeftUiCoordinator {
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _rootUiReady = false;
   bool _showing = false;
+
+  bool _retryScheduled = false;
 
   void attachNavigatorKey(GlobalKey<NavigatorState> key) {
     _navigatorKey = key;
@@ -78,7 +83,24 @@ class PlanMemberLeftUiCoordinator {
     }
 
     _queue.add(request);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[PlanMemberLeftCoordinator] enqueue planId=${request.planId} leftUserId=${request.leftUserId} source=${request.source} queue=${_queue.length}',
+      );
+    }
+
     _tryShowNext();
+  }
+
+  void _scheduleRetry() {
+    if (_retryScheduled) return;
+    _retryScheduled = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _retryScheduled = false;
+      _tryShowNext();
+    });
   }
 
   void _tryShowNext() {
@@ -87,31 +109,79 @@ class PlanMemberLeftUiCoordinator {
     if (_queue.isEmpty) return;
 
     final nav = _navigatorKey?.currentState;
-    final ctx = nav?.overlay?.context;
-    if (ctx == null) return;
+    final ctx = _navigatorKey?.currentContext ?? nav?.overlay?.context;
+    if (ctx == null) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanMemberLeftCoordinator] ctx=null -> retry next frame (rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
+        );
+      }
+      _scheduleRetry();
+      return;
+    }
 
-    final next = _queue.removeFirst();
+    // Do NOT dequeue yet. Dequeue only when we are sure we can show.
+    final next = _queue.first;
     _showing = true;
 
     if (kDebugMode) {
       debugPrint(
-        '[PlanMemberLeftCoordinator] show modal planId=${next.planId} leftUserId=${next.leftUserId} source=${next.source}',
+        '[PlanMemberLeftCoordinator] show requested planId=${next.planId} leftUserId=${next.leftUserId} source=${next.source}',
       );
     }
 
-    // No await: keep the queue flowing via then().
-    showDialog<void>(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (_) {
-        final title = (next.title ?? 'Участник покинул план').trim();
-        final body = _resolveBody(next).trim();
-        return PlanMemberLeftInfoModal(title: title, body: body);
-      },
-    ).then((_) {
-      _showing = false;
-      _tryShowNext();
-    });
+    Future<void> doShow() async {
+      final nav2 = _navigatorKey?.currentState;
+      final ctx2 = _navigatorKey?.currentContext ?? nav2?.overlay?.context;
+
+      if (ctx2 == null) {
+        if (kDebugMode) {
+          debugPrint(
+            '[PlanMemberLeftCoordinator] ctx2=null -> retry (queue=${_queue.length})',
+          );
+        }
+        _showing = false;
+        _scheduleRetry();
+        return;
+      }
+
+      // Now safe to dequeue.
+      _queue.removeFirst();
+
+      try {
+        await showDialog<void>(
+          context: ctx2,
+          barrierDismissible: false,
+          useRootNavigator: true,
+          builder: (_) {
+            final title = (next.title ?? 'Участник покинул план').trim();
+            final body = _resolveBody(next).trim();
+            return PlanMemberLeftInfoModal(title: title, body: body);
+          },
+        );
+      } catch (e) {
+        // Avoid silent drops during navigator churn.
+        _queue.addFirst(next);
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PlanMemberLeftCoordinator] showDialog failed: $e (requeued, retry)',
+          );
+        }
+        _scheduleRetry();
+      } finally {
+        _showing = false;
+        _tryShowNext();
+      }
+    }
+
+    // Schedule in a safe phase (same tactic as for removed).
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle) {
+      Future.microtask(doShow);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) => doShow());
+    }
   }
 
   String _resolveBody(PlanMemberLeftUiRequest r) {
@@ -122,7 +192,6 @@ class PlanMemberLeftUiCoordinator {
     final nick = (r.leftNickname ?? '').trim();
     final plan = (r.planTitle ?? '').trim();
 
-    // Canon UX: mirror owner invite-result style with «…».
     if (nick.isNotEmpty && plan.isNotEmpty) {
       return 'Участник «$nick» покинул план «$plan».';
     }
