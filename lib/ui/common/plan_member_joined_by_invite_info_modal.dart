@@ -22,7 +22,7 @@ class PlanMemberJoinedByInviteInfoModal extends StatelessWidget {
     final b = body.trim();
 
     final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
-          color: Colors.green,
+          color: const Color.fromARGB(255, 80, 184, 84),
           fontWeight: FontWeight.w700,
         );
 
