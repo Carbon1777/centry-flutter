@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Info-only modal for owner: "Participant joined the plan via invite link".
+/// Info-only modal for owner: "A participant joined the plan via invite link".
 /// UI-only: no business logic here.
 ///
-/// IMPORTANT: Keep geometry (paddings/sizes/button) identical to other in-app info modals.
+/// IMPORTANT: keep geometry identical to other in-app info modals.
 class PlanMemberJoinedByInviteInfoModal extends StatelessWidget {
   final String title;
   final String body;
@@ -22,6 +22,7 @@ class PlanMemberJoinedByInviteInfoModal extends StatelessWidget {
     final b = body.trim();
 
     final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+          color: Colors.green,
           fontWeight: FontWeight.w700,
         );
 
