@@ -26,6 +26,7 @@ import '../ui/common/center_toast.dart';
 import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
+import 'plan_member_joined_by_invite_ui_coordinator.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -158,6 +159,9 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     PlanMemberRemovedUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(false);
+
+    PlanMemberJoinedByInviteUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
+    PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(false);
 
     unawaited(GeoService.instance.refresh());
 
@@ -785,7 +789,8 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
             if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE' &&
                 payloadType != 'PLAN_MEMBER_LEFT' &&
-                payloadType != 'PLAN_MEMBER_REMOVED') {
+                payloadType != 'PLAN_MEMBER_REMOVED' &&
+                payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE') {
               return;
             }
 
@@ -847,6 +852,63 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
 );
 return;
             }
+
+
+// ✅ Separate layer: PLAN_MEMBER_JOINED_BY_INVITE -> in-app info modal (foreground).
+if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
+  final planId = (payloadMap['plan_id'] ??
+          payloadMap['planId'] ??
+          newRow['plan_id'] ??
+          newRow['planId'] ??
+          '')
+      .toString();
+  final joinedUserId = (payloadMap['joined_user_id'] ??
+          payloadMap['joinedUserId'] ??
+          payloadMap['joined_userId'] ??
+          '')
+      .toString();
+
+  if (planId.isEmpty || joinedUserId.isEmpty) return;
+
+  final title = (payloadMap['title'] ?? '').toString();
+  final body = (payloadMap['body'] ?? '').toString();
+  final joinedNickname = (payloadMap['joined_nickname'] ??
+          payloadMap['joinedNickname'] ??
+          '')
+      .toString();
+  final planTitle = (payloadMap['plan_title'] ??
+          payloadMap['planTitle'] ??
+          '')
+      .toString();
+
+  if (kDebugMode) {
+    debugPrint(
+      '[INBOX] plan-member-joined-by-invite insert planId=$planId joinedUserId=$joinedUserId',
+    );
+  }
+
+  final cleanJoinedNickname =
+      joinedNickname.trim().isEmpty ? null : joinedNickname.trim();
+  final cleanPlanTitle =
+      planTitle.trim().isEmpty ? null : planTitle.trim();
+  final cleanTitle = title.trim().isEmpty ? null : title.trim();
+
+  final bodyTrim = body.trim();
+  final cleanBody = bodyTrim.isEmpty ? null : bodyTrim;
+
+  PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
+    PlanMemberJoinedByInviteUiRequest(
+      planId: planId,
+      joinedUserId: joinedUserId,
+      joinedNickname: cleanJoinedNickname,
+      planTitle: cleanPlanTitle,
+      title: cleanTitle,
+      body: cleanBody,
+      source: PlanMemberJoinedByInviteUiSource.foreground,
+    ),
+  );
+  return;
+}
 
 
 // ✅ Separate layer: PLAN_MEMBER_REMOVED -> in-app info modal (foreground).
@@ -1696,6 +1758,7 @@ final ownerAction =
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
+    PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
     _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();
