@@ -82,8 +82,21 @@ class PlanMemberRemovedUiCoordinator {
     if (_queue.isEmpty) return;
 
     final nav = _navigatorKey?.currentState;
-    final ctx = nav?.overlay?.context;
-    if (ctx == null) return;
+
+    // More robust context resolution:
+    // - currentContext exists when NavigatorState is mounted
+    // - overlay.context exists when overlay is available
+    final BuildContext? ctx =
+        _navigatorKey?.currentContext ?? nav?.overlay?.context;
+
+    if (ctx == null) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanMemberRemovedCoordinator] cannot show: ctx=null (rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
+        );
+      }
+      return;
+    }
 
     final next = _queue.removeFirst();
     _showing = true;
@@ -94,17 +107,34 @@ class PlanMemberRemovedUiCoordinator {
       );
     }
 
-    showDialog<void>(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (_) {
-        final title = (next.title ?? 'Вас удалили из плана').trim();
-        final body = _resolveBody(next).trim();
-        return PlanMemberRemovedInfoModal(title: title, body: body);
-      },
-    ).then((_) {
-      _showing = false;
-      _tryShowNext();
+    // Show on next frame to avoid "during build" issues and to decouple from current screen transitions.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // It's possible that root UI got unmounted between enqueue and frame callback.
+      final nav2 = _navigatorKey?.currentState;
+      final BuildContext? ctx2 =
+          _navigatorKey?.currentContext ?? nav2?.overlay?.context;
+
+      if (ctx2 == null) {
+        _showing = false;
+        _tryShowNext();
+        return;
+      }
+
+      showDialog<void>(
+        context: ctx2,
+        barrierDismissible: false,
+        // ✅ critical: ensure dialog is shown on the ROOT navigator,
+        // not on a nested (Plans/Details) navigator.
+        useRootNavigator: true,
+        builder: (_) {
+          final title = (next.title ?? 'Вас удалили из плана').trim();
+          final body = _resolveBody(next).trim();
+          return PlanMemberRemovedInfoModal(title: title, body: body);
+        },
+      ).then((_) {
+        _showing = false;
+        _tryShowNext();
+      });
     });
   }
 

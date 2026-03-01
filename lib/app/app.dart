@@ -298,8 +298,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
 
-        final type = (extras['type'] ?? '').toString();
-        final planId = (extras['plan_id'] ?? '').toString();
+        final type = (extras['type'] ?? extras['kind'] ?? payload['type'] ?? payload['kind'] ?? '').toString();
+        final planId = (extras['plan_id'] ?? payload['plan_id'] ?? payload['planId'] ?? '').toString();
         if (type == 'PLAN_INTERNAL_INVITE' && planId.isNotEmpty) {
           // Canon: tap on invite body does nothing (no ACCEPT/DECLINE, no nav).
           return;
@@ -308,7 +308,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 // PLAN_MEMBER_REMOVED: show in-app info modal using server-provided payload/extras.
 if (type == 'PLAN_MEMBER_REMOVED') {
   // payload from extras['payload'] OR flattened extras keys (FCM sometimes flattens).
-  final payloadType = (payload['type'] ?? extras['type'] ?? '').toString().trim();
+  final payloadType = (payload['type'] ?? payload['kind'] ?? extras['type'] ?? extras['kind'] ?? '').toString().trim();
   if (payloadType == 'PLAN_MEMBER_REMOVED') {
     final removedPlanId = (payload['plan_id'] ??
             payload['planId'] ??
@@ -738,6 +738,18 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
               return;
             }
 
+            // Canon: as soon as we are able to show an in-app modal (root UI ready),
+            // ACK the INBOX delivery to suppress any later PUSH for the same event.
+            // This is a server fact (status=CONSUMED) used by push_worker gating.
+            if (_appShellReady) {
+              final deliveryId = (newRow['id'] ?? '').toString();
+              if (deliveryId.trim().isNotEmpty) {
+                unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+              }
+            }
+
+
+
             Map<String, dynamic> payloadMap = <String, dynamic>{};
             final payloadRaw = newRow['payload'];
             if (payloadRaw is Map) {
@@ -1016,6 +1028,32 @@ final ownerAction =
       }
     }
   }
+
+  Future<void> _consumeInboxDelivery({required String deliveryId}) async {
+    final appUserId = _userId;
+    if (appUserId == null || appUserId.trim().isEmpty) return;
+    final id = deliveryId.trim();
+    if (id.isEmpty) return;
+
+    try {
+      await _supabase.rpc(
+        'consume_notification_delivery_v1',
+        params: <String, dynamic>{
+          'p_app_user_id': appUserId,
+          'p_delivery_id': id,
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[INBOX] consumed delivery id=$id');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[INBOX] consume failed delivery id=$id error=$e');
+      }
+    }
+  }
+
+
 
   void _resetInboxInvitesRealtimeRetry() {
     _inboxInvitesRealtimeRetryAttempt = 0;
