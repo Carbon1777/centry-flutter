@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../common/center_toast.dart';
 
-import '../../data/friends/accept_friend_result_dto.dart';
 import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
@@ -26,9 +27,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
   bool _loading = true;
   List<FriendDto> _friends = const <FriendDto>[];
 
+  RealtimeChannel? _friendshipsLowSub;
+  RealtimeChannel? _friendshipsHighSub;
+  Timer? _refreshDebounce;
+
   @override
   void initState() {
     super.initState();
+    _startRealtimeRefresh();
     unawaited(_load());
   }
 
@@ -48,6 +54,57 @@ class _FriendsScreenState extends State<FriendsScreen> {
       setState(() => _loading = false);
       await _showError(context, e);
     }
+  }
+
+  @override
+  void dispose() {
+    _refreshDebounce?.cancel();
+    _friendshipsLowSub?.unsubscribe();
+    _friendshipsHighSub?.unsubscribe();
+    super.dispose();
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      unawaited(_load());
+    });
+  }
+
+  void _startRealtimeRefresh() {
+    final client = Supabase.instance.client;
+
+    // Важно: фильтры без OR, поэтому подписываемся на обе стороны пары.
+    _friendshipsLowSub = client
+        .channel('friends_friendships_low_${widget.appUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'friendships',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_low_id',
+            value: widget.appUserId,
+          ),
+          callback: (_) => _scheduleRefresh(),
+        )
+        .subscribe();
+
+    _friendshipsHighSub = client
+        .channel('friends_friendships_high_${widget.appUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'friendships',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_high_id',
+            value: widget.appUserId,
+          ),
+          callback: (_) => _scheduleRefresh(),
+        )
+        .subscribe();
   }
 
   @override
@@ -165,20 +222,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!mounted) return;
 
       if (r.requestStatus == 'ALREADY_FRIENDS') {
-        await _showInfo(
+        await showCenterToast(
           context,
-          title: 'Готово',
-          message: 'Этот пользователь уже у тебя в друзьях.',
+          message: 'Уже в друзьях',
         );
         return;
       }
 
       if (r.requestStatus == 'PENDING' && r.requestDirection == 'OUTGOING') {
-        await _showInfo(
+        await showCenterToast(
           context,
-          title: 'Запрос отправлен',
-          message:
-              'Запрос в друзья отправлен пользователю «${r.targetDisplayName}».',
+          message: 'Запрос отправлен',
         );
         return;
       }
@@ -186,7 +240,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (r.requestStatus == 'PENDING' && r.requestDirection == 'INCOMING') {
         final accepted = await _confirm(
           context,
-          title: 'Входящий запрос',
+          title: 'Запрос в друзья',
           message:
               'У тебя уже есть входящий запрос от «${r.targetDisplayName}». Принять сейчас?',
           confirmText: 'Принять',
@@ -200,18 +254,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
           return;
         }
 
-        final AcceptFriendResultDto a =
-            await widget.repository.acceptFriendRequest(
+        await widget.repository.acceptFriendRequest(
           appUserId: widget.appUserId,
           requestId: requestId,
         );
 
         if (!mounted) return;
 
-        await _showInfo(
+        await showCenterToast(
           context,
-          title: 'Добавлено',
-          message: '«${a.friendDisplayName}» теперь у тебя в друзьях.',
+          message: 'Запрос принят',
         );
 
         await _load();
@@ -592,7 +644,7 @@ class _FriendCard extends StatelessWidget {
                     'Удалить',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: const Color.fromARGB(255, 251, 52, 52),
+                          color: const Color.fromARGB(255, 248, 64, 64),
                         ),
                   ),
                 ),
