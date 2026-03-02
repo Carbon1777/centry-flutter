@@ -371,7 +371,7 @@ if (type == 'PLAN_MEMBER_REMOVED') {
           source: PlanMemberRemovedUiSource.backgroundIntent,
         ),
       );
-      return;
+return;
     }
   }
 }
@@ -669,7 +669,7 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     // Show immediately if shell is ready, otherwise stash and flush after UI ready.
     if (_appShellReady) {
       unawaited(_handleFriendDeliveryPayload(payload));
-      return;
+return;
     }
     _pendingFriendRequests.add(payload);
   }
@@ -961,19 +961,6 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
               }
               return;
             }
-
-            // Canon: as soon as we are able to show an in-app modal (root UI ready),
-            // ACK the INBOX delivery to suppress any later PUSH for the same event.
-            // This is a server fact (status=CONSUMED) used by push_worker gating.
-            if (_appShellReady) {
-              final deliveryId = (newRow['id'] ?? '').toString();
-              if (deliveryId.trim().isNotEmpty) {
-                unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-              }
-            }
-
-
-
             Map<String, dynamic> payloadMap = <String, dynamic>{};
             final payloadRaw = newRow['payload'];
             if (payloadRaw is Map) {
@@ -987,6 +974,14 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
               } catch (_) {
                 // ignore malformed payload
               }
+            }
+
+
+            final deliveryId = (newRow['id'] ?? newRow['delivery_id'] ?? newRow['deliveryId'] ?? '').toString().trim();
+            void ackInboxDeliveryIfPossible() {
+              if (!_appShellReady) return;
+              if (deliveryId.isEmpty) return;
+              unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
             }
 
             // Canonical routing:
@@ -1006,11 +1001,14 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
                 );
               }
             }
-            if (payloadType.isNotEmpty &&
-                payloadType != 'PLAN_INTERNAL_INVITE' &&
-                payloadType != 'PLAN_MEMBER_LEFT' &&
-                payloadType != 'PLAN_MEMBER_REMOVED' &&
-                payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE') {
+            final isSupportedPayload = payloadType == 'PLAN_INTERNAL_INVITE' ||
+                payloadType == 'PLAN_MEMBER_LEFT' ||
+                payloadType == 'PLAN_MEMBER_REMOVED' ||
+                payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE' ||
+                payloadType == 'FRIEND_REQUEST_RECEIVED' ||
+                payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
+                payloadType == 'FRIEND_REQUEST_DECLINED';
+            if (payloadType.trim().isEmpty || !isSupportedPayload) {
               return;
             }
 
@@ -1070,6 +1068,7 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
     source: PlanMemberLeftUiSource.foreground,
   ),
 );
+ackInboxDeliveryIfPossible();
 return;
             }
 
@@ -1127,7 +1126,8 @@ if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
       source: PlanMemberJoinedByInviteUiSource.foreground,
     ),
   );
-  return;
+ackInboxDeliveryIfPossible();
+return;
 }
 
 
@@ -1187,7 +1187,8 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
       source: PlanMemberRemovedUiSource.foreground,
     ),
   );
-  return;
+ackInboxDeliveryIfPossible();
+return;
 }
 
 if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
@@ -1252,7 +1253,9 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                   source: InviteUiSource.foreground,
                 ),
               );
-              return;
+            ackInboxDeliveryIfPossible();
+ackInboxDeliveryIfPossible();
+return;
             }
 
             // invitee-invite
