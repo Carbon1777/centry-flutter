@@ -129,7 +129,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               },
               style: OutlinedButton.styleFrom(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 shape: const StadiumBorder(),
