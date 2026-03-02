@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -38,6 +39,11 @@ class UserSnapshotStorage {
   // Pending deep links (foundation for invites; later deferred provider will write here too)
   static const _pendingPlanInviteTokenKey = 'pending_plan_invite_token';
 
+  // Friends guest-proof secret (server-first).
+  // IMPORTANT: this is NOT an auth/email requirement.
+  // It is a per-install secret used to prove "who is calling" when the user is a guest.
+  static const _deviceSecretKey = 'device_secret_v1';
+
   final _storage = const FlutterSecureStorage();
 
   Future<UserSnapshot?> read() async {
@@ -57,6 +63,36 @@ class UserSnapshotStorage {
 
   Future<void> clear() async {
     await _storage.delete(key: _key);
+  }
+
+  // ===== Device Secret (Friends) =====
+
+  /// Returns an existing device secret or generates a new one and stores it.
+  /// This secret is used with Friends RPC as (app_user_id + device_secret).
+  Future<String> getOrCreateDeviceSecret() async {
+    final existing = await readDeviceSecret();
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final generated = _generateDeviceSecret();
+    await _storage.write(key: _deviceSecretKey, value: generated);
+    return generated;
+  }
+
+  Future<String?> readDeviceSecret() async {
+    final raw = await _storage.read(key: _deviceSecretKey);
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
+  Future<void> clearDeviceSecret() async {
+    await _storage.delete(key: _deviceSecretKey);
+  }
+
+  String _generateDeviceSecret() {
+    // 32 bytes -> base64url string (no padding). Length ~43 chars.
+    final rnd = Random.secure();
+    final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
   }
 
   // ===== Pending Plan Invite Token =====
