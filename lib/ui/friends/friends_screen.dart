@@ -96,7 +96,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Добавляй друзей из участников плана —\nв деталях плана через иконку “добавить в друзья”.',
+              'Добавляй друзей через поиск по Public ID или из списков в продукте.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -342,15 +342,20 @@ class _FriendCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.08),
-                    child: Text(
-                      _initials(friend.nickname),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.08),
+                      child: Text(
+                        _initials(friend.nickname),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -423,8 +428,8 @@ class _FriendCard extends StatelessWidget {
                     'Удалить',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: const Color.fromARGB(255, 253, 56,
-                              56), // <-- тут появится swatch, дальше выберешь цвет кликом
+                          color: const Color.fromARGB(
+                              255, 255, 67, 67), // tweak via IDE color picker
                         ),
                   ),
                 ),
