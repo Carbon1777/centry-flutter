@@ -423,6 +423,8 @@ class _FriendCard extends StatelessWidget {
                     'Удалить',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
+                          color: const Color.fromARGB(255, 253, 56,
+                              56), // <-- тут появится swatch, дальше выберешь цвет кликом
                         ),
                   ),
                 ),
