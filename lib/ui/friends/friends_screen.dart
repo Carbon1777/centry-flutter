@@ -515,15 +515,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!mounted) return;
 
       // Initiator UX (canonical): red center toast, no modal.
-      await showCenterToast(
+      unawaited(showCenterToast(
         context,
-        message: 'Удален',
+        message: 'Удален из друзей',
         isError: true,
-      );
+      ));
 
-      // Refresh in-process + refetch from server.
+      // Refresh friends list (single trigger).
       FriendsRefreshBus.bump();
-      await _load();
     } catch (e) {
       if (!mounted) return;
       await _showError(context, e);
@@ -672,7 +671,7 @@ class _FriendCard extends StatelessWidget {
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
