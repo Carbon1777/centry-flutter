@@ -23,7 +23,6 @@ import '../features/home/home_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
-import '../ui/friends/friends_refresh_bus.dart';
 import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
@@ -718,6 +717,33 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     final type = (payload['type'] ?? '').toString().trim();
     if (type.isEmpty) return;
 
+if (type == 'FRIEND_REMOVED') {
+      final byName = (payload['removed_by_display_name'] ??
+              payload['removedByDisplayName'] ??
+              payload['from_display_name'] ??
+              payload['fromDisplayName'] ??
+              '')
+          .toString()
+          .trim();
+      final title = (payload['title'] ?? '').toString().trim();
+      final rawBody = (payload['body'] ?? '').toString().trim();
+
+      final computedBody = rawBody.isNotEmpty
+          ? (byName.isNotEmpty ? _ensureNickQuotedInText(rawBody, byName) : rawBody)
+          : (byName.isNotEmpty
+              ? 'Пользователь ${_quoteNick(byName)} удалил вас из списка друзей.'
+              : 'Вас удалили из списка друзей.');
+
+      await _showFriendRemovedDialog(
+        title: title.isEmpty ? 'Вас удалили из друзей' : title,
+        body: computedBody,
+      );
+
+      // ✅ ACK/consume строго после реального UI
+      await _consumeInboxDeliveryIfPossibleFromPayload(payload);
+      return;
+    }
+
     if (type == 'FRIEND_REQUEST_RECEIVED') {
       final requestId = (payload['request_id'] ?? '').toString().trim();
       final fromName =
@@ -859,6 +885,51 @@ Future<void> _showInfoDialog({required String title, required String body}) asyn
     );
   }
 
+Future<void> _showFriendRemovedDialog({required String title, required String body}) async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final titleStyle = Theme.of(dialogContext)
+            .textTheme
+            .titleMedium
+            ?.copyWith(
+              color: Colors.red,
+              fontWeight: FontWeight.w700,
+            );
+
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          title: Text(title, style: titleStyle),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+            child: Text(
+              body,
+              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                    fontSize: 16,
+                    height: 1.3,
+                  ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
 Future<void> _showFriendOwnerResultDialog({
     required String title,
     required String body,
@@ -920,10 +991,6 @@ Future<void> _acceptFriendRequest(String requestId) async {
       return;
     }
 
-    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
-    FriendsRefreshBus.ping();
-
-
     final ctx = App.navigatorKey.currentContext;
     if (ctx != null) {
       await showCenterToast(
@@ -948,10 +1015,6 @@ Future<void> _acceptFriendRequest(String requestId) async {
       await _showInfoDialog(title: 'Ошибка', body: e.toString());
       return;
     }
-
-    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
-    FriendsRefreshBus.ping();
-
 
     final ctx = App.navigatorKey.currentContext;
     if (ctx != null) {
@@ -1151,7 +1214,8 @@ Map<String, dynamic> payloadMap = <String, dynamic>{};
                 payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE' &&
                 payloadType != 'FRIEND_REQUEST_RECEIVED' &&
                 payloadType != 'FRIEND_REQUEST_ACCEPTED' &&
-                payloadType != 'FRIEND_REQUEST_DECLINED') {
+                payloadType != 'FRIEND_REQUEST_DECLINED' &&
+                payloadType != 'FRIEND_REMOVED') {
               return;
             }
 
@@ -1333,7 +1397,8 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
 
 if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                 payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
-                payloadType == 'FRIEND_REQUEST_DECLINED') {
+                payloadType == 'FRIEND_REQUEST_DECLINED' ||
+                payloadType == 'FRIEND_REMOVED') {
               _enqueueFriendRequestUi(payloadMap);
               consumeIfReady();
               return;

@@ -30,7 +30,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   RealtimeChannel? _friendshipsLowSub;
   RealtimeChannel? _friendshipsHighSub;
-  RealtimeChannel? _inboxDeliveriesSub;
   Timer? _refreshDebounce;
   VoidCallback? _refreshBusListener;
 
@@ -40,7 +39,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     _refreshBusListener = () => _scheduleRefresh();
     FriendsRefreshBus.tick.addListener(_refreshBusListener!);
     _startRealtimeRefresh();
-    _startInboxDrivenRefresh();
     unawaited(_load());
   }
 
@@ -67,7 +65,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
     _refreshDebounce?.cancel();
     _friendshipsLowSub?.unsubscribe();
     _friendshipsHighSub?.unsubscribe();
-    _inboxDeliveriesSub?.unsubscribe();
     if (_refreshBusListener != null) {
       FriendsRefreshBus.tick.removeListener(_refreshBusListener!);
       _refreshBusListener = null;
@@ -114,48 +111,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
             value: widget.appUserId,
           ),
           callback: (_) => _scheduleRefresh(),
-        )
-        .subscribe();
-  }
-
-  /// Канон: список друзей на экране должен обновляться после любых
-  /// каноничных уведомлений/событий, которые приходят пользователю.
-  ///
-  /// Даже если realtime по friendships по какой-то причине не сработал
-  /// (race/visibility/channel), при получении INBOX delivery мы обязаны
-  /// сделать refetch экрана.
-  void _startInboxDrivenRefresh() {
-    final client = Supabase.instance.client;
-
-    _inboxDeliveriesSub = client
-        .channel('friends_inbox_refresh_${widget.appUserId}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'notification_deliveries',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: widget.appUserId,
-          ),
-          callback: (payload) {
-            try {
-              // payload.newRecord / oldRecord доступны в supabase_flutter.
-              final Map<String, dynamic>? record =
-                  payload.newRecord as Map<String, dynamic>?;
-              if (record == null) return;
-
-              // Рефреш только по INBOX, PUSH нам не нужен.
-              final channel = record['channel'];
-              if (channel != 'INBOX') return;
-
-              // Любое INBOX-событие на этом экране = рефреш.
-              // Debounce уже внутри _scheduleRefresh.
-              _scheduleRefresh();
-            } catch (_) {
-              // Никаких крэшей UI из-за подписки на рефреш.
-            }
-          },
         )
         .subscribe();
   }
@@ -558,6 +513,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         friendUserId: friend.friendUserId,
       );
       if (!mounted) return;
+
+      // Initiator UX (canonical): red center toast, no modal.
+      await showCenterToast(
+        context,
+        message: 'Удален',
+        isError: true,
+      );
+
+      // Refresh in-process + refetch from server.
+      FriendsRefreshBus.bump();
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -707,7 +672,7 @@ class _FriendCard extends StatelessWidget {
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
