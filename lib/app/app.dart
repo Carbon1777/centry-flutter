@@ -23,6 +23,7 @@ import '../features/home/home_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
+import '../ui/friends/friends_refresh_bus.dart';
 import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
@@ -741,6 +742,8 @@ if (type == 'FRIEND_REMOVED') {
 
       // ✅ ACK/consume строго после реального UI
       await _consumeInboxDeliveryIfPossibleFromPayload(payload);
+      FriendsRefreshBus.bump();
+
       return;
     }
 
@@ -991,7 +994,10 @@ Future<void> _acceptFriendRequest(String requestId) async {
       return;
     }
 
-    final ctx = App.navigatorKey.currentContext;
+    
+    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
+    FriendsRefreshBus.ping();
+final ctx = App.navigatorKey.currentContext;
     if (ctx != null) {
       await showCenterToast(
         ctx,
@@ -1016,7 +1022,10 @@ Future<void> _acceptFriendRequest(String requestId) async {
       return;
     }
 
-    final ctx = App.navigatorKey.currentContext;
+    
+    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
+    FriendsRefreshBus.ping();
+final ctx = App.navigatorKey.currentContext;
     if (ctx != null) {
       await showCenterToast(
         ctx,
