@@ -23,6 +23,7 @@ import '../features/home/home_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
+import '../ui/friends/friends_refresh_bus.dart';
 import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
@@ -679,19 +680,8 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     if (_pendingFriendRequests.isEmpty) return;
     final items = List<Map<String, dynamic>>.from(_pendingFriendRequests);
     _pendingFriendRequests.clear();
-
-    for (final raw in items) {
-      final deliveryId = (raw['__delivery_id'] ?? '').toString().trim();
-      // Do not mutate original payload keys used by handlers.
-      final payload = Map<String, dynamic>.from(raw);
-      payload.remove('__delivery_id');
-
-      unawaited(() async {
-        await _handleFriendDeliveryPayload(payload);
-        if (deliveryId.isNotEmpty) {
-          await _consumeInboxDelivery(deliveryId: deliveryId);
-        }
-      }());
+    for (final p in items) {
+      unawaited(_handleFriendDeliveryPayload(p));
     }
   }
 
@@ -701,17 +691,19 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
 
     if (type == 'FRIEND_REQUEST_RECEIVED') {
       final requestId = (payload['request_id'] ?? '').toString();
-      final fromName = (payload['from_display_name'] ?? payload['fromDisplayName'] ?? '').toString().trim();
-      final title = (payload['title'] ?? '').toString().trim();
-      final body = (payload['body'] ?? '').toString().trim();
+      final fromName =
+          (payload['from_display_name'] ?? payload['fromDisplayName'] ?? '')
+              .toString()
+              .trim();
+
+      final computedTitle = kFriendRequestDefaultTitle;
+      final computedBody = fromName.isNotEmpty
+          ? 'Пользователь «$fromName» отправил запрос в друзья.'
+          : 'Новый запрос в друзья.';
 
       await _showFriendRequestReceivedDialog(
-        title: title.isEmpty ? kFriendRequestDefaultTitle : title,
-        body: body.isEmpty
-            ? (fromName.isNotEmpty
-                ? '$fromName отправил запрос в друзья.'
-                : 'Новый запрос в друзья.')
-            : body,
+        title: computedTitle,
+        body: computedBody,
         requestId: requestId,
       );
       return;
@@ -719,7 +711,9 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
 
     if (type == 'FRIEND_REQUEST_ACCEPTED' || type == 'FRIEND_REQUEST_DECLINED') {
       final friendName =
-          (payload['friend_display_name'] ?? payload['friendDisplayName'] ?? '').toString().trim();
+          (payload['friend_display_name'] ?? payload['friendDisplayName'] ?? '')
+              .toString()
+              .trim();
       final title = (payload['title'] ?? '').toString().trim();
       final body = (payload['body'] ?? '').toString().trim();
 
@@ -727,15 +721,17 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
           ? kFriendRequestAcceptedTitle
           : kFriendRequestDeclinedTitle;
 
+      final computedBody = friendName.isNotEmpty
+          ? 'Пользователь «$friendName» ${type == 'FRIEND_REQUEST_ACCEPTED' ? 'принял' : 'отклонил'} запрос в друзья.'
+          : 'Откройте приложение, чтобы посмотреть.';
+
       await _showFriendRequestResultDialog(
         title: title.isEmpty ? computedTitle : title,
-        body: body.isEmpty
-            ? (friendName.isNotEmpty
-                ? '$friendName ${type == 'FRIEND_REQUEST_ACCEPTED' ? 'принял' : 'отклонил'} запрос в друзья.'
-                : 'Откройте приложение, чтобы посмотреть.')
-            : body,
+        body: body.isEmpty ? computedBody : body,
         isAccept: type == 'FRIEND_REQUEST_ACCEPTED',
       );
+
+      FriendsRefreshBus.bump();
       return;
     }
   }
@@ -880,6 +876,7 @@ Future<void> _showFriendRequestResultDialog({
     final toastCtx = App.navigatorKey.currentContext;
     if (toastCtx != null) {
       await showCenterToast(toastCtx, message: 'Запрос принят');
+      FriendsRefreshBus.bump();
     }
   }
 
@@ -901,6 +898,7 @@ Future<void> _showFriendRequestResultDialog({
     final toastCtx = App.navigatorKey.currentContext;
     if (toastCtx != null) {
       await showCenterToast(toastCtx, message: 'Запрос отклонён');
+      FriendsRefreshBus.bump();
     }
   }
 
@@ -1043,6 +1041,18 @@ Future<void> _showFriendRequestResultDialog({
               return;
             }
 
+            // Canon: as soon as we are able to show an in-app modal (root UI ready),
+            // ACK the INBOX delivery to suppress any later PUSH for the same event.
+            // This is a server fact (status=CONSUMED) used by push_worker gating.
+            if (_appShellReady) {
+              final deliveryId = (newRow['id'] ?? '').toString();
+              if (deliveryId.trim().isNotEmpty) {
+                unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+              }
+            }
+
+
+
             Map<String, dynamic> payloadMap = <String, dynamic>{};
             final payloadRaw = newRow['payload'];
             if (payloadRaw is Map) {
@@ -1075,36 +1085,7 @@ Future<void> _showFriendRequestResultDialog({
                 );
               }
             }
-            
-            final deliveryId = (newRow['id'] ?? '').toString().trim();
-
-            // ✅ Friends (canonical, like plan-invite-by-id):
-            // - If UI not ready yet -> queue payload for later flush, but still ACK INBOX to suppress PUSH duplicates.
-            // - If UI ready -> show modal/toast via the same friend handlers, then ACK.
-            if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
-                payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
-                payloadType == 'FRIEND_REQUEST_DECLINED') {
-              if (deliveryId.isNotEmpty) {
-                if (!_appShellReady) {
-                  final queued = Map<String, dynamic>.from(payloadMap);
-                  queued['__delivery_id'] = deliveryId;
-                  _pendingFriendRequests.add(queued);
-                  unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-                  return;
-                }
-
-                unawaited(() async {
-                  await _handleFriendDeliveryPayload(payloadMap);
-                  await _consumeInboxDelivery(deliveryId: deliveryId);
-                }());
-                return;
-              }
-
-              // If we can't ACK (no delivery id), avoid suppressing PUSH.
-              return;
-            }
-
-if (payloadType.isNotEmpty &&
+            if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE' &&
                 payloadType != 'PLAN_MEMBER_LEFT' &&
                 payloadType != 'PLAN_MEMBER_REMOVED' &&
@@ -1168,9 +1149,6 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
     source: PlanMemberLeftUiSource.foreground,
   ),
 );
-if (deliveryId.isNotEmpty) {
-  unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-}
 return;
             }
 
@@ -1228,9 +1206,6 @@ if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
       source: PlanMemberJoinedByInviteUiSource.foreground,
     ),
   );
-  if (deliveryId.isNotEmpty) {
-    unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-  }
   return;
 }
 
@@ -1291,9 +1266,6 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
       source: PlanMemberRemovedUiSource.foreground,
     ),
   );
-  if (deliveryId.isNotEmpty) {
-    unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-  }
   return;
 }
 
@@ -1359,9 +1331,6 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                   source: InviteUiSource.foreground,
                 ),
               );
-              if (deliveryId.isNotEmpty) {
-                unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-              }
               return;
             }
 
@@ -1388,9 +1357,6 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                 source: InviteUiSource.foreground,
               ),
             );
-            if (deliveryId.isNotEmpty) {
-              unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
-            }
           } catch (e) {
             if (kDebugMode) {
               debugPrint('[INBOX] handler error: $e');

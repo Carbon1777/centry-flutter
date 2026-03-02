@@ -8,6 +8,7 @@ import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
 import 'widgets/add_friend_by_public_id_dialog.dart';
+import 'friends_refresh_bus.dart';
 
 class FriendsScreen extends StatefulWidget {
   final String appUserId; // доменный app_users.id
@@ -30,10 +31,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
   RealtimeChannel? _friendshipsLowSub;
   RealtimeChannel? _friendshipsHighSub;
   Timer? _refreshDebounce;
+  VoidCallback? _refreshBusListener;
 
   @override
   void initState() {
     super.initState();
+    _refreshBusListener = () => _scheduleRefresh();
+    FriendsRefreshBus.tick.addListener(_refreshBusListener!);
     _startRealtimeRefresh();
     unawaited(_load());
   }
@@ -61,6 +65,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
     _refreshDebounce?.cancel();
     _friendshipsLowSub?.unsubscribe();
     _friendshipsHighSub?.unsubscribe();
+    if (_refreshBusListener != null) {
+      FriendsRefreshBus.tick.removeListener(_refreshBusListener!);
+      _refreshBusListener = null;
+    }
     super.dispose();
   }
 
@@ -644,7 +652,7 @@ class _FriendCard extends StatelessWidget {
                     'Удалить',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: const Color.fromARGB(255, 248, 64, 64),
+                          color: const Color.fromARGB(255, 238, 60, 60),
                         ),
                   ),
                 ),
