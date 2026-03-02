@@ -165,6 +165,19 @@ function isPlanMemberJoinedByInvite(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_MEMBER_JOINED_BY_INVITE";
 }
 
+function isFriendRequestReceived(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "FRIEND_REQUEST_RECEIVED";
+}
+
+function isFriendRequestAccepted(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "FRIEND_REQUEST_ACCEPTED";
+}
+
+function isFriendRequestDeclined(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "FRIEND_REQUEST_DECLINED";
+}
+
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -239,6 +252,9 @@ serve(async () => {
     }
 
     const internalInvite = isPlanInternalInvite(payload);
+    const friendRequestReceived = isFriendRequestReceived(payload);
+    const friendRequestAccepted = isFriendRequestAccepted(payload);
+    const friendRequestDeclined = isFriendRequestDeclined(payload);
     const memberLeft = isPlanMemberLeft(payload);
 
     const memberRemoved = isPlanMemberRemoved(payload);
@@ -251,8 +267,17 @@ serve(async () => {
     //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
     // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
     // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY (app shows local notification in background; in-app modal in foreground).
+    // - FRIEND_REQUEST_*: STRICT DATA-ONLY (app-controlled modals + local notifications with actions).
     // - Other notification types may include OS notification.
-    const shouldIncludeNotification = !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite);
+    const shouldIncludeNotification = !(
+      internalInvite ||
+      memberLeft ||
+      memberRemoved ||
+      memberJoinedByInvite ||
+      friendRequestReceived ||
+      friendRequestAccepted ||
+      friendRequestDeclined
+    );
     let anyOk = false;
     let lastErr = "";
 
@@ -306,6 +331,36 @@ serve(async () => {
             plan_title: String(payload["plan_title"] ?? ""),
             joined_user_id: String(payload["joined_user_id"] ?? ""),
             joined_nickname: String(payload["joined_nickname"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : friendRequestReceived
+        ? {
+            type: "FRIEND_REQUEST_RECEIVED",
+            request_id: String(payload["request_id"] ?? ""),
+            from_user_id: String(payload["from_user_id"] ?? ""),
+            from_display_name: String(payload["from_display_name"] ?? ""),
+            from_public_id: String(payload["from_public_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : friendRequestAccepted
+        ? {
+            type: "FRIEND_REQUEST_ACCEPTED",
+            request_id: String(payload["request_id"] ?? ""),
+            friend_user_id: String(payload["friend_user_id"] ?? ""),
+            friend_display_name: String(payload["friend_display_name"] ?? ""),
+            friend_public_id: String(payload["friend_public_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : friendRequestDeclined
+        ? {
+            type: "FRIEND_REQUEST_DECLINED",
+            request_id: String(payload["request_id"] ?? ""),
+            friend_user_id: String(payload["friend_user_id"] ?? ""),
+            friend_display_name: String(payload["friend_display_name"] ?? ""),
+            friend_public_id: String(payload["friend_public_id"] ?? ""),
             title: String(payload["title"] ?? title),
             body: String(payload["body"] ?? body),
           }

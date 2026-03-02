@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/friends/friends_repository_impl.dart';
-import '../../data/local/user_snapshot_storage.dart';
 import '../places/places_screen.dart';
 import '../plans/plans_screen.dart';
 import '../plans/plan_details_screen.dart';
@@ -416,14 +415,12 @@ class _BottomNavigationBar extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) {
-                        final repo = FriendsRepositoryImpl(Supabase.instance.client);
-                        final storage = UserSnapshotStorage();
-                        return FriendsScreen(
-                          appUserId: appUserId,
-                          repository: repo,
-                          userSnapshotStorage: storage,
-                        );
-                      },
+                          final repo = FriendsRepositoryImpl(Supabase.instance.client);
+                          return FriendsScreen(
+                            appUserId: appUserId,
+                            repository: repo,
+                          );
+                        },
                       ),
                     );
                   },
