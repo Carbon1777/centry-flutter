@@ -463,6 +463,30 @@ if (type == 'PLAN_MEMBER_REMOVED') {
           ),
         );
       },
+      onPlanMemberJoinedByInviteOpen: ({
+        required String planId,
+        required String joinedUserId,
+        String? joinedNickname,
+        String? planTitle,
+        String? title,
+        String? body,
+      }) async {
+        PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
+          PlanMemberJoinedByInviteUiRequest(
+            planId: planId,
+            joinedUserId: joinedUserId,
+            joinedNickname: (joinedNickname ?? '').trim().isEmpty
+                ? null
+                : (joinedNickname ?? '').trim(),
+            planTitle: (planTitle ?? '').trim().isEmpty
+                ? null
+                : (planTitle ?? '').trim(),
+            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
+            body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
+            source: PlanMemberJoinedByInviteUiSource.backgroundIntent,
+          ),
+        );
+      },
       onPlanMemberRemovedOpen: ({
         required String planId,
         required String removedUserId,

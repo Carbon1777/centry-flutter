@@ -161,6 +161,10 @@ function isPlanMemberRemoved(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_MEMBER_REMOVED";
 }
 
+function isPlanMemberJoinedByInvite(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PLAN_MEMBER_JOINED_BY_INVITE";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -238,6 +242,7 @@ serve(async () => {
     const memberLeft = isPlanMemberLeft(payload);
 
     const memberRemoved = isPlanMemberRemoved(payload);
+    const memberJoinedByInvite = isPlanMemberJoinedByInvite(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
@@ -245,8 +250,9 @@ serve(async () => {
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
     //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
     // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
+    // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY (app shows local notification in background; in-app modal in foreground).
     // - Other notification types may include OS notification.
-    const shouldIncludeNotification = !(internalInvite || memberLeft || memberRemoved);
+    const shouldIncludeNotification = !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite);
     let anyOk = false;
     let lastErr = "";
 
@@ -290,6 +296,16 @@ serve(async () => {
             owner_user_id: String(payload["owner_user_id"] ?? ""),
             owner_nickname: String(payload["owner_nickname"] ?? ""),
             removed_user_id: String(payload["removed_user_id"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : memberJoinedByInvite
+        ? {
+            type: "PLAN_MEMBER_JOINED_BY_INVITE",
+            plan_id: String(payload["plan_id"] ?? ""),
+            plan_title: String(payload["plan_title"] ?? ""),
+            joined_user_id: String(payload["joined_user_id"] ?? ""),
+            joined_nickname: String(payload["joined_nickname"] ?? ""),
             title: String(payload["title"] ?? title),
             body: String(payload["body"] ?? body),
           }

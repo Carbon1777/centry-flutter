@@ -82,18 +82,28 @@ class _PlanInviteModalState extends State<PlanInviteModal> {
     await Clipboard.setData(ClipboardData(text: t));
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    // Show feedback, then close this dialog to return to the previous "Generate invite" modal.
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
       const SnackBar(content: Text('Скопировано')),
     );
-  }
 
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
   Future<void> _shareInvite() async {
     final t = _shareText;
     if (t == null || t.isEmpty) return;
 
     await Share.share(t);
-  }
+    if (!mounted) return;
 
+    // Close this dialog after sharing to return to the previous modal.
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.75;

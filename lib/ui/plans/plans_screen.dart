@@ -276,17 +276,38 @@ Future<void> _ensureInboxRealtimeSubscribed() async {
     callback: (payload) async {
       try {
         final record = payload.newRecord;
-final channelValue = (record['channel'] ?? '').toString();
+
+        final channelValue =
+            (record['channel'] ?? '').toString().trim().toUpperCase();
         if (channelValue != 'INBOX') return;
 
         final payloadJson = record['payload'];
         if (payloadJson is! Map) return;
 
-        final type = (payloadJson['type'] ?? '').toString();
-        if (type != 'PLAN_MEMBER_REMOVED') return;
+        final type = (payloadJson['type'] ?? '').toString().trim().toUpperCase();
+
+        // Refresh list for membership-affecting events.
+        final shouldRefresh = type == 'PLAN_MEMBER_REMOVED' || type == 'PLAN_MEMBER_LEFT';
+        if (!shouldRefresh) return;
 
         final planId = (payloadJson['plan_id'] ?? '').toString();
-        if (planId.isNotEmpty) {
+
+        // IMPORTANT:
+        // - For PLAN_MEMBER_LEFT / PLAN_MEMBER_REMOVED we receive the event on the OWNER side too.
+        // - We must hide the plan card only when *this* user is the one who left/was removed.
+        //   Otherwise the owner's (and other members') plan must remain visible.
+        bool shouldHide = false;
+        if (type == 'PLAN_MEMBER_REMOVED') {
+          final removedUserId =
+              (payloadJson['removed_user_id'] ?? payloadJson['removed_app_user_id'] ?? '')
+                  .toString();
+          shouldHide = removedUserId.isNotEmpty && removedUserId == appUserId;
+        } else if (type == 'PLAN_MEMBER_LEFT') {
+          final leftUserId = (payloadJson['left_user_id'] ?? '').toString();
+          shouldHide = leftUserId.isNotEmpty && leftUserId == appUserId;
+        }
+
+        if (shouldHide && planId.isNotEmpty) {
           // Hide immediately to prevent tapping a dead card before refetch completes.
           if (mounted) {
             setState(() {
