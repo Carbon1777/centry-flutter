@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -50,23 +52,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: OutlinedButton.icon(
-              onPressed: () async {
-                await showDialog<void>(
-                  context: context,
-                  useRootNavigator: true,
-                  barrierDismissible: true,
-                  builder: (_) {
-                    return AlertDialog(
-                      title: const Text('Добавить в друзья'),
-                      content: const Text('В разработке'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Закрыть'),
-                        ),
-                      ],
-                    );
-                  },
+              onPressed: () {
+                unawaited(
+                  _showInDevelopmentModal(
+                    context,
+                    title: 'Добавить в друзья',
+                    message: 'В разработке',
+                  ),
                 );
               },
               style: OutlinedButton.styleFrom(
@@ -125,26 +117,50 @@ class _FriendsScreenState extends State<FriendsScreen> {
         return _FriendCard(
           friend: friend,
           note: note,
-          onOpenProfile: () => _showProfileStub(context, friend),
-          onEditNote: () => _editNote(context, friend, initial: note),
-          onAddToPlan: () => _showInDevelopmentSnack(context),
-          onRemoveFriend: () async {
-            final confirmed = await _confirmRemove(context, friend.nickname);
-            if (!confirmed) return;
-            if (!mounted) return;
-            setState(() {
-              _friends.removeWhere((f) => f.userId == friend.userId);
-              _notesByUserId.remove(friend.userId);
-            });
+          onOpenProfile: () {
+            unawaited(_showProfileStub(context, friend));
+          },
+          onEditNote: () {
+            unawaited(_editNote(context, friend, initial: note));
+          },
+          onAddToPlan: () {
+            unawaited(
+              _showInDevelopmentModal(
+                context,
+                title: 'Добавить в план',
+                message: 'В разработке',
+              ),
+            );
+          },
+          onRemoveFriend: () {
+            unawaited(_removeFriend(context, friend));
           },
         );
       },
     );
   }
 
-  void _showInDevelopmentSnack(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('В разработке')),
+  Future<void> _showInDevelopmentModal(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -153,17 +169,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
       context: context,
       useRootNavigator: true,
       barrierDismissible: true,
-      builder: (_) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Удалить из друзей?'),
           content: Text('Удалить «$nickname» из друзей?'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
               child: const Text('Отмена'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('Удалить'),
             ),
           ],
@@ -175,23 +191,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
   Future<void> _showProfileStub(
       BuildContext context, _FriendCardVm friend) async {
-    await showDialog<void>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('Профиль'),
-          content: Text(
-            'Профиль пользователя в разработке.\n\nНик: ${friend.nickname}\nPublic ID: ${friend.publicId}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        );
-      },
+    await _showInDevelopmentModal(
+      context,
+      title: 'Профиль',
+      message: 'В разработке',
     );
   }
 
@@ -206,7 +209,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       context: context,
       useRootNavigator: true,
       barrierDismissible: false,
-      builder: (_) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Мой комментарий'),
           content: ConstrainedBox(
@@ -218,7 +221,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
               minLines: 1,
               textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
-                hintText: 'Например: “друг из прошлой поездки”',
+                hintText: 'Например: “коллега”, “сосед”, “партнёр”',
                 border: OutlineInputBorder(),
                 counterText: '',
               ),
@@ -241,17 +244,19 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(null),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
               child: const Text('Отмена'),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(controller.text),
+              onPressed: () => Navigator.of(dialogContext).pop(controller.text),
               child: const Text('Сохранить'),
             ),
           ],
         );
       },
     );
+
+    controller.dispose();
 
     if (!mounted) return;
     if (saved == null) return;
@@ -263,6 +268,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
       } else {
         _notesByUserId[friend.userId] = trimmed;
       }
+    });
+  }
+
+  Future<void> _removeFriend(BuildContext context, _FriendCardVm friend) async {
+    final confirmed = await _confirmRemove(context, friend.nickname);
+    if (!confirmed) return;
+    if (!mounted) return;
+
+    setState(() {
+      _friends.removeWhere((f) => f.userId == friend.userId);
+      _notesByUserId.remove(friend.userId);
     });
   }
 }
@@ -398,17 +414,21 @@ class _FriendCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              TextButton(
-                onPressed: onRemoveFriend,
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              InkWell(
+                onTap: onRemoveFriend,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                    'Удалить',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
                 ),
-                child: const Text('Удалить'),
               ),
               const Spacer(),
-              OutlinedButton.icon(
+              OutlinedButton(
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
                   padding:
@@ -416,7 +436,7 @@ class _FriendCard extends StatelessWidget {
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                label: const Text('Добавить в план'),
+                child: const Text('Добавить в план'),
               ),
             ],
           ),
