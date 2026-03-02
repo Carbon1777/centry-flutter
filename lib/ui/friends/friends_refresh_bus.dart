@@ -18,7 +18,14 @@ class FriendsRefreshBus {
 
   static final ValueNotifier<int> tick = ValueNotifier<int>(0);
 
+  /// Canonical name used by FriendsScreen / legacy call sites.
   static void bump() {
     tick.value = tick.value + 1;
+  }
+
+  /// Alias for app-level call sites (app.dart) to keep naming consistent.
+  /// Calling ping() triggers the same refresh signal as bump().
+  static void ping() {
+    bump();
   }
 }
