@@ -707,7 +707,7 @@ class _FriendCard extends StatelessWidget {
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
