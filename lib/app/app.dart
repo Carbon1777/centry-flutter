@@ -70,6 +70,9 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   // UI strings (keep centralized to avoid drift)
   static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';  static const String kInviteAcceptedToast = 'Приглашение принято';
+  static const String kFriendRequestDefaultTitle = 'Запрос в друзья';
+  static const String kFriendRequestAcceptedTitle = 'Запрос принят';
+  static const String kFriendRequestDeclinedTitle = 'Запрос отклонён';
   static const String kInviteDeclinedToast = 'Приглашение отклонено';
 
   StreamSubscription<AuthState>? _authSub;
@@ -108,6 +111,9 @@ class _BootstrapGateState extends State<BootstrapGate>
   // We forward it to HomeScreen to immediately open PlanDetails.
   String? _pendingOpenPlanId;
   String? _pendingOpenPlanToastMessage;
+
+  // Pending friend request UI events (when app opens from notification before shell is ready)
+  final List<Map<String, dynamic>> _pendingFriendRequests = <Map<String, dynamic>>[];
   DateTime? _homeVisibleAt;
   Timer? _pendingPlanOpenTimer;
   bool _appShellReady = false;
@@ -533,8 +539,13 @@ if (type == 'PLAN_MEMBER_REMOVED') {
       // Keep system notification for consistency (buttons live there too)
       await PushNotifications.showInternalInvite(m);
 
+      // Friend requests: keep same canon as invites (data-only push -> local tray + in-app modal)
+      await PushNotifications.showFriendRequest(m);
+
       // In-app modal is canonical. Queue it and show only after welcome/home phase.
       _queueInternalInviteDialogFromRemoteMessage(m);
+
+      _queueFriendRequestDialogFromRemoteMessage(m);
 
       // ✅ Separate layer: in-app info modal when a member leaves a plan.
       _queuePlanMemberLeftDialogFromRemoteMessage(m);
@@ -582,6 +593,31 @@ if (type == 'PLAN_MEMBER_REMOVED') {
   }
 
   
+
+
+  void _queueFriendRequestDialogFromRemoteMessage(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString().trim();
+    if (t != 'FRIEND_REQUEST_RECEIVED' &&
+        t != 'FRIEND_REQUEST_ACCEPTED' &&
+        t != 'FRIEND_REQUEST_DECLINED') {
+      return;
+    }
+
+    final requestId = (m.data['request_id'] ?? '').toString();
+    final title = (m.data['title'] ?? m.notification?.title ?? '').toString();
+    final body = (m.data['body'] ?? m.notification?.body ?? '').toString();
+
+    final payloadMap = <String, dynamic>{
+      'type': t,
+      if (requestId.isNotEmpty) 'request_id': requestId,
+      ...m.data,
+      if (title.isNotEmpty) 'title': title,
+      if (body.isNotEmpty) 'body': body,
+    };
+
+    _enqueueFriendRequestUi(payloadMap);
+  }
+
 void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
   if (!PushNotifications.isPlanMemberLeft(m)) return;
 
@@ -626,6 +662,166 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     ),
   );
 }
+
+
+
+  void _enqueueFriendRequestUi(Map<String, dynamic> payload) {
+    // Show immediately if shell is ready, otherwise stash and flush after UI ready.
+    if (_appShellReady) {
+      unawaited(_handleFriendDeliveryPayload(payload));
+      return;
+    }
+    _pendingFriendRequests.add(payload);
+  }
+
+  void _flushPendingFriendRequestsIfAny() {
+    if (!_appShellReady) return;
+    if (_pendingFriendRequests.isEmpty) return;
+    final items = List<Map<String, dynamic>>.from(_pendingFriendRequests);
+    _pendingFriendRequests.clear();
+    for (final p in items) {
+      unawaited(_handleFriendDeliveryPayload(p));
+    }
+  }
+
+  Future<void> _handleFriendDeliveryPayload(Map<String, dynamic> payload) async {
+    final type = (payload['type'] ?? '').toString().trim();
+    if (type.isEmpty) return;
+
+    if (type == 'FRIEND_REQUEST_RECEIVED') {
+      final requestId = (payload['request_id'] ?? '').toString();
+      final fromName = (payload['from_display_name'] ?? payload['fromDisplayName'] ?? '').toString().trim();
+      final title = (payload['title'] ?? '').toString().trim();
+      final body = (payload['body'] ?? '').toString().trim();
+
+      await _showFriendRequestReceivedDialog(
+        title: title.isEmpty ? kFriendRequestDefaultTitle : title,
+        body: body.isEmpty
+            ? (fromName.isNotEmpty
+                ? '$fromName отправил запрос в друзья.'
+                : 'Новый запрос в друзья.')
+            : body,
+        requestId: requestId,
+      );
+      return;
+    }
+
+    if (type == 'FRIEND_REQUEST_ACCEPTED' || type == 'FRIEND_REQUEST_DECLINED') {
+      final friendName =
+          (payload['friend_display_name'] ?? payload['friendDisplayName'] ?? '').toString().trim();
+      final title = (payload['title'] ?? '').toString().trim();
+      final body = (payload['body'] ?? '').toString().trim();
+
+      final computedTitle = type == 'FRIEND_REQUEST_ACCEPTED'
+          ? kFriendRequestAcceptedTitle
+          : kFriendRequestDeclinedTitle;
+
+      await _showInfoDialog(
+        title: title.isEmpty ? computedTitle : title,
+        body: body.isEmpty
+            ? (friendName.isNotEmpty
+                ? '$friendName ${type == 'FRIEND_REQUEST_ACCEPTED' ? 'принял' : 'отклонил'} запрос в друзья.'
+                : 'Откройте приложение, чтобы посмотреть.')
+            : body,
+      );
+      return;
+    }
+  }
+
+  Future<void> _showInfoDialog({required String title, required String body}) async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null) return;
+    await showDialog<void>(
+      context: ctx,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showFriendRequestReceivedDialog({
+    required String title,
+    required String body,
+    required String requestId,
+  }) async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _declineFriendRequest(requestId);
+              },
+              child: const Text('Отклонить'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _acceptFriendRequest(requestId);
+              },
+              child: const Text('Принять'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _acceptFriendRequest(String requestId) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+    if (requestId.isEmpty) return;
+
+    try {
+      await _supabase.rpc('accept_friend_request_v2', params: {
+        'p_user_id': userId,
+        'p_request_id': requestId,
+      });
+    } catch (e) {
+      await _showInfoDialog(title: 'Ошибка', body: e.toString());
+      return;
+    }
+
+    await _showInfoDialog(title: 'Готово', body: 'Запрос в друзья принят.');
+  }
+
+  Future<void> _declineFriendRequest(String requestId) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+    if (requestId.isEmpty) return;
+
+    try {
+      await _supabase.rpc('decline_friend_request_v2', params: {
+        'p_user_id': userId,
+        'p_request_id': requestId,
+      });
+    } catch (e) {
+      await _showInfoDialog(title: 'Ошибка', body: e.toString());
+      return;
+    }
+
+    await _showInfoDialog(title: 'Готово', body: 'Запрос в друзья отклонён.');
+  }
 
 
   Future<void> _ensureInboxInvitesRealtimeSubscribed() async {
@@ -994,7 +1190,14 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
   return;
 }
 
-final ownerAction =
+if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
+                payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
+                payloadType == 'FRIEND_REQUEST_DECLINED') {
+              _enqueueFriendRequestUi(payloadMap);
+              return;
+            }
+
+            final ownerAction =
                 (payloadMap['action'] ?? payloadMap['owner_action'] ?? '')
                     .toString()
                     .trim()
@@ -1779,10 +1982,12 @@ final ownerAction =
     if (_appShellReady) return;
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
+    _flushPendingFriendRequestsIfAny();
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
+    _flushPendingFriendRequestsIfAny();
     _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();

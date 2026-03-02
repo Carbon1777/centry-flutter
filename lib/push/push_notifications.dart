@@ -356,6 +356,26 @@ class PushNotifications {
   }
 
 
+  static bool isFriendRequestReceived(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    if (t == 'FRIEND_REQUEST_RECEIVED') return true;
+
+    final requestId = (m.data['request_id'] ?? '').toString();
+    final fromUserId = (m.data['from_user_id'] ?? '').toString();
+    return requestId.isNotEmpty && fromUserId.isNotEmpty;
+  }
+
+  static bool isFriendRequestAccepted(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    return t == 'FRIEND_REQUEST_ACCEPTED';
+  }
+
+  static bool isFriendRequestDeclined(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    return t == 'FRIEND_REQUEST_DECLINED';
+  }
+
+
   static Future<void> showInternalInvite(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
@@ -443,7 +463,84 @@ class PushNotifications {
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
-  static Future<void> showPlanMemberLeft(RemoteMessage m) async {
+  
+  static Future<void> showFriendRequest(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showFriendRequest id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showFriendRequest data=${m.data}');
+    }
+
+    final t = (m.data['type'] ?? '').toString();
+    final isReceived = t == 'FRIEND_REQUEST_RECEIVED';
+    final isAccepted = t == 'FRIEND_REQUEST_ACCEPTED';
+    final isDeclined = t == 'FRIEND_REQUEST_DECLINED';
+    if (!isReceived && !isAccepted && !isDeclined) return;
+
+    // Keep title/body from server when provided.
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : (isReceived
+            ? 'Запрос в друзья'
+            : (isAccepted ? 'Запрос принят' : 'Запрос отклонён'));
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final body = rawBody.isNotEmpty
+        ? rawBody
+        : (isReceived
+            ? 'Откройте приложение, чтобы ответить.'
+            : 'Откройте приложение, чтобы посмотреть.');
+
+    final requestId = (m.data['request_id'] ?? '').toString();
+    final idSeed = requestId.isNotEmpty ? 'friend:$t:$requestId' : 'friend:$t:${m.messageId ?? ''}';
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      'kind': t,
+      'type': t,
+      if (requestId.isNotEmpty) 'request_id': requestId,
+      ...m.data,
+      'title': title,
+      'body': body,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id kind=$t');
+  }
+
+static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
         '[PushNotifications] showPlanMemberLeft id=${m.messageId} sentAt=${m.sentTime}',

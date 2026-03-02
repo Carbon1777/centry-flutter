@@ -2,23 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../data/friends/accept_friend_result_dto.dart';
 import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
-import '../../data/friends/accept_friend_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
-import '../../data/local/user_snapshot_storage.dart';
 import 'widgets/add_friend_by_public_id_dialog.dart';
 
 class FriendsScreen extends StatefulWidget {
   final String appUserId; // доменный app_users.id
   final FriendsRepository repository;
-  final UserSnapshotStorage userSnapshotStorage;
 
   const FriendsScreen({
     super.key,
     required this.appUserId,
     required this.repository,
-    required this.userSnapshotStorage,
   });
 
   @override
@@ -38,11 +35,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final deviceSecret =
-          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       final friends = await widget.repository.listMyFriends(
         appUserId: widget.appUserId,
-        deviceSecret: deviceSecret,
       );
       if (!mounted) return;
       setState(() {
@@ -107,7 +101,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Добавляй друзей через поиск по Public ID или список участников в планах.',
+              'Добавляй друзей через поиск по Public ID или список участников в планах',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -162,13 +156,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (publicId == null) return;
 
     try {
-      final deviceSecret =
-          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
-
       final FriendRequestResultDto r =
           await widget.repository.requestFriendByPublicId(
         appUserId: widget.appUserId,
-        deviceSecret: deviceSecret,
         targetPublicId: publicId,
       );
 
@@ -213,7 +203,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
         final AcceptFriendResultDto a =
             await widget.repository.acceptFriendRequest(
           appUserId: widget.appUserId,
-          deviceSecret: deviceSecret,
           requestId: requestId,
         );
 
@@ -229,7 +218,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
         return;
       }
 
-      // Fallback: show raw status
       await _showInfo(
         context,
         title: 'Статус',
@@ -442,11 +430,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (saved == null) return;
 
     try {
-      final deviceSecret =
-          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       await widget.repository.upsertFriendNote(
         appUserId: widget.appUserId,
-        deviceSecret: deviceSecret,
         friendUserId: friend.friendUserId,
         note: saved.trim(),
       );
@@ -463,11 +448,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (!confirmed) return;
 
     try {
-      final deviceSecret =
-          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       await widget.repository.removeFriend(
         appUserId: widget.appUserId,
-        deviceSecret: deviceSecret,
         friendUserId: friend.friendUserId,
       );
       if (!mounted) return;
