@@ -371,7 +371,7 @@ if (type == 'PLAN_MEMBER_REMOVED') {
           source: PlanMemberRemovedUiSource.backgroundIntent,
         ),
       );
-return;
+      return;
     }
   }
 }
@@ -669,7 +669,7 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     // Show immediately if shell is ready, otherwise stash and flush after UI ready.
     if (_appShellReady) {
       unawaited(_handleFriendDeliveryPayload(payload));
-return;
+      return;
     }
     _pendingFriendRequests.add(payload);
   }
@@ -679,8 +679,19 @@ return;
     if (_pendingFriendRequests.isEmpty) return;
     final items = List<Map<String, dynamic>>.from(_pendingFriendRequests);
     _pendingFriendRequests.clear();
-    for (final p in items) {
-      unawaited(_handleFriendDeliveryPayload(p));
+
+    for (final raw in items) {
+      final deliveryId = (raw['__delivery_id'] ?? '').toString().trim();
+      // Do not mutate original payload keys used by handlers.
+      final payload = Map<String, dynamic>.from(raw);
+      payload.remove('__delivery_id');
+
+      unawaited(() async {
+        await _handleFriendDeliveryPayload(payload);
+        if (deliveryId.isNotEmpty) {
+          await _consumeInboxDelivery(deliveryId: deliveryId);
+        }
+      }());
     }
   }
 
@@ -716,13 +727,14 @@ return;
           ? kFriendRequestAcceptedTitle
           : kFriendRequestDeclinedTitle;
 
-      await _showInfoDialog(
+      await _showFriendRequestResultDialog(
         title: title.isEmpty ? computedTitle : title,
         body: body.isEmpty
             ? (friendName.isNotEmpty
                 ? '$friendName ${type == 'FRIEND_REQUEST_ACCEPTED' ? 'принял' : 'отклонил'} запрос в друзья.'
                 : 'Откройте приложение, чтобы посмотреть.')
             : body,
+        isAccept: type == 'FRIEND_REQUEST_ACCEPTED',
       );
       return;
     }
@@ -750,42 +762,105 @@ return;
     );
   }
 
-  Future<void> _showFriendRequestReceivedDialog({
-    required String title,
-    required String body,
-    required String requestId,
-  }) async {
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx == null) return;
 
-    await showDialog<void>(
-      context: ctx,
-      useRootNavigator: true,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(body),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await _declineFriendRequest(requestId);
-              },
-              child: const Text('Отклонить'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await _acceptFriendRequest(requestId);
-              },
-              child: const Text('Принять'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+Future<void> _showFriendRequestResultDialog({
+  required String title,
+  required String body,
+  required bool isAccept,
+}) async {
+  final ctx = App.navigatorKey.currentContext;
+  if (ctx == null) return;
+
+  await showDialog<void>(
+    context: ctx,
+    useRootNavigator: true,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      final titleStyle = Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+            color: isAccept ? Colors.green : Colors.red,
+            fontWeight: FontWeight.w700,
+          );
+
+      return AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+        titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+        contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+        actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        title: Text(title, style: titleStyle),
+        content: body.trim().isNotEmpty
+            ? ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+                child: Text(
+                  body.trim(),
+                  style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                        fontSize: 16,
+                        height: 1.3,
+                      ),
+                ),
+              )
+            : null,
+        actionsAlignment: MainAxisAlignment.center,
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+  Future<void> _showFriendRequestReceivedDialog({
+  required String title,
+  required String body,
+  required String requestId,
+}) async {
+  final ctx = App.navigatorKey.currentContext;
+  if (ctx == null) return;
+
+  await showDialog<void>(
+    context: ctx,
+    useRootNavigator: true,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+        titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+        contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+        actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        title: Text(title.trim().isNotEmpty ? title.trim() : 'Запрос в друзья'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+          child: Text(
+            body.trim().isNotEmpty ? body.trim() : 'Новый запрос в друзья.',
+            style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                  fontSize: 16,
+                  height: 1.3,
+                ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext, rootNavigator: true).pop();
+              await _declineFriendRequest(requestId);
+            },
+            child: const Text('Отклонить'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext, rootNavigator: true).pop();
+              await _acceptFriendRequest(requestId);
+            },
+            child: const Text('Принять'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 
   Future<void> _acceptFriendRequest(String requestId) async {
     final userId = _userId;
@@ -802,7 +877,10 @@ return;
       return;
     }
 
-    await _showInfoDialog(title: 'Готово', body: 'Запрос в друзья принят.');
+    final toastCtx = App.navigatorKey.currentContext;
+    if (toastCtx != null) {
+      await showCenterToast(toastCtx, message: 'Запрос принят');
+    }
   }
 
   Future<void> _declineFriendRequest(String requestId) async {
@@ -820,7 +898,10 @@ return;
       return;
     }
 
-    await _showInfoDialog(title: 'Готово', body: 'Запрос в друзья отклонён.');
+    final toastCtx = App.navigatorKey.currentContext;
+    if (toastCtx != null) {
+      await showCenterToast(toastCtx, message: 'Запрос отклонён');
+    }
   }
 
 
@@ -961,6 +1042,7 @@ return;
               }
               return;
             }
+
             Map<String, dynamic> payloadMap = <String, dynamic>{};
             final payloadRaw = newRow['payload'];
             if (payloadRaw is Map) {
@@ -974,14 +1056,6 @@ return;
               } catch (_) {
                 // ignore malformed payload
               }
-            }
-
-
-            final deliveryId = (newRow['id'] ?? newRow['delivery_id'] ?? newRow['deliveryId'] ?? '').toString().trim();
-            void ackInboxDeliveryIfPossible() {
-              if (!_appShellReady) return;
-              if (deliveryId.isEmpty) return;
-              unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
             }
 
             // Canonical routing:
@@ -1001,14 +1075,40 @@ return;
                 );
               }
             }
-            final isSupportedPayload = payloadType == 'PLAN_INTERNAL_INVITE' ||
-                payloadType == 'PLAN_MEMBER_LEFT' ||
-                payloadType == 'PLAN_MEMBER_REMOVED' ||
-                payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE' ||
-                payloadType == 'FRIEND_REQUEST_RECEIVED' ||
+            
+            final deliveryId = (newRow['id'] ?? '').toString().trim();
+
+            // ✅ Friends (canonical, like plan-invite-by-id):
+            // - If UI not ready yet -> queue payload for later flush, but still ACK INBOX to suppress PUSH duplicates.
+            // - If UI ready -> show modal/toast via the same friend handlers, then ACK.
+            if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                 payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
-                payloadType == 'FRIEND_REQUEST_DECLINED';
-            if (payloadType.trim().isEmpty || !isSupportedPayload) {
+                payloadType == 'FRIEND_REQUEST_DECLINED') {
+              if (deliveryId.isNotEmpty) {
+                if (!_appShellReady) {
+                  final queued = Map<String, dynamic>.from(payloadMap);
+                  queued['__delivery_id'] = deliveryId;
+                  _pendingFriendRequests.add(queued);
+                  unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+                  return;
+                }
+
+                unawaited(() async {
+                  await _handleFriendDeliveryPayload(payloadMap);
+                  await _consumeInboxDelivery(deliveryId: deliveryId);
+                }());
+                return;
+              }
+
+              // If we can't ACK (no delivery id), avoid suppressing PUSH.
+              return;
+            }
+
+if (payloadType.isNotEmpty &&
+                payloadType != 'PLAN_INTERNAL_INVITE' &&
+                payloadType != 'PLAN_MEMBER_LEFT' &&
+                payloadType != 'PLAN_MEMBER_REMOVED' &&
+                payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE') {
               return;
             }
 
@@ -1068,7 +1168,9 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
     source: PlanMemberLeftUiSource.foreground,
   ),
 );
-ackInboxDeliveryIfPossible();
+if (deliveryId.isNotEmpty) {
+  unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+}
 return;
             }
 
@@ -1126,8 +1228,10 @@ if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
       source: PlanMemberJoinedByInviteUiSource.foreground,
     ),
   );
-ackInboxDeliveryIfPossible();
-return;
+  if (deliveryId.isNotEmpty) {
+    unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+  }
+  return;
 }
 
 
@@ -1187,8 +1291,10 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
       source: PlanMemberRemovedUiSource.foreground,
     ),
   );
-ackInboxDeliveryIfPossible();
-return;
+  if (deliveryId.isNotEmpty) {
+    unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+  }
+  return;
 }
 
 if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
@@ -1253,9 +1359,10 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                   source: InviteUiSource.foreground,
                 ),
               );
-            ackInboxDeliveryIfPossible();
-ackInboxDeliveryIfPossible();
-return;
+              if (deliveryId.isNotEmpty) {
+                unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+              }
+              return;
             }
 
             // invitee-invite
@@ -1281,6 +1388,9 @@ return;
                 source: InviteUiSource.foreground,
               ),
             );
+            if (deliveryId.isNotEmpty) {
+              unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+            }
           } catch (e) {
             if (kDebugMode) {
               debugPrint('[INBOX] handler error: $e');
