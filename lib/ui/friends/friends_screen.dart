@@ -1,46 +1,55 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../data/local/user_snapshot_storage.dart';
+import '../../data/friends/friend_dto.dart';
+import '../../data/friends/friends_repository.dart';
+
 class FriendsScreen extends StatefulWidget {
-  const FriendsScreen({super.key});
+  final String appUserId; // доменный app_users.id
+  final FriendsRepository repository;
+  final UserSnapshotStorage userSnapshotStorage;
+
+  const FriendsScreen({
+    super.key,
+    required this.appUserId,
+    required this.repository,
+    required this.userSnapshotStorage,
+  });
 
   @override
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
 class _FriendsScreenState extends State<FriendsScreen> {
-  // Server-first note:
-  // This screen is UI-only v0. The source of truth for friends + notes must be on the server.
-  // Later we will replace the local list with an RPC-backed repository and persist notes via RPC.
-  late final List<_FriendCardVm> _friends = _initialFriends();
+  bool _loading = true;
+  List<FriendDto> _friends = const <FriendDto>[];
 
-  // Local (temporary) note cache for UX iteration. Will be replaced by server storage.
-  final Map<String, String> _notesByUserId = <String, String>{};
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
 
-  List<_FriendCardVm> _initialFriends() {
-    // In release, show empty list until server contract is ready.
-    if (!kDebugMode) return <_FriendCardVm>[];
-
-    // Dev/demo data so the UI is visible during iteration.
-    return const <_FriendCardVm>[
-      _FriendCardVm(
-        userId: 'demo-1',
-        nickname: 'rewader',
-        publicId: 'A1B2C3',
-      ),
-      _FriendCardVm(
-        userId: 'demo-2',
-        nickname: 't1',
-        publicId: 'X7Y8Z9',
-      ),
-      _FriendCardVm(
-        userId: 'demo-3',
-        nickname: 'alex',
-        publicId: 'P0Q1R2',
-      ),
-    ];
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      final friends = await widget.repository.listMyFriends(
+        appUserId: widget.appUserId,
+        deviceSecret: deviceSecret,
+      );
+      if (!mounted) return;
+      setState(() {
+        _friends = friends;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      await _showError(context, e);
+    }
   }
 
   @override
@@ -62,8 +71,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 );
               },
               style: OutlinedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 shape: const StadiumBorder(),
@@ -74,7 +82,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
         ],
       ),
-      body: _friends.isEmpty ? _buildEmptyState(context) : _buildList(context),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _friends.isEmpty
+              ? _buildEmptyState(context)
+              : _buildList(context),
     );
   }
 
@@ -107,36 +119,37 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Widget _buildList(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-      itemCount: _friends.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final friend = _friends[index];
-        final note = _notesByUserId[friend.userId] ?? '';
-        return _FriendCard(
-          friend: friend,
-          note: note,
-          onOpenProfile: () {
-            unawaited(_showProfileStub(context, friend));
-          },
-          onEditNote: () {
-            unawaited(_editNote(context, friend, initial: note));
-          },
-          onAddToPlan: () {
-            unawaited(
-              _showInDevelopmentModal(
-                context,
-                title: 'Добавить в план',
-                message: 'В разработке',
-              ),
-            );
-          },
-          onRemoveFriend: () {
-            unawaited(_removeFriend(context, friend));
-          },
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        itemCount: _friends.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final friend = _friends[index];
+          return _FriendCard(
+            friend: friend,
+            onOpenProfile: () {
+              unawaited(_showProfileStub(context));
+            },
+            onEditNote: () {
+              unawaited(_editNote(context, friend));
+            },
+            onAddToPlan: () {
+              unawaited(
+                _showInDevelopmentModal(
+                  context,
+                  title: 'Добавить в план',
+                  message: 'В разработке',
+                ),
+              );
+            },
+            onRemoveFriend: () {
+              unawaited(_removeFriend(context, friend));
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -164,7 +177,35 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
-  Future<bool> _confirmRemove(BuildContext context, String nickname) async {
+  Future<void> _showProfileStub(BuildContext context) async {
+    await _showInDevelopmentModal(
+      context,
+      title: 'Профиль',
+      message: 'В разработке',
+    );
+  }
+
+  Future<void> _showError(BuildContext context, Object error) async {
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Ошибка'),
+          content: Text(error.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _confirmRemove(BuildContext context, String displayName) async {
     final res = await showDialog<bool>(
       context: context,
       useRootNavigator: true,
@@ -172,7 +213,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Удалить из друзей?'),
-          content: Text('Удалить «$nickname» из друзей?'),
+          content: Text('Удалить «$displayName» из друзей?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -189,21 +230,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return res ?? false;
   }
 
-  Future<void> _showProfileStub(
-      BuildContext context, _FriendCardVm friend) async {
-    await _showInDevelopmentModal(
-      context,
-      title: 'Профиль',
-      message: 'В разработке',
-    );
-  }
-
-  Future<void> _editNote(
-    BuildContext context,
-    _FriendCardVm friend, {
-    required String initial,
-  }) async {
-    final controller = TextEditingController(text: initial);
+  Future<void> _editNote(BuildContext context, FriendDto friend) async {
+    final controller = TextEditingController(text: friend.note);
 
     final saved = await showDialog<String?>(
       context: context,
@@ -261,43 +289,44 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (!mounted) return;
     if (saved == null) return;
 
-    final trimmed = saved.trim();
-    setState(() {
-      if (trimmed.isEmpty) {
-        _notesByUserId.remove(friend.userId);
-      } else {
-        _notesByUserId[friend.userId] = trimmed;
-      }
-    });
+    try {
+      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      await widget.repository.upsertFriendNote(
+        appUserId: widget.appUserId,
+        deviceSecret: deviceSecret,
+        friendUserId: friend.friendUserId,
+        note: saved.trim(),
+      );
+      if (!mounted) return;
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      await _showError(context, e);
+    }
   }
 
-  Future<void> _removeFriend(BuildContext context, _FriendCardVm friend) async {
-    final confirmed = await _confirmRemove(context, friend.nickname);
+  Future<void> _removeFriend(BuildContext context, FriendDto friend) async {
+    final confirmed = await _confirmRemove(context, friend.displayName);
     if (!confirmed) return;
-    if (!mounted) return;
 
-    setState(() {
-      _friends.removeWhere((f) => f.userId == friend.userId);
-      _notesByUserId.remove(friend.userId);
-    });
+    try {
+      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      await widget.repository.removeFriend(
+        appUserId: widget.appUserId,
+        deviceSecret: deviceSecret,
+        friendUserId: friend.friendUserId,
+      );
+      if (!mounted) return;
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      await _showError(context, e);
+    }
   }
-}
-
-class _FriendCardVm {
-  final String userId;
-  final String nickname;
-  final String publicId;
-
-  const _FriendCardVm({
-    required this.userId,
-    required this.nickname,
-    required this.publicId,
-  });
 }
 
 class _FriendCard extends StatelessWidget {
-  final _FriendCardVm friend;
-  final String note;
+  final FriendDto friend;
 
   final VoidCallback onOpenProfile;
   final VoidCallback onEditNote;
@@ -306,7 +335,6 @@ class _FriendCard extends StatelessWidget {
 
   const _FriendCard({
     required this.friend,
-    required this.note,
     required this.onOpenProfile,
     required this.onEditNote,
     required this.onAddToPlan,
@@ -348,12 +376,9 @@ class _FriendCard extends StatelessWidget {
                       width: 48,
                       height: 48,
                       alignment: Alignment.center,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.08),
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
                       child: Text(
-                        _initials(friend.nickname),
+                        _initials(friend.displayName),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -363,7 +388,7 @@ class _FriendCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ник: ${friend.nickname}', style: titleStyle),
+                        Text('Ник: ${friend.displayName}', style: titleStyle),
                         const SizedBox(height: 2),
                         Text(
                           'Public ID: ${friend.publicId}',
@@ -374,11 +399,7 @@ class _FriendCard extends StatelessWidget {
                   ),
                   Icon(
                     Icons.chevron_right,
-                    color: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.color
-                        ?.withOpacity(0.7),
+                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
                   ),
                 ],
               ),
@@ -399,10 +420,10 @@ class _FriendCard extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
                     child: Text(
-                      note.isEmpty ? 'Мой комментарий…' : note,
+                      friend.note.isEmpty ? 'Мой комментарий…' : friend.note,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: note.isEmpty
+                      style: friend.note.isEmpty
                           ? hintStyle
                           : Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -428,8 +449,7 @@ class _FriendCard extends StatelessWidget {
                     'Удалить',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: const Color.fromARGB(
-                              255, 255, 67, 67), // tweak via IDE color picker
+                          color: const Color(0xFFE25B5B),
                         ),
                   ),
                 ),
@@ -438,8 +458,7 @@ class _FriendCard extends StatelessWidget {
               OutlinedButton(
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
@@ -452,8 +471,8 @@ class _FriendCard extends StatelessWidget {
     );
   }
 
-  static String _initials(String nickname) {
-    final t = nickname.trim();
+  static String _initials(String name) {
+    final t = name.trim();
     if (t.isEmpty) return 'U';
     return t.characters.take(1).toString().toUpperCase();
   }
