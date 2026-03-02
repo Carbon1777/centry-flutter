@@ -128,6 +128,14 @@ class PushNotifications {
       String? title,
       String? body,
     })? onPlanMemberRemovedOpen,
+    Future<void> Function({
+      required String planId,
+      required String joinedUserId,
+      String? joinedNickname,
+      String? planTitle,
+      String? title,
+      String? body,
+    })? onPlanMemberJoinedByInviteOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -225,6 +233,32 @@ class PushNotifications {
         return;
       }
 
+      if (kind == 'PLAN_MEMBER_JOINED_BY_INVITE') {
+        final joinedUserId = (map['joined_user_id'] ?? '').toString();
+        final joinedNickname = (map['joined_nickname'] ?? '').toString().trim();
+        final planTitle = (map['plan_title'] ?? '').toString().trim();
+        if (planId.isEmpty || joinedUserId.isEmpty) return;
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PushNotifications] open PLAN_MEMBER_JOINED_BY_INVITE plan_id=$planId joined_user_id=$joinedUserId',
+          );
+        }
+
+        final cb = onPlanMemberJoinedByInviteOpen;
+        if (cb == null) return;
+
+        await cb(
+          planId: planId,
+          joinedUserId: joinedUserId,
+          joinedNickname: joinedNickname.isEmpty ? null : joinedNickname,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
+        );
+        return;
+      }
+
 
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
@@ -312,6 +346,15 @@ class PushNotifications {
     final ownerUserId = (m.data['owner_user_id'] ?? '').toString();
     return planId.isNotEmpty && removedUserId.isNotEmpty && ownerUserId.isNotEmpty;
   }
+  static bool isPlanMemberJoinedByInvite(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    if (t == 'PLAN_MEMBER_JOINED_BY_INVITE') return true;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final joinedUserId = (m.data['joined_user_id'] ?? '').toString();
+    return planId.isNotEmpty && joinedUserId.isNotEmpty;
+  }
+
 
   static Future<void> showInternalInvite(RemoteMessage m) async {
     if (kDebugMode) {
@@ -595,7 +638,107 @@ class PushNotifications {
 
     await _local.show(id, title, computedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
+  }  static Future<void> showPlanMemberJoinedByInvite(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showPlanMemberJoinedByInvite id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showPlanMemberJoinedByInvite data=${m.data}');
+      debugPrint(
+        '[PushNotifications] showPlanMemberJoinedByInvite notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
+      );
+    }
+
+    if (!isPlanMemberJoinedByInvite(m)) return;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final joinedUserId = (m.data['joined_user_id'] ?? '').toString();
+    if (planId.isEmpty || joinedUserId.isEmpty) return;
+
+    final joinedNickname =
+        (m.data['joined_nickname'] ?? '').toString().trim();
+    final planTitle =
+        (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
+
+    // Canon: title/body should come from server; fallbacks are only for safety.
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'Участник вступил в план по Invite';
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final computedBody = rawBody.isNotEmpty
+        ? rawBody
+        : (() {
+            if (joinedNickname.isNotEmpty && planTitle.isNotEmpty) {
+              // Requested: nick and plan title in quotes.
+              return 'Участник «$joinedNickname» вступил в план «$planTitle» по Invite';
+            }
+            if (joinedNickname.isNotEmpty) {
+              return 'Участник «$joinedNickname» вступил в план по Invite';
+            }
+            if (planTitle.isNotEmpty) {
+              return 'Участник вступил в план «$planTitle» по Invite';
+            }
+            return 'Откройте приложение, чтобы посмотреть.';
+          })();
+
+    final payload = jsonEncode({
+      'kind': 'PLAN_MEMBER_JOINED_BY_INVITE',
+      'plan_id': planId,
+      'joined_user_id': joinedUserId,
+      if (joinedNickname.isNotEmpty) 'joined_nickname': joinedNickname,
+      if (planTitle.isNotEmpty) 'plan_title': planTitle,
+      'title': title,
+      'body': computedBody,
+    });
+
+    final msgId = (m.messageId ?? '').toString();
+    final idSeed = msgId.isNotEmpty
+        ? 'joined_by_invite:$planId:$joinedUserId:$msgId'
+        : 'joined_by_invite:$planId:$joinedUserId';
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    await _local.cancel(id);
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_JOINED_BY_INVITE planId=$planId joinedUserId=$joinedUserId',
+      );
+    }
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, computedBody, details, payload: payload);
+    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
+
+
 
 }
 
@@ -614,6 +757,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showInternalInvite(message);
     await PushNotifications.showPlanMemberLeft(message);
     await PushNotifications.showPlanMemberRemoved(message);
+    await PushNotifications.showPlanMemberJoinedByInvite(message);
   } catch (e) {
     if (kDebugMode) debugPrint('[FCM-BG] error: $e');
   }
