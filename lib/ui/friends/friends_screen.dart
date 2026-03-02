@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../data/local/user_snapshot_storage.dart';
 import '../../data/friends/friend_dto.dart';
+import '../../data/friends/friend_request_result_dto.dart';
+import '../../data/friends/accept_friend_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
+import '../../data/local/user_snapshot_storage.dart';
+import 'widgets/add_friend_by_public_id_dialog.dart';
 
 class FriendsScreen extends StatefulWidget {
   final String appUserId; // доменный app_users.id
@@ -35,7 +38,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      final deviceSecret =
+          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       final friends = await widget.repository.listMyFriends(
         appUserId: widget.appUserId,
         deviceSecret: deviceSecret,
@@ -62,16 +66,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
             padding: const EdgeInsets.only(right: 12),
             child: OutlinedButton.icon(
               onPressed: () {
-                unawaited(
-                  _showInDevelopmentModal(
-                    context,
-                    title: 'Добавить в друзья',
-                    message: 'В разработке',
-                  ),
-                );
+                unawaited(_handleAddFriendPressed(context));
               },
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 visualDensity: VisualDensity.compact,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 shape: const StadiumBorder(),
@@ -108,7 +107,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Добавляй друзей через поиск по Public ID или из списков в продукте.',
+              'Добавляй друзей через поиск по Public ID или список участников в планах.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -153,6 +152,100 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  // =============================
+  // Add friend by Public ID (v0)
+  // =============================
+
+  Future<void> _handleAddFriendPressed(BuildContext context) async {
+    final publicId = await AddFriendByPublicIdDialog.show(context);
+    if (!mounted) return;
+    if (publicId == null) return;
+
+    try {
+      final deviceSecret =
+          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+
+      final FriendRequestResultDto r =
+          await widget.repository.requestFriendByPublicId(
+        appUserId: widget.appUserId,
+        deviceSecret: deviceSecret,
+        targetPublicId: publicId,
+      );
+
+      if (!mounted) return;
+
+      if (r.requestStatus == 'ALREADY_FRIENDS') {
+        await _showInfo(
+          context,
+          title: 'Готово',
+          message: 'Этот пользователь уже у тебя в друзьях.',
+        );
+        return;
+      }
+
+      if (r.requestStatus == 'PENDING' && r.requestDirection == 'OUTGOING') {
+        await _showInfo(
+          context,
+          title: 'Запрос отправлен',
+          message:
+              'Запрос в друзья отправлен пользователю «${r.targetDisplayName}».',
+        );
+        return;
+      }
+
+      if (r.requestStatus == 'PENDING' && r.requestDirection == 'INCOMING') {
+        final accepted = await _confirm(
+          context,
+          title: 'Входящий запрос',
+          message:
+              'У тебя уже есть входящий запрос от «${r.targetDisplayName}». Принять сейчас?',
+          confirmText: 'Принять',
+          cancelText: 'Позже',
+        );
+        if (!accepted) return;
+
+        final requestId = r.requestId;
+        if (requestId == null || requestId.isEmpty) {
+          await _showError(context, 'request_id is missing');
+          return;
+        }
+
+        final AcceptFriendResultDto a =
+            await widget.repository.acceptFriendRequest(
+          appUserId: widget.appUserId,
+          deviceSecret: deviceSecret,
+          requestId: requestId,
+        );
+
+        if (!mounted) return;
+
+        await _showInfo(
+          context,
+          title: 'Добавлено',
+          message: '«${a.friendDisplayName}» теперь у тебя в друзьях.',
+        );
+
+        await _load();
+        return;
+      }
+
+      // Fallback: show raw status
+      await _showInfo(
+        context,
+        title: 'Статус',
+        message:
+            'request_status=${r.requestStatus}, direction=${r.requestDirection}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await _showError(context, e);
+    }
+  }
+
+  // =============================
+  // Shared modals
+  // =============================
+
   Future<void> _showInDevelopmentModal(
     BuildContext context, {
     required String title,
@@ -183,6 +276,61 @@ class _FriendsScreenState extends State<FriendsScreen> {
       title: 'Профиль',
       message: 'В разработке',
     );
+  }
+
+  Future<void> _showInfo(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Ок'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String confirmText,
+    required String cancelText,
+  }) async {
+    final res = await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(cancelText),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(confirmText),
+            ),
+          ],
+        );
+      },
+    );
+    return res ?? false;
   }
 
   Future<void> _showError(BuildContext context, Object error) async {
@@ -229,6 +377,10 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
     return res ?? false;
   }
+
+  // =============================
+  // Note + remove
+  // =============================
 
   Future<void> _editNote(BuildContext context, FriendDto friend) async {
     final controller = TextEditingController(text: friend.note);
@@ -290,7 +442,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (saved == null) return;
 
     try {
-      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      final deviceSecret =
+          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       await widget.repository.upsertFriendNote(
         appUserId: widget.appUserId,
         deviceSecret: deviceSecret,
@@ -310,7 +463,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
     if (!confirmed) return;
 
     try {
-      final deviceSecret = await widget.userSnapshotStorage.getOrCreateDeviceSecret();
+      final deviceSecret =
+          await widget.userSnapshotStorage.getOrCreateDeviceSecret();
       await widget.repository.removeFriend(
         appUserId: widget.appUserId,
         deviceSecret: deviceSecret,
@@ -376,7 +530,10 @@ class _FriendCard extends StatelessWidget {
                       width: 48,
                       height: 48,
                       alignment: Alignment.center,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.08),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.08),
                       child: Text(
                         _initials(friend.displayName),
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -399,7 +556,11 @@ class _FriendCard extends StatelessWidget {
                   ),
                   Icon(
                     Icons.chevron_right,
-                    color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withOpacity(0.7),
                   ),
                 ],
               ),
@@ -458,7 +619,8 @@ class _FriendCard extends StatelessWidget {
               OutlinedButton(
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
