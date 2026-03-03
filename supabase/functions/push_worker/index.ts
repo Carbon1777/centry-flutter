@@ -5,7 +5,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // PUSH is a "budilnik". To avoid race duplicates (app consumes INBOX in foreground, but push_worker runs first),
 // we apply a small grace period before sending PUSH for app-handled events.
-const PUSH_GRACE_MS = 30_000;
+const PUSH_GRACE_MS = 15_000;
 
 function shouldApplyGrace(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
