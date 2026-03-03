@@ -3,6 +3,16 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// PUSH is a "budilnik". To avoid race duplicates (app consumes INBOX in foreground, but push_worker runs first),
+// we apply a small grace period before sending PUSH for app-handled events.
+const PUSH_GRACE_MS = 30_000;
+
+function shouldApplyGrace(payload: Record<string, unknown>): boolean {
+  const t = String(payload["type"] ?? "");
+  if (!t) return false;
+  return t.startsWith("PLAN_") || t.startsWith("FRIEND_");
+}
+
 const FCM_PROJECT_ID = Deno.env.get("FCM_PROJECT_ID")!;
 const FCM_CLIENT_EMAIL = Deno.env.get("FCM_CLIENT_EMAIL")!;
 const FCM_PRIVATE_KEY = (Deno.env.get("FCM_PRIVATE_KEY") || "").replace(/\\n/g, "\n");
@@ -91,6 +101,7 @@ type Delivery = {
   event_id: string;
   user_id: string;
   payload: Record<string, unknown> | null;
+  created_at?: string; // timestamp with time zone
 };
 
 type DeviceToken = {
@@ -173,7 +184,7 @@ function safeShort(text: string, maxLen: number): string {
 
 serve(async () => {
   const dRes = await sbFetch(
-    `/rest/v1/notification_deliveries?select=id,event_id,user_id,payload&channel=eq.PUSH&status=eq.PENDING&limit=50&order=created_at.asc`,
+    `/rest/v1/notification_deliveries?select=id,event_id,user_id,payload,created_at&channel=eq.PUSH&status=eq.PENDING&limit=50&order=created_at.asc`,
   );
   const deliveries = (await dRes.json()) as Delivery[];
   if (!dRes.ok) {
@@ -217,6 +228,30 @@ serve(async () => {
       });
       processed++;
       continue;
+    }
+
+    // ✅ Race guard: if this PUSH delivery is very fresh, give the app a chance to consume INBOX first.
+    // We leave the PUSH delivery as PENDING, so the next push_worker run can pick it up.
+    const createdAtRaw = String((d as unknown as { created_at?: string }).created_at ?? "");
+    if (createdAtRaw.length > 0 && shouldApplyGrace(payload)) {
+      const createdMs = Date.parse(createdAtRaw);
+      if (!Number.isNaN(createdMs)) {
+        const ageMs = Date.now() - createdMs;
+        if (ageMs >= 0 && ageMs < PUSH_GRACE_MS) {
+          await writeDeliveryDebug(deliveryId, {
+            at: new Date().toISOString(),
+            stage: "grace_skip",
+            ok: true,
+            reason: "too_fresh",
+            age_ms: ageMs,
+            grace_ms: PUSH_GRACE_MS,
+            event_id: eventId,
+            user_id: userId,
+            type: String(payload["type"] ?? ""),
+          });
+          continue;
+        }
+      }
     }
 
     const title = String(payload["title"] ?? "Centry");

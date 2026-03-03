@@ -316,22 +316,8 @@ class _MemberRow extends StatelessWidget {
                     style: TextStyle(fontWeight: nicknameWeight, fontSize: 14),
                   ),
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  '•  ID',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    member.publicId,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ),
+                // UX: показываем только ник (public_id не показываем в списке участников).
+
               ],
             ),
           ),

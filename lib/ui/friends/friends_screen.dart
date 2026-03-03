@@ -541,6 +541,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         note: saved.trim(),
       );
       if (!mounted) return;
+
+      // Canon: initiator gets only a destructive center toast, no modal.
+      // Do not await the toast to avoid coupling refresh to toast dismissal.
+      unawaited(showCenterToast(
+        context,
+        message: 'Удален из друзей',
+        isError: true,
+      ));
+
+      // Refresh exactly once.
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -558,6 +568,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         friendUserId: friend.friendUserId,
       );
       if (!mounted) return;
+
+      // Canon: initiator gets only a destructive center toast, no modal.
+      // Do not await the toast to avoid coupling refresh to toast dismissal.
+      unawaited(showCenterToast(
+        context,
+        message: 'Удален из друзей',
+        isError: true,
+      ));
+
+      // Refresh exactly once.
       await _load();
     } catch (e) {
       if (!mounted) return;
