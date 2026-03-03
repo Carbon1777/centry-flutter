@@ -110,9 +110,9 @@ class InviteUiToastRequest {
   });
 
   @override
-  String toString() => 'InviteUiToastRequest(message=$message, planId=$planId, source=$source)';
+  String toString() =>
+      'InviteUiToastRequest(message=$message, planId=$planId, source=$source)';
 }
-
 
 @immutable
 class OwnerResultUiRequest {
@@ -135,7 +135,8 @@ class OwnerResultUiRequest {
   String get dedupKey => '$inviteId:$action';
 
   @override
-  String toString() => 'OwnerResultUiRequest(inviteId=$inviteId, planId=$planId, action=$action, source=$source)';
+  String toString() =>
+      'OwnerResultUiRequest(inviteId=$inviteId, planId=$planId, action=$action, source=$source)';
 }
 
 typedef InviteUiActionHandler = Future<InviteUiActionResult> Function(
@@ -168,7 +169,8 @@ class InviteUiCoordinator {
   static final InviteUiCoordinator instance = InviteUiCoordinator._();
 
   final Queue<InviteUiRequest> _queue = Queue<InviteUiRequest>();
-  final Queue<OwnerResultUiRequest> _ownerResultQueue = Queue<OwnerResultUiRequest>();
+  final Queue<OwnerResultUiRequest> _ownerResultQueue =
+      Queue<OwnerResultUiRequest>();
   final Queue<InviteUiToastRequest> _toastQueue = Queue<InviteUiToastRequest>();
 
   final Set<String> _queuedInviteIds = <String>{};
@@ -176,6 +178,9 @@ class InviteUiCoordinator {
 
   final Set<String> _queuedOwnerResultKeys = <String>{};
   final Set<String> _handledOwnerResultKeys = <String>{};
+
+  // ✅ NEW: prevents duplicate dialogs while one owner-result is currently being shown/processed.
+  final Set<String> _inFlightOwnerResultKeys = <String>{};
 
   GlobalKey<NavigatorState>? _navigatorKey;
 
@@ -254,9 +259,6 @@ class InviteUiCoordinator {
     _scheduleFlush();
   }
 
-  /// Показать информационное сообщение (toast/snackbar) последовательно, без перетирания.
-  /// Используется, например, для уведомлений владельца плана: "принято/отклонено".
-  
   /// Добавить owner-result (ACCEPT/DECLINE) в очередь инфо-модалок (без дублей по inviteId+action).
   /// Канон: owner-result НЕ должен открывать accept/decline модалку. Только информационная модалка с кнопкой "Закрыть".
   void enqueueOwnerResult(OwnerResultUiRequest request) {
@@ -269,6 +271,12 @@ class InviteUiCoordinator {
 
     if (_handledOwnerResultKeys.contains(key)) {
       _log('enqueueOwnerResult ignored: already handled key=$key');
+      return;
+    }
+
+    // ✅ NEW: while dialog is visible / in-flight, ignore duplicates (backgroundIntent can fire twice).
+    if (_inFlightOwnerResultKeys.contains(key)) {
+      _log('enqueueOwnerResult ignored: in-flight key=$key');
       return;
     }
 
@@ -288,7 +296,7 @@ class InviteUiCoordinator {
     _scheduleFlush();
   }
 
-void enqueueToast({
+  void enqueueToast({
     required String message,
     String? planId,
     InviteUiSource source = InviteUiSource.unknown,
@@ -300,7 +308,9 @@ void enqueueToast({
       InviteUiToastRequest(message: m, planId: planId, source: source),
     );
 
-    _log('enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}');
+    _log(
+      'enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}',
+    );
     _scheduleFlush();
   }
 
@@ -316,6 +326,7 @@ void enqueueToast({
     _handledInviteIds.clear();
     _queuedOwnerResultKeys.clear();
     _handledOwnerResultKeys.clear();
+    _inFlightOwnerResultKeys.clear();
     _dialogVisible = false;
     _isFlushing = false;
     _log('resetForDebug');
@@ -323,7 +334,6 @@ void enqueueToast({
 
   void _scheduleFlush() {
     if (_isFlushing) return;
-    // Следующий кадр/тик — чтобы не спорить с текущим build/frame.
     scheduleMicrotask(_flushIfPossible);
   }
 
@@ -361,20 +371,21 @@ void enqueueToast({
           _queuedInviteIds.remove(request.inviteId);
 
           await _showDialogFor(request);
-          // loop — если в очереди есть еще invite, покажем следующий
           continue;
         }
 
         if (_ownerResultQueue.isNotEmpty) {
           final request = _ownerResultQueue.removeFirst();
-          _queuedOwnerResultKeys.remove(request.dedupKey);
+
+          // ✅ Do NOT remove from _queuedOwnerResultKeys here.
+          // Keep it queued/in-flight until the dialog is fully completed,
+          // otherwise backgroundIntent can enqueue the same key again.
+          _inFlightOwnerResultKeys.add(request.dedupKey);
 
           await _showOwnerResultDialogFor(request);
-          // loop — если в очереди есть еще owner-result, покажем следующий
           continue;
         }
 
-        // No dialogs left to show right now.
         return;
       }
     } finally {
@@ -408,7 +419,8 @@ void enqueueToast({
         useRootNavigator: true,
         builder: (dialogContext) {
           return AlertDialog(
-            insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
             titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
             contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
             actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -431,13 +443,15 @@ void enqueueToast({
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(dialogContext, rootNavigator: true)
-                    .pop(InviteUiDecision.decline),
+                onPressed: () =>
+                    Navigator.of(dialogContext, rootNavigator: true)
+                        .pop(InviteUiDecision.decline),
                 child: const Text('Отклонить'),
               ),
               FilledButton(
-                onPressed: () => Navigator.of(dialogContext, rootNavigator: true)
-                    .pop(InviteUiDecision.accept),
+                onPressed: () =>
+                    Navigator.of(dialogContext, rootNavigator: true)
+                        .pop(InviteUiDecision.accept),
                 child: const Text('Принять'),
               ),
             ],
@@ -448,7 +462,6 @@ void enqueueToast({
       _dialogVisible = false;
       _log('show dialog error inviteId=${request.inviteId}: $e');
       await _safeOnError(e, st);
-      // Вернем invite в начало очереди, чтобы не потерять.
       if (!_handledInviteIds.contains(request.inviteId) &&
           !_queuedInviteIds.contains(request.inviteId)) {
         _queue.addFirst(request);
@@ -462,8 +475,6 @@ void enqueueToast({
 
     if (decision == null) {
       _log('dialog dismissed without decision inviteId=${request.inviteId}');
-      // На всякий случай считаем это "без действия" и НЕ помечаем как handled.
-      // Можно вернуть в очередь, но по контракту у нас barrierDismissible=false.
       return;
     }
 
@@ -495,7 +506,6 @@ void enqueueToast({
 
       if (result.message != null && result.message!.trim().isNotEmpty) {
         var m = result.message!.trim();
-        // UI-only hint: decline should look negative even if outer toast uses a generic "success" icon.
         if (decision == InviteUiDecision.decline && !m.startsWith('⛔')) {
           m = '⛔ $m';
         }
@@ -524,21 +534,14 @@ void enqueueToast({
       );
 
       await _safeOnError(e, st);
-
-      // Покажем fallback-ошибку, если внешний слой не показал свой toast.
       await onToast('Ошибка. Попробуйте еще раз.');
-
-      // Важно: не помечаем handled. Можно переотправить/повторить.
     } finally {
-      // После завершения действия пробуем показать следующий invite.
       _scheduleFlush();
     }
   }
 
-
-  Future<void> _ackOwnerResultDeliveryIfPossible(OwnerResultUiRequest request) async {
-    // Server-first contract: when owner-result is shown in foreground, we must ACK the corresponding INBOX delivery
-    // so that server can suppress the redundant PUSH for the same event.
+  Future<void> _ackOwnerResultDeliveryIfPossible(
+      OwnerResultUiRequest request) async {
     final client = Supabase.instance.client;
     final authUserId = client.auth.currentUser?.id;
     final authUserIdNorm = authUserId?.trim();
@@ -586,14 +589,12 @@ void enqueueToast({
     if (onError == null) return;
     try {
       await onError(error, stackTrace);
-    } catch (_) {
-      // Не валим coordinator из-за ошибки в логгере.
-    }
+    } catch (_) {}
   }
-
 
   Future<void> _showOwnerResultDialogFor(OwnerResultUiRequest request) async {
     final context = _navigatorKey!.currentContext!;
+    final key = request.dedupKey;
 
     _dialogVisible = true;
 
@@ -602,9 +603,8 @@ void enqueueToast({
     final title = (request.title?.trim().isNotEmpty == true)
         ? request.title!.trim()
         : (isAccept ? 'Приглашение принято' : 'Приглашение отклонено');
-    final body = (request.body?.trim().isNotEmpty == true)
-        ? request.body!.trim()
-        : '';
+    final body =
+        (request.body?.trim().isNotEmpty == true) ? request.body!.trim() : '';
 
     _log(
       'show owner-result dialog inviteId=${request.inviteId} planId=${request.planId} '
@@ -617,51 +617,58 @@ void enqueueToast({
         barrierDismissible: false,
         useRootNavigator: true,
         builder: (dialogContext) {
-          final titleStyle = Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
-                color: isAccept ? Colors.green : Colors.red,
-                fontWeight: FontWeight.w700,
-              );
+          final titleStyle =
+              Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+                    color: isAccept ? Colors.green : Colors.red,
+                    fontWeight: FontWeight.w700,
+                  );
 
           return AlertDialog(
-             insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-             titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-             contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-             actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-             title: Text(title, style: titleStyle),
-             content: body.isNotEmpty
-                 ? ConstrainedBox(
-                     constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
-                     child: Text(
-                       body,
-                       style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
-                             fontSize: 16,
-                             height: 1.3,
-                           ),
-                     ),
-                   )
-                 : null,
-             actionsAlignment: MainAxisAlignment.center,
-             actions: <Widget>[
-               TextButton(
-                 onPressed: () {
-                   Navigator.of(dialogContext).pop();
-                 },
-                 child: const Text('Закрыть'),
-               ),
-             ],
-           );
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+            titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+            contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+            actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            title: Text(title, style: titleStyle),
+            content: body.isNotEmpty
+                ? ConstrainedBox(
+                    constraints:
+                        const BoxConstraints(minWidth: 280, maxWidth: 360),
+                    child: Text(
+                      body,
+                      style:
+                          Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                                fontSize: 16,
+                                height: 1.3,
+                              ),
+                    ),
+                  )
+                : null,
+            actionsAlignment: MainAxisAlignment.center,
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Закрыть'),
+              ),
+            ],
+          );
         },
       );
 
-
       await _ackOwnerResultDeliveryIfPossible(request);
 
-      _handledOwnerResultKeys.add(request.dedupKey);
+      _handledOwnerResultKeys.add(key);
     } catch (e, st) {
-      _handledOwnerResultKeys.add(request.dedupKey);
+      _handledOwnerResultKeys.add(key);
       _onError?.call(e, st);
       _log('owner-result dialog error: $e');
     } finally {
+      // ✅ release dedup guards only after dialog is fully completed
+      _queuedOwnerResultKeys.remove(key);
+      _inFlightOwnerResultKeys.remove(key);
+
       _dialogVisible = false;
       _scheduleFlush();
     }
