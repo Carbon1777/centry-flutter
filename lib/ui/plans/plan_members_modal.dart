@@ -9,6 +9,7 @@ class PlanMembersModal extends StatefulWidget {
   final List<PlanMemberDto> members;
 
   final bool canAddMembers;
+
   /// Read-only view (archive/history): hide any action icons.
   final bool isReadOnly;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
@@ -40,8 +41,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   bool _manualRefreshing = false;
   bool _autoRefreshing = false;
 
-  // Auto-refresh while the modal is open to reflect server-side membership changes
-  // (e.g. someone accepted an invite) without requiring the user to reopen the modal.
   static const Duration _kAutoRefreshInterval = Duration(seconds: 3);
   Timer? _autoRefreshTimer;
 
@@ -50,7 +49,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     super.initState();
     _owner = widget.ownerMember;
     _members = List<PlanMemberDto>.from(widget.members);
-
     _startAutoRefresh();
   }
 
@@ -64,10 +62,10 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       _members = List<PlanMemberDto>.from(widget.members);
     }
 
-    // Start/stop auto-refresh depending on whether reload callback is available.
     if (oldWidget.onReloadDetails == null && widget.onReloadDetails != null) {
       _startAutoRefresh();
-    } else if (oldWidget.onReloadDetails != null && widget.onReloadDetails == null) {
+    } else if (oldWidget.onReloadDetails != null &&
+        widget.onReloadDetails == null) {
       _stopAutoRefresh();
     }
   }
@@ -82,7 +80,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     if (widget.onReloadDetails == null) return;
     _autoRefreshTimer?.cancel();
     _autoRefreshTimer = Timer.periodic(_kAutoRefreshInterval, (_) {
-      // Silent refresh: no snackbars on background polling.
       unawaited(_refreshOnce(showError: false, showSpinner: false));
     });
   }
@@ -108,11 +105,10 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     return true;
   }
 
-  Future<void> _refreshOnce({bool showError = true, bool showSpinner = true}) async {
+  Future<void> _refreshOnce(
+      {bool showError = true, bool showSpinner = true}) async {
     if (!mounted) return;
     if (widget.onReloadDetails == null) return;
-
-    // Prevent overlapping refreshes (manual/auto).
     if (_manualRefreshing || _autoRefreshing) return;
 
     if (showSpinner) {
@@ -128,7 +124,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       final nextOwner = details.ownerMember ?? _owner;
       final nextMembers = List<PlanMemberDto>.from(details.members);
 
-      // Avoid unnecessary rebuilds if nothing changed.
       final ownerChanged = !_sameMember(nextOwner, _owner);
       final membersChanged = !_sameMembersList(nextMembers, _members);
 
@@ -237,7 +232,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                                 ),
                               );
 
-                              // ✅ refresh only when something was actually added
                               if (ok == true) {
                                 await _refreshOnce();
                               }
@@ -252,7 +246,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                           ? const SizedBox(
                               width: 18,
                               height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
                             )
                           : const Text(
                               'Добавить участника',
@@ -305,11 +301,11 @@ class _MemberRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 39.6, // +10%
+            height: 39.6, // +10%
             decoration: BoxDecoration(
               color: Colors.grey.shade800,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(9),
             ),
           ),
           const SizedBox(width: 10),
@@ -317,19 +313,26 @@ class _MemberRow extends StatelessWidget {
             child: Text(
               member.nickname,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: nicknameWeight, fontSize: 14),
+              style: TextStyle(
+                fontWeight: nicknameWeight,
+                fontSize: 15.4, // +10%
+              ),
             ),
           ),
           if (!isReadOnly && member.canAddFriend)
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.person_add_alt_1, size: 20),
+              icon: const Icon(Icons.person_add_alt_1, size: 22), // +10%
               onPressed: () {},
             ),
           if (!isReadOnly && member.canRemoveMember)
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.close, color: Colors.red, size: 20),
+              icon: const Icon(
+                Icons.close,
+                color: Colors.red,
+                size: 22, // +10%
+              ),
               onPressed: () => onRemoveMember(member.appUserId),
             ),
         ],

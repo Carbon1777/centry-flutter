@@ -45,7 +45,6 @@ class PushNotifications {
     }
   }
 
-
   static String _trimToString(dynamic v) {
     return (v ?? '').toString().trim();
   }
@@ -111,7 +110,8 @@ class PushNotifications {
   ///
   /// Goal: consistent UX even if server body sometimes includes raw nick without quotes.
   /// We keep this as presentation-only normalization (no product decisions).
-  static String _normalizeTextWithNicknameQuotes(String text, String? nickname) {
+  static String _normalizeTextWithNicknameQuotes(
+      String text, String? nickname) {
     final nick = _stripOuterQuotes(nickname ?? '');
     if (nick.isEmpty) return text;
 
@@ -120,7 +120,7 @@ class PushNotifications {
 
     // Boundaries: start/end OR whitespace/punctuation (excluding quote chars).
     final re = RegExp(
-      '(^|[\s\(\[\{\-—–,:;.!?])' + escaped + r'(?=$|[\s\)\]\}\-—–,:;.!?])',
+      '(^|[\\s\\(\\[\\{\\-—–,:;.!?])' + escaped + r'(?=$|[\s\)\]\}\-—–,:;.!?])',
       multiLine: true,
     );
 
@@ -134,7 +134,6 @@ class PushNotifications {
 
     return out;
   }
-
 
   static String? _inferLeadingNicknameFromBody(String body) {
     final s = body.trimLeft();
@@ -163,7 +162,6 @@ class PushNotifications {
 
     return null;
   }
-
 
   /// Оставляем для совместимости/возможного использования в других потоках.
   static Future<void> respondInternalInviteByToken({
@@ -231,6 +229,7 @@ class PushNotifications {
       String? title,
       String? body,
     }) onInviteAction,
+
     /// Friends local notification OPEN callback (Scenario B/C). Must route via INBOX lookup in app layer.
     Future<void> Function({
       required String type,
@@ -284,8 +283,7 @@ class PushNotifications {
 
       // Canon: for internal invite push no product actions in system notification.
       // Both tap on body and tap on "Посмотреть" route to OPEN.
-      final normalizedAction =
-          actionId.isEmpty ? kInviteActionOpen : actionId;
+      final normalizedAction = actionId.isEmpty ? kInviteActionOpen : actionId;
 
       if (normalizedAction != kInviteActionOpen) {
         return;
@@ -310,8 +308,12 @@ class PushNotifications {
       final notifBody = (map['body'] ?? '').toString().trim();
 
       if (kind == 'PLAN_MEMBER_LEFT') {
-        final leftUserId = (map['left_user_id'] ?? map['member_user_id'] ?? '').toString();
-        final leftNickname = (map['left_nickname'] ?? map['member_nickname'] ?? '').toString().trim();
+        final leftUserId =
+            (map['left_user_id'] ?? map['member_user_id'] ?? '').toString();
+        final leftNickname =
+            (map['left_nickname'] ?? map['member_nickname'] ?? '')
+                .toString()
+                .trim();
         final planTitle = (map['plan_title'] ?? '').toString().trim();
         if (planId.isEmpty || leftUserId.isEmpty) return;
         if (kDebugMode) {
@@ -338,7 +340,9 @@ class PushNotifications {
         final ownerNickname = (map['owner_nickname'] ?? '').toString().trim();
         final planTitle = (map['plan_title'] ?? '').toString().trim();
 
-        if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) return;
+        if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) {
+          return;
+        }
 
         if (kDebugMode) {
           debugPrint(
@@ -387,18 +391,19 @@ class PushNotifications {
         return;
       }
 
-
-      
       // Friends notifications: route OPEN to app-level handler (INBOX is source of truth).
       if (kind.startsWith('FRIEND_')) {
         final cb = onFriendOpen;
         if (cb == null) return;
 
-        final eventId = (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
-        final requestId = (map['request_id'] ?? map['requestId'] ?? '').toString().trim();
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
+        final requestId =
+            (map['request_id'] ?? map['requestId'] ?? '').toString().trim();
 
         if (kDebugMode) {
-          debugPrint('[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId');
+          debugPrint(
+              '[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId');
         }
 
         await cb(
@@ -411,7 +416,7 @@ class PushNotifications {
         return;
       }
 
-// Default: internal invite / owner-result.
+      // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
       if (inviteId.isEmpty || planId.isEmpty) return;
 
@@ -483,10 +488,10 @@ class PushNotifications {
     if (t == 'PLAN_MEMBER_LEFT') return true;
 
     final planId = (m.data['plan_id'] ?? '').toString();
-    final leftUserId = (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
+    final leftUserId =
+        (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
     return planId.isNotEmpty && leftUserId.isNotEmpty;
   }
-
 
   static bool isPlanMemberRemoved(RemoteMessage m) {
     final t = (m.data['type'] ?? '').toString();
@@ -495,8 +500,11 @@ class PushNotifications {
     final planId = (m.data['plan_id'] ?? '').toString();
     final removedUserId = (m.data['removed_user_id'] ?? '').toString();
     final ownerUserId = (m.data['owner_user_id'] ?? '').toString();
-    return planId.isNotEmpty && removedUserId.isNotEmpty && ownerUserId.isNotEmpty;
+    return planId.isNotEmpty &&
+        removedUserId.isNotEmpty &&
+        ownerUserId.isNotEmpty;
   }
+
   static bool isPlanMemberJoinedByInvite(RemoteMessage m) {
     final t = (m.data['type'] ?? '').toString();
     if (t == 'PLAN_MEMBER_JOINED_BY_INVITE') return true;
@@ -505,7 +513,6 @@ class PushNotifications {
     final joinedUserId = (m.data['joined_user_id'] ?? '').toString();
     return planId.isNotEmpty && joinedUserId.isNotEmpty;
   }
-
 
   static bool isFriendRequestReceived(RemoteMessage m) {
     final t = (m.data['type'] ?? '').toString();
@@ -526,7 +533,6 @@ class PushNotifications {
     return t == 'FRIEND_REQUEST_DECLINED';
   }
 
-
   static Future<void> showInternalInvite(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
@@ -544,7 +550,8 @@ class PushNotifications {
     final planId = (m.data['plan_id'] ?? '').toString();
     if (inviteId.isEmpty || planId.isEmpty) return;
 
-    final ownerAction = (m.data['action'] ?? '').toString().trim().toUpperCase();
+    final ownerAction =
+        (m.data['action'] ?? '').toString().trim().toUpperCase();
     final isOwnerResult = ownerAction == 'ACCEPT' || ownerAction == 'DECLINE';
 
     final title = isOwnerResult
@@ -614,11 +621,11 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
+    await _local.show(id, normalizedTitle, normalizedBody, details,
+        payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
-  
   static Future<void> showFriendRequest(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
@@ -653,15 +660,24 @@ class PushNotifications {
     final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
 
     final requestId = (m.data['request_id'] ?? '').toString();
-    final idSeed = requestId.isNotEmpty ? 'friend:$t:$requestId' : 'friend:$t:${m.messageId ?? ''}';
+    final idSeed = requestId.isNotEmpty
+        ? 'friend:$t:$requestId'
+        : 'friend:$t:${m.messageId ?? ''}';
     final id = idSeed.hashCode & 0x7fffffff;
 
-    final eventId = (m.data['event_id'] ?? '').toString().trim();
+    // ✅ Correlation keys (server adds these in data-only push)
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
 
     final payload = jsonEncode({
       'kind': t,
       'type': t,
       if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
       if (requestId.isNotEmpty) 'request_id': requestId,
       ...m.data,
       'title': normalizedTitle,
@@ -699,10 +715,11 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id kind=$t');
+    await _local.show(id, normalizedTitle, normalizedBody, details,
+        payload: payload);
+    if (kDebugMode)
+      debugPrint('[PushNotifications] local.show done id=$id kind=$t');
   }
-
 
   static Future<void> showFriendRemoved(RemoteMessage m) async {
     if (kDebugMode) {
@@ -720,14 +737,22 @@ class PushNotifications {
         : 'Вас удалили из друзей';
 
     final rawBody = (m.data['body'] ?? '').toString().trim();
-    final body = rawBody.isNotEmpty ? rawBody : 'Откройте приложение, чтобы посмотреть.';
+    final body =
+        rawBody.isNotEmpty ? rawBody : 'Откройте приложение, чтобы посмотреть.';
 
     final extractedNickname = _extractAnyNickname(m.data);
     final nickname = extractedNickname ?? _inferLeadingNicknameFromBody(body);
     final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
     final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
 
-    final eventId = (m.data['event_id'] ?? '').toString().trim();
+    // ✅ Correlation keys (server adds these in data-only push)
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
     final idSeed = eventId.isNotEmpty
         ? 'friend:FRIEND_REMOVED:$eventId'
         : 'friend:FRIEND_REMOVED:${m.messageId ?? ''}';
@@ -737,6 +762,7 @@ class PushNotifications {
       'kind': t,
       'type': t,
       if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
       ...m.data,
       'title': normalizedTitle,
       'body': normalizedBody,
@@ -773,11 +799,13 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id kind=$t');
+    await _local.show(id, normalizedTitle, normalizedBody, details,
+        payload: payload);
+    if (kDebugMode)
+      debugPrint('[PushNotifications] local.show done id=$id kind=$t');
   }
 
-static Future<void> showPlanMemberLeft(RemoteMessage m) async {
+  static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
         '[PushNotifications] showPlanMemberLeft id=${m.messageId} sentAt=${m.sentTime}',
@@ -795,12 +823,12 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
         (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
     if (planId.isEmpty || leftUserId.isEmpty) return;
 
-    final leftNickname = (m.data['left_nickname'] ?? m.data['member_nickname'] ?? '')
-        .toString()
-        .trim();
-    final planTitle = (m.data['plan_title'] ?? m.data['plan_name'] ?? '')
-        .toString()
-        .trim();
+    final leftNickname =
+        (m.data['left_nickname'] ?? m.data['member_nickname'] ?? '')
+            .toString()
+            .trim();
+    final planTitle =
+        (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -833,7 +861,9 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = msgId.isNotEmpty ? 'left:$planId:$leftUserId:$msgId' : 'left:$planId:$leftUserId';
+    final idSeed = msgId.isNotEmpty
+        ? 'left:$planId:$leftUserId:$msgId'
+        : 'left:$planId:$leftUserId';
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
@@ -895,7 +925,9 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) return;
 
     final ownerNickname =
-        (m.data['owner_nickname'] ?? m.data['ownerName'] ?? '').toString().trim();
+        (m.data['owner_nickname'] ?? m.data['ownerName'] ?? '')
+            .toString()
+            .trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
 
@@ -978,12 +1010,15 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
 
     await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
-  }  static Future<void> showPlanMemberJoinedByInvite(RemoteMessage m) async {
+  }
+
+  static Future<void> showPlanMemberJoinedByInvite(RemoteMessage m) async {
     if (kDebugMode) {
       debugPrint(
         '[PushNotifications] showPlanMemberJoinedByInvite id=${m.messageId} sentAt=${m.sentTime}',
       );
-      debugPrint('[PushNotifications] showPlanMemberJoinedByInvite data=${m.data}');
+      debugPrint(
+          '[PushNotifications] showPlanMemberJoinedByInvite data=${m.data}');
       debugPrint(
         '[PushNotifications] showPlanMemberJoinedByInvite notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
       );
@@ -995,8 +1030,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     final joinedUserId = (m.data['joined_user_id'] ?? '').toString();
     if (planId.isEmpty || joinedUserId.isEmpty) return;
 
-    final joinedNickname =
-        (m.data['joined_nickname'] ?? '').toString().trim();
+    final joinedNickname = (m.data['joined_nickname'] ?? '').toString().trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
 
@@ -1010,7 +1044,6 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
         ? rawBody
         : (() {
             if (joinedNickname.isNotEmpty && planTitle.isNotEmpty) {
-              // Requested: nick and plan title in quotes.
               return 'Участник ${_quoteNickname(joinedNickname)} вступил в план «$planTitle» по Invite';
             }
             if (joinedNickname.isNotEmpty) {
@@ -1080,16 +1113,14 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
     await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
-
-
-
 }
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     if (kDebugMode) {
-      debugPrint('[FCM-BG] received id=${message.messageId} sentAt=${message.sentTime}');
+      debugPrint(
+          '[FCM-BG] received id=${message.messageId} sentAt=${message.sentTime}');
       debugPrint('[FCM-BG] data=${message.data}');
       debugPrint(
         '[FCM-BG] notificationTitle=${message.notification?.title} notificationBody=${message.notification?.body}',
