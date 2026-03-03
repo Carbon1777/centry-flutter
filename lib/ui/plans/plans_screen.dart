@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,7 +26,7 @@ class PlansScreen extends StatefulWidget {
 }
 
 class _PlansScreenState extends State<PlansScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final PlansRepository _repo;
   late final TabController _tabController;
 
@@ -40,14 +42,64 @@ class _PlansScreenState extends State<PlansScreen>
   /// Added only when PlanDetailsScreen returns `pop(true)` (server-confirmed change).
   final Set<String> _hiddenPlanIds = <String>{};
 
+  Timer? _resumeRefetchTimer;
+  DateTime? _lastResumedAt;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _repo = PlansRepositoryImpl(Supabase.instance.client);
     _tabController = TabController(length: 2, vsync: this);
+
     _loadAll();
+
     // Realtime refresh: if membership changes (e.g., removed by owner), refresh list immediately.
     Future<void>.microtask(_ensureInboxRealtimeSubscribed);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // When the app is resumed (e.g., tapped a PUSH while app was background/terminated),
+      // realtime INSERTs that happened in background might be missed. Force a refetch.
+      // ignore: discarded_futures
+      _handleAppResumed();
+    }
+  }
+
+  Future<void> _handleAppResumed() async {
+    final now = DateTime.now();
+
+    // Small dedupe to avoid double-calls on some Android devices.
+    final last = _lastResumedAt;
+    if (last != null && now.difference(last) < const Duration(milliseconds: 500)) {
+      return;
+    }
+    _lastResumedAt = now;
+
+    // Resubscribe channel: after background some devices keep the object but the subscription is closed.
+    final ch = _inboxChannel;
+    if (ch != null) {
+      try {
+        Supabase.instance.client.removeChannel(ch);
+      } catch (e) {
+        debugPrint('[PlansScreen] removeChannel on resume error: $e');
+      }
+      _inboxChannel = null;
+    }
+
+    await _ensureInboxRealtimeSubscribed();
+    await _loadAll();
+
+    // Eventual-consistency guard: do one delayed refetch.
+    _resumeRefetchTimer?.cancel();
+    _resumeRefetchTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      // ignore: discarded_futures
+      _loadAll();
+    });
   }
 
   Future<Map<String, dynamic>?> _getDomainUserJson() async {
@@ -95,7 +147,7 @@ class _PlansScreenState extends State<PlansScreen>
   }
 
   Future<void> _loadActive() async {
-    setState(() => _loadingActive = true);
+    if (mounted) setState(() => _loadingActive = true);
 
     try {
       final appUserId = await _resolveDomainAppUserId();
@@ -114,7 +166,7 @@ class _PlansScreenState extends State<PlansScreen>
   }
 
   Future<void> _loadArchive() async {
-    setState(() => _loadingArchive = true);
+    if (mounted) setState(() => _loadingArchive = true);
 
     try {
       final appUserId = await _resolveDomainAppUserId();
@@ -251,93 +303,98 @@ class _PlansScreenState extends State<PlansScreen>
     }
   }
 
-Future<void> _ensureInboxRealtimeSubscribed() async {
-  // Avoid duplicate subscriptions.
-  if (_inboxChannel != null) return;
+  Future<void> _ensureInboxRealtimeSubscribed() async {
+    // Avoid duplicate subscriptions.
+    if (_inboxChannel != null) return;
 
-  final appUserId = await _resolveDomainAppUserId();
-  if (!mounted) return;
-  if (appUserId == null || appUserId.isEmpty) return;
+    final appUserId = await _resolveDomainAppUserId();
+    if (!mounted) return;
+    if (appUserId == null || appUserId.isEmpty) return;
 
+    // Listen only to INBOX inserts for this user; payload contains the canonical type and plan_id.
+    final channel = Supabase.instance.client.channel('plans_inbox_$appUserId');
+    _inboxChannel = channel;
 
-  // Listen only to INBOX inserts for this user; payload contains the canonical type and plan_id.
-  final channel = Supabase.instance.client.channel('plans_inbox_$appUserId');
-  _inboxChannel = channel;
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'notification_deliveries',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'user_id',
+        value: appUserId,
+      ),
+      callback: (payload) async {
+        try {
+          final record = payload.newRecord;
 
-  channel.onPostgresChanges(
-    event: PostgresChangeEvent.insert,
-    schema: 'public',
-    table: 'notification_deliveries',
-    filter: PostgresChangeFilter(
-      type: PostgresChangeFilterType.eq,
-      column: 'user_id',
-      value: appUserId,
-    ),
-    callback: (payload) async {
-      try {
-        final record = payload.newRecord;
+          final channelValue =
+              (record['channel'] ?? '').toString().trim().toUpperCase();
+          if (channelValue != 'INBOX') return;
 
-        final channelValue =
-            (record['channel'] ?? '').toString().trim().toUpperCase();
-        if (channelValue != 'INBOX') return;
+          final payloadJson = record['payload'];
+          if (payloadJson is! Map) return;
 
-        final payloadJson = record['payload'];
-        if (payloadJson is! Map) return;
+          final type = (payloadJson['type'] ?? '').toString().trim().toUpperCase();
 
-        final type = (payloadJson['type'] ?? '').toString().trim().toUpperCase();
+          // Refresh list for membership-affecting events.
+          final shouldRefresh =
+              type == 'PLAN_MEMBER_REMOVED' || type == 'PLAN_MEMBER_LEFT';
+          if (!shouldRefresh) return;
 
-        // Refresh list for membership-affecting events.
-        final shouldRefresh = type == 'PLAN_MEMBER_REMOVED' || type == 'PLAN_MEMBER_LEFT';
-        if (!shouldRefresh) return;
+          final planId = (payloadJson['plan_id'] ?? '').toString();
 
-        final planId = (payloadJson['plan_id'] ?? '').toString();
-
-        // IMPORTANT:
-        // - For PLAN_MEMBER_LEFT / PLAN_MEMBER_REMOVED we receive the event on the OWNER side too.
-        // - We must hide the plan card only when *this* user is the one who left/was removed.
-        //   Otherwise the owner's (and other members') plan must remain visible.
-        bool shouldHide = false;
-        if (type == 'PLAN_MEMBER_REMOVED') {
-          final removedUserId =
-              (payloadJson['removed_user_id'] ?? payloadJson['removed_app_user_id'] ?? '')
-                  .toString();
-          shouldHide = removedUserId.isNotEmpty && removedUserId == appUserId;
-        } else if (type == 'PLAN_MEMBER_LEFT') {
-          final leftUserId = (payloadJson['left_user_id'] ?? '').toString();
-          shouldHide = leftUserId.isNotEmpty && leftUserId == appUserId;
-        }
-
-        if (shouldHide && planId.isNotEmpty) {
-          // Hide immediately to prevent tapping a dead card before refetch completes.
-          if (mounted) {
-            setState(() {
-              _hiddenPlanIds.add(planId);
-            });
+          // IMPORTANT:
+          // - For PLAN_MEMBER_LEFT / PLAN_MEMBER_REMOVED we receive the event on the OWNER side too.
+          // - We must hide the plan card only when *this* user is the one who left/was removed.
+          //   Otherwise the owner's (and other members') plan must remain visible.
+          bool shouldHide = false;
+          if (type == 'PLAN_MEMBER_REMOVED') {
+            final removedUserId =
+                (payloadJson['removed_user_id'] ?? payloadJson['removed_app_user_id'] ?? '')
+                    .toString();
+            shouldHide = removedUserId.isNotEmpty && removedUserId == appUserId;
+          } else if (type == 'PLAN_MEMBER_LEFT') {
+            final leftUserId = (payloadJson['left_user_id'] ?? '').toString();
+            shouldHide = leftUserId.isNotEmpty && leftUserId == appUserId;
           }
+
+          if (shouldHide && planId.isNotEmpty) {
+            // Hide immediately to prevent tapping a dead card before refetch completes.
+            if (mounted) {
+              setState(() {
+                _hiddenPlanIds.add(planId);
+              });
+            }
+          }
+
+          // Server-first: refetch canonical list from server.
+          await _loadAll();
+        } catch (e) {
+          debugPrint('[PlansScreen] inbox realtime handler error: $e');
         }
+      },
+    );
 
-        // Server-first: refetch canonical list from server.
-        await _loadAll();
-      } catch (e) {
-        debugPrint('[PlansScreen] inbox realtime handler error: $e');
-      }
-    },
-  );
-
-  await channel.subscribe();
-  debugPrint('[PlansScreen] subscribed inbox realtime for appUserId=$appUserId');
-}
-
-@override
-void dispose() {
-  final ch = _inboxChannel;
-  if (ch != null) {
-    Supabase.instance.client.removeChannel(ch);
-    _inboxChannel = null;
+    await channel.subscribe();
+    debugPrint('[PlansScreen] subscribed inbox realtime for appUserId=$appUserId');
   }
-  _tabController.dispose();
-  super.dispose();
-}
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
+    _resumeRefetchTimer?.cancel();
+    _resumeRefetchTimer = null;
+
+    final ch = _inboxChannel;
+    if (ch != null) {
+      Supabase.instance.client.removeChannel(ch);
+      _inboxChannel = null;
+    }
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -368,13 +425,17 @@ void dispose() {
         children: [
           _PlansList(
             loading: _loadingActive,
-            plans: _activePlans.where((p) => !_hiddenPlanIds.contains(p.id)).toList(),
+            plans: _activePlans
+                .where((p) => !_hiddenPlanIds.contains(p.id))
+                .toList(),
             emptyText: 'Нет активных планов',
             onTap: _openDetails,
           ),
           _PlansList(
             loading: _loadingArchive,
-            plans: _archivePlans.where((p) => !_hiddenPlanIds.contains(p.id)).toList(),
+            plans: _archivePlans
+                .where((p) => !_hiddenPlanIds.contains(p.id))
+                .toList(),
             emptyText: 'Архив пуст',
             onTap: _openDetails,
           ),

@@ -29,6 +29,10 @@ import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
 
+
+/// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
+const BoxConstraints _kFriendDialogConstraints = BoxConstraints(minWidth: 280, maxWidth: 520);
+
 class App extends StatelessWidget {
   const App({super.key});
 
@@ -115,6 +119,8 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   // Pending friend request UI events (when app opens from notification before shell is ready)
   final List<Map<String, dynamic>> _pendingFriendRequests = <Map<String, dynamic>>[];
+  // Pending consume requests when delivery arrives before shell is ready.
+  final List<String> _pendingConsumeDeliveryIds = <String>[];
   DateTime? _homeVisibleAt;
   Timer? _pendingPlanOpenTimer;
   bool _appShellReady = false;
@@ -372,7 +378,14 @@ if (type == 'PLAN_MEMBER_REMOVED') {
           source: PlanMemberRemovedUiSource.backgroundIntent,
         ),
       );
-            return;
+      final deliveryId = (payload['delivery_id'] ??
+              payload['deliveryId'] ??
+              extras['delivery_id'] ??
+              extras['deliveryId'] ??
+              '').toString();
+      _scheduleConsumeInboxDelivery(deliveryId);
+
+      return;
     }
   }
 }
@@ -412,6 +425,42 @@ if (type == 'PLAN_MEMBER_REMOVED') {
               b.contains('приглашение отклонено');
 
           if (looksLikeOwnerResult) {
+            final pending =
+                await _loadPendingOwnerInviteResultInboxByInviteId(inviteId);
+            if (pending != null) {
+              final pType = (pending['type'] ?? '').toString().trim();
+              final actionValue = pType == 'PLAN_INTERNAL_INVITE_ACCEPTED'
+                  ? 'ACCEPT'
+                  : 'DECLINE';
+
+              final pendingPlanId =
+                  (pending['plan_id'] ?? pending['planId'] ?? planId).toString();
+              final pendingTitleRaw = (pending['title'] ?? '').toString();
+              final pendingTitle = pendingTitleRaw.trim().isEmpty
+                  ? (actionValue == 'ACCEPT'
+                      ? 'Приглашение принято'
+                      : 'Приглашение отклонено')
+                  : pendingTitleRaw;
+              final pendingBody = (pending['body'] ?? body ?? '').toString();
+
+              InviteUiCoordinator.instance.enqueueOwnerResult(
+                OwnerResultUiRequest(
+                  inviteId: inviteId,
+                  planId: pendingPlanId,
+                  action: actionValue,
+                  title: pendingTitle,
+                  body: pendingBody,
+                  source: InviteUiSource.backgroundIntent,
+                ),
+              );
+
+              final deliveryId =
+                  (pending['delivery_id'] ?? pending['deliveryId'] ?? '')
+                      .toString();
+              _scheduleConsumeInboxDelivery(deliveryId);
+              return;
+            }
+
             final actionValue = (t.contains('принято') || b.contains('принял'))
                 ? 'ACCEPT'
                 : 'DECLINE';
@@ -685,6 +734,61 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
     }
   }
 
+  Map<String, dynamic> _asStringKeyedMap(Map raw) {
+    final out = <String, dynamic>{};
+    raw.forEach((k, v) {
+      out[k.toString()] = v;
+    });
+    return out;
+  }
+
+  Future<Map<String, dynamic>?> _loadPendingOwnerInviteResultInboxByInviteId(
+    String inviteId,
+  ) async {
+    final appUserId = _userId;
+    final iid = inviteId.trim();
+    if (appUserId == null || appUserId.trim().isEmpty) return null;
+    if (iid.isEmpty) return null;
+
+    try {
+      final dynamic raw = await _supabase
+          .from('notification_deliveries')
+          .select('id,payload,created_at')
+          .eq('user_id', appUserId)
+          .eq('channel', 'INBOX')
+          .eq('status', 'PENDING')
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      if (raw is! List) return null;
+
+      for (final r in raw) {
+        if (r is! Map) continue;
+        final id = (r['id'] ?? '').toString().trim();
+        final payloadRaw = r['payload'];
+        if (id.isEmpty || payloadRaw is! Map) continue;
+
+        final payload = _asStringKeyedMap(payloadRaw);
+        final t = (payload['type'] ?? '').toString().trim();
+        if (t != 'PLAN_INTERNAL_INVITE_ACCEPTED' &&
+            t != 'PLAN_INTERNAL_INVITE_DECLINED') {
+          continue;
+        }
+
+        final payloadInviteId = (payload['invite_id'] ?? payload['inviteId'] ?? '')
+            .toString()
+            .trim();
+        if (payloadInviteId != iid) continue;
+
+        payload['delivery_id'] = id;
+        return payload;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
   String _quoteNick(String nick) {
     final t = nick.trim();
     if (t.isEmpty) return '';
@@ -770,6 +874,24 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
       await _consumeInboxDeliveryIfPossibleFromPayload(payload);
       return;
     }
+
+    if (type == 'FRIEND_REMOVED') {
+      final title = (payload['title'] ?? '').toString().trim();
+      final rawBody = (payload['body'] ?? '').toString().trim();
+
+      await _showFriendRemovedDialog(
+        title: title.isEmpty ? 'Вас удалили из друзей' : title,
+        body: rawBody.isEmpty ? 'Вас удалили из списка друзей.' : rawBody,
+      );
+
+      // Refresh friends list after the user acknowledged the modal.
+      FriendsRefreshBus.ping();
+
+      // ✅ ACK/consume строго после реального UI
+      await _consumeInboxDeliveryIfPossibleFromPayload(payload);
+      return;
+    }
+
   }
 
 Future<void> _showInfoDialog({required String title, required String body}) async {
@@ -829,7 +951,7 @@ Future<void> _showInfoDialog({required String title, required String body}) asyn
           actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
           title: Text(title),
           content: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+            constraints: _kFriendDialogConstraints,
             child: Text(
               body,
               style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
@@ -884,7 +1006,53 @@ Future<void> _showFriendOwnerResultDialog({
           actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
           title: Text(title, style: titleStyle),
           content: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+            constraints: _kFriendDialogConstraints,
+            child: Text(
+              body,
+              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
+                    fontSize: 16,
+                    height: 1.3,
+                  ),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  Future<void> _showFriendRemovedDialog({
+    required String title,
+    required String body,
+  }) async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final titleStyle = Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+              color: Colors.red,
+              fontWeight: FontWeight.w700,
+            );
+
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          title: Text(title, style: titleStyle),
+          content: ConstrainedBox(
+            constraints: _kFriendDialogConstraints,
             child: Text(
               body,
               style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
@@ -1107,9 +1275,8 @@ Future<void> _acceptFriendRequest(String requestId) async {
             
             final deliveryId = (newRow['id'] ?? newRow['delivery_id'] ?? newRow['deliveryId'] ?? '').toString().trim();
             void consumeIfReady() {
-              if (!_appShellReady) return;
               if (deliveryId.isEmpty) return;
-              unawaited(_consumeInboxDelivery(deliveryId: deliveryId));
+              _scheduleConsumeInboxDelivery(deliveryId);
             }
 
 Map<String, dynamic> payloadMap = <String, dynamic>{};
@@ -1125,6 +1292,13 @@ Map<String, dynamic> payloadMap = <String, dynamic>{};
               } catch (_) {
                 // ignore malformed payload
               }
+            }
+
+
+            // Ensure delivery id is available in payload for later ACK/consume logic.
+            final _deliveryId = (newRow['id'] ?? '').toString();
+            if (_deliveryId.isNotEmpty) {
+              payloadMap['delivery_id'] = _deliveryId;
             }
 
             // Canonical routing:
@@ -1146,12 +1320,15 @@ Map<String, dynamic> payloadMap = <String, dynamic>{};
             }
             if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE' &&
+                payloadType != 'PLAN_INTERNAL_INVITE_ACCEPTED' &&
+                payloadType != 'PLAN_INTERNAL_INVITE_DECLINED' &&
                 payloadType != 'PLAN_MEMBER_LEFT' &&
                 payloadType != 'PLAN_MEMBER_REMOVED' &&
                 payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE' &&
                 payloadType != 'FRIEND_REQUEST_RECEIVED' &&
                 payloadType != 'FRIEND_REQUEST_ACCEPTED' &&
-                payloadType != 'FRIEND_REQUEST_DECLINED') {
+                payloadType != 'FRIEND_REQUEST_DECLINED' &&
+                payloadType != 'FRIEND_REMOVED') {
               return;
             }
 
@@ -1211,6 +1388,7 @@ PlanMemberLeftUiCoordinator.instance.enqueue(
     source: PlanMemberLeftUiSource.foreground,
   ),
 );
+consumeIfReady();
 return;
             }
 
@@ -1268,6 +1446,7 @@ if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
       source: PlanMemberJoinedByInviteUiSource.foreground,
     ),
   );
+  consumeIfReady();
   return;
 }
 
@@ -1328,6 +1507,30 @@ if (payloadType == 'PLAN_MEMBER_REMOVED') {
       source: PlanMemberRemovedUiSource.foreground,
     ),
   );
+  consumeIfReady();
+  return;
+}
+
+
+if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+    payloadType == 'PLAN_INTERNAL_INVITE_DECLINED') {
+  final inviteId = (payloadMap['invite_id'] ?? payloadMap['inviteId'] ?? '').toString();
+  final planId = (payloadMap['plan_id'] ?? payloadMap['planId'] ?? '').toString();
+  final body = (payloadMap['body'] ?? '').toString();
+  final isAccept = payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED';
+
+  InviteUiCoordinator.instance.enqueueOwnerResult(
+    OwnerResultUiRequest(
+      inviteId: inviteId,
+      planId: planId,
+      action: isAccept ? 'ACCEPT' : 'DECLINE',
+      title: isAccept ? 'Приглашение принято' : 'Приглашение отклонено',
+      body: body,
+      source: InviteUiSource.foreground,
+    ),
+  );
+
+  consumeIfReady();
   return;
 }
 
@@ -1336,6 +1539,12 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                 payloadType == 'FRIEND_REQUEST_DECLINED') {
               _enqueueFriendRequestUi(payloadMap);
               consumeIfReady();
+              return;
+            }
+
+            if (payloadType == 'FRIEND_REMOVED') {
+              // ✅ For FRIEND_REMOVED we must show modal first, then consume after close.
+              unawaited(_handleFriendDeliveryPayload(payloadMap));
               return;
             }
 
@@ -1483,6 +1692,38 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
       }
     }
   }
+
+  void _consumeInboxDeliveryIfReady(String deliveryId) {
+    if (!_appShellReady) return;
+    final id = deliveryId.trim();
+    if (id.isEmpty) return;
+    unawaited(_consumeInboxDelivery(deliveryId: id));
+  }
+
+  void _scheduleConsumeInboxDelivery(String deliveryId) {
+    final id = deliveryId.trim();
+    if (id.isEmpty) return;
+
+    // Only consume when UI shell is ready to avoid losing UX.
+    if (_appShellReady && _userId != null && _userId!.trim().isNotEmpty) {
+      unawaited(_consumeInboxDelivery(deliveryId: id));
+      return;
+    }
+
+    _pendingConsumeDeliveryIds.add(id);
+  }
+
+  void _flushPendingConsumeInboxDeliveriesIfAny() {
+    if (!_appShellReady) return;
+    if (_pendingConsumeDeliveryIds.isEmpty) return;
+
+    final items = List<String>.from(_pendingConsumeDeliveryIds);
+    _pendingConsumeDeliveryIds.clear();
+    for (final id in items) {
+      unawaited(_consumeInboxDelivery(deliveryId: id));
+    }
+  }
+
 
 
 
@@ -2124,6 +2365,7 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
     if (_appShellReady) return;
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
+    _flushPendingConsumeInboxDeliveriesIfAny();
     _flushPendingFriendRequestsIfAny();
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 

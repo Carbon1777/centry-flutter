@@ -45,6 +45,126 @@ class PushNotifications {
     }
   }
 
+
+  static String _trimToString(dynamic v) {
+    return (v ?? '').toString().trim();
+  }
+
+  static String _stripOuterQuotes(String s) {
+    var t = s.trim();
+    if (t.length >= 2) {
+      final first = t[0];
+      final last = t[t.length - 1];
+      final isAngle = first == '«' && last == '»';
+      final isDouble = first == '"' && last == '"';
+      final isCurly = first == '“' && last == '”';
+      final isSingleCurly = first == '‘' && last == '’';
+      if (isAngle || isDouble || isCurly || isSingleCurly) {
+        t = t.substring(1, t.length - 1).trim();
+      }
+    }
+    return t;
+  }
+
+  static String _quoteNickname(String nickname) {
+    final bare = _stripOuterQuotes(nickname);
+    if (bare.isEmpty) return '';
+    return '«$bare»';
+  }
+
+  static String? _extractAnyNickname(Map<String, dynamic> data) {
+    const keys = <String>[
+      'nickname',
+      'user_nickname',
+      'userNickname',
+      'from_nickname',
+      'fromNickname',
+      'from_user_nickname',
+      'fromUserNickname',
+      'requester_nickname',
+      'requesterNickname',
+      'inviter_nickname',
+      'inviterNickname',
+      'owner_nickname',
+      'ownerNickname',
+      'left_nickname',
+      'member_nickname',
+      'memberNickname',
+      'joined_nickname',
+      'joinedNickname',
+      'actor_nickname',
+      'actorNickname',
+      'by_nickname',
+      'byNickname',
+      'remover_nickname',
+      'removerNickname',
+    ];
+
+    for (final k in keys) {
+      final v = _trimToString(data[k]);
+      if (v.isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  /// Ensures the given nickname is always rendered in «…» quotes inside title/body.
+  ///
+  /// Goal: consistent UX even if server body sometimes includes raw nick without quotes.
+  /// We keep this as presentation-only normalization (no product decisions).
+  static String _normalizeTextWithNicknameQuotes(String text, String? nickname) {
+    final nick = _stripOuterQuotes(nickname ?? '');
+    if (nick.isEmpty) return text;
+
+    final quoted = '«$nick»';
+    final escaped = RegExp.escape(nick);
+
+    // Boundaries: start/end OR whitespace/punctuation (excluding quote chars).
+    final re = RegExp(
+      '(^|[\s\(\[\{\-—–,:;.!?])' + escaped + r'(?=$|[\s\)\]\}\-—–,:;.!?])',
+      multiLine: true,
+    );
+
+    var out = text.replaceAllMapped(re, (m) => '${m.group(1)}$quoted');
+
+    // Normalize explicit quoted variants ("nick", “nick”) to «nick».
+    out = out
+        .replaceAll('"$nick"', quoted)
+        .replaceAll('“$nick”', quoted)
+        .replaceAll('‘$nick’', quoted);
+
+    return out;
+  }
+
+
+  static String? _inferLeadingNicknameFromBody(String body) {
+    final s = body.trimLeft();
+    if (s.isEmpty) return null;
+
+    if (s.startsWith('«') ||
+        s.startsWith('"') ||
+        s.startsWith('“') ||
+        s.startsWith('‘')) {
+      return null;
+    }
+
+    final m = RegExp(r'^([^\s]+)\s+').firstMatch(s);
+    if (m == null) return null;
+
+    final candidate = (m.group(1) ?? '').trim();
+    if (candidate.isEmpty) return null;
+
+    final rest = s.substring(m.end).trimLeft().toLowerCase();
+    if (rest.startsWith('отправил') ||
+        rest.startsWith('принял') ||
+        rest.startsWith('отклонил') ||
+        rest.startsWith('удалил')) {
+      return candidate;
+    }
+
+    return null;
+  }
+
+
   /// Оставляем для совместимости/возможного использования в других потоках.
   static Future<void> respondInternalInviteByToken({
     required String actionToken,
@@ -111,6 +231,14 @@ class PushNotifications {
       String? title,
       String? body,
     }) onInviteAction,
+    /// Friends local notification OPEN callback (Scenario B/C). Must route via INBOX lookup in app layer.
+    Future<void> Function({
+      required String type,
+      String? eventId,
+      String? requestId,
+      String? title,
+      String? body,
+    })? onFriendOpen,
     Future<void> Function({
       required String planId,
       required String leftUserId,
@@ -260,7 +388,30 @@ class PushNotifications {
       }
 
 
-      // Default: internal invite / owner-result.
+      
+      // Friends notifications: route OPEN to app-level handler (INBOX is source of truth).
+      if (kind.startsWith('FRIEND_')) {
+        final cb = onFriendOpen;
+        if (cb == null) return;
+
+        final eventId = (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
+        final requestId = (map['request_id'] ?? map['requestId'] ?? '').toString().trim();
+
+        if (kDebugMode) {
+          debugPrint('[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId');
+        }
+
+        await cb(
+          type: kind,
+          eventId: eventId.isEmpty ? null : eventId,
+          requestId: requestId.isEmpty ? null : requestId,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
+        );
+        return;
+      }
+
+// Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
       if (inviteId.isEmpty || planId.isEmpty) return;
 
@@ -409,12 +560,16 @@ class PushNotifications {
             ? 'Откройте приложение, чтобы посмотреть результат.'
             : 'Откройте приложение, чтобы посмотреть приглашение.');
 
+    final nickname = _extractAnyNickname(m.data);
+    final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
+    final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
+
     // Payload is consumed by app routing. Keep it explicit.
     final payload = jsonEncode({
       'invite_id': inviteId,
       'plan_id': planId,
-      'title': title,
-      'body': body,
+      'title': normalizedTitle,
+      'body': normalizedBody,
       'kind': isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE',
       if (isOwnerResult) 'action': ownerAction,
     });
@@ -459,7 +614,7 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, title, body, details, payload: payload);
+    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
@@ -492,17 +647,25 @@ class PushNotifications {
             ? 'Откройте приложение, чтобы ответить.'
             : 'Откройте приложение, чтобы посмотреть.');
 
+    final extractedNickname = _extractAnyNickname(m.data);
+    final nickname = extractedNickname ?? _inferLeadingNicknameFromBody(body);
+    final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
+    final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
+
     final requestId = (m.data['request_id'] ?? '').toString();
     final idSeed = requestId.isNotEmpty ? 'friend:$t:$requestId' : 'friend:$t:${m.messageId ?? ''}';
     final id = idSeed.hashCode & 0x7fffffff;
 
+    final eventId = (m.data['event_id'] ?? '').toString().trim();
+
     final payload = jsonEncode({
       'kind': t,
       'type': t,
+      if (eventId.isNotEmpty) 'event_id': eventId,
       if (requestId.isNotEmpty) 'request_id': requestId,
       ...m.data,
-      'title': title,
-      'body': body,
+      'title': normalizedTitle,
+      'body': normalizedBody,
     });
 
     await _local.cancel(id);
@@ -536,7 +699,81 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, title, body, details, payload: payload);
+    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
+    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id kind=$t');
+  }
+
+
+  static Future<void> showFriendRemoved(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showFriendRemoved id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showFriendRemoved data=${m.data}');
+    }
+
+    final t = (m.data['type'] ?? '').toString();
+    if (t != 'FRIEND_REMOVED') return;
+
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'Вас удалили из друзей';
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final body = rawBody.isNotEmpty ? rawBody : 'Откройте приложение, чтобы посмотреть.';
+
+    final extractedNickname = _extractAnyNickname(m.data);
+    final nickname = extractedNickname ?? _inferLeadingNicknameFromBody(body);
+    final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
+    final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
+
+    final eventId = (m.data['event_id'] ?? '').toString().trim();
+    final idSeed = eventId.isNotEmpty
+        ? 'friend:FRIEND_REMOVED:$eventId'
+        : 'friend:FRIEND_REMOVED:${m.messageId ?? ''}';
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      'kind': t,
+      'type': t,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      ...m.data,
+      'title': normalizedTitle,
+      'body': normalizedBody,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, normalizedTitle, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id kind=$t');
   }
 
@@ -575,13 +812,16 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
         ? rawBody
         : (() {
             if (leftNickname.isNotEmpty && planTitle.isNotEmpty) {
-              return '$leftNickname покинул(а) план "$planTitle".';
+              return '${_quoteNickname(leftNickname)} покинул(а) план "$planTitle".';
             }
             if (leftNickname.isNotEmpty) {
-              return '$leftNickname покинул(а) план.';
+              return '${_quoteNickname(leftNickname)} покинул(а) план.';
             }
             return 'Откройте приложение, чтобы посмотреть.';
           })();
+
+    final normalizedBody =
+        _normalizeTextWithNicknameQuotes(computedBody, leftNickname);
 
     final payload = jsonEncode({
       'kind': 'PLAN_MEMBER_LEFT',
@@ -589,7 +829,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
       'left_user_id': leftUserId,
       if (leftNickname.isNotEmpty) 'left_nickname': leftNickname,
       'title': title,
-      'body': computedBody,
+      'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
@@ -632,7 +872,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, title, computedBody, details, payload: payload);
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
@@ -669,16 +909,19 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
         ? rawBody
         : (() {
             if (ownerNickname.isNotEmpty && planTitle.isNotEmpty) {
-              return 'Создатель «$ownerNickname» удалил вас из плана «$planTitle».';
+              return 'Создатель ${_quoteNickname(ownerNickname)} удалил вас из плана «$planTitle».';
             }
             if (ownerNickname.isNotEmpty) {
-              return 'Создатель «$ownerNickname» удалил вас из плана.';
+              return 'Создатель ${_quoteNickname(ownerNickname)} удалил вас из плана.';
             }
             if (planTitle.isNotEmpty) {
               return 'Создатель удалил вас из плана «$planTitle».';
             }
             return 'Откройте приложение, чтобы посмотреть.';
           })();
+
+    final normalizedBody =
+        _normalizeTextWithNicknameQuotes(computedBody, ownerNickname);
 
     final payload = jsonEncode({
       'kind': 'PLAN_MEMBER_REMOVED',
@@ -688,7 +931,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
       if (ownerNickname.isNotEmpty) 'owner_nickname': ownerNickname,
       if (planTitle.isNotEmpty) 'plan_title': planTitle,
       'title': title,
-      'body': computedBody,
+      'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
@@ -733,7 +976,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, title, computedBody, details, payload: payload);
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }  static Future<void> showPlanMemberJoinedByInvite(RemoteMessage m) async {
     if (kDebugMode) {
@@ -768,16 +1011,19 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
         : (() {
             if (joinedNickname.isNotEmpty && planTitle.isNotEmpty) {
               // Requested: nick and plan title in quotes.
-              return 'Участник «$joinedNickname» вступил в план «$planTitle» по Invite';
+              return 'Участник ${_quoteNickname(joinedNickname)} вступил в план «$planTitle» по Invite';
             }
             if (joinedNickname.isNotEmpty) {
-              return 'Участник «$joinedNickname» вступил в план по Invite';
+              return 'Участник ${_quoteNickname(joinedNickname)} вступил в план по Invite';
             }
             if (planTitle.isNotEmpty) {
               return 'Участник вступил в план «$planTitle» по Invite';
             }
             return 'Откройте приложение, чтобы посмотреть.';
           })();
+
+    final normalizedBody =
+        _normalizeTextWithNicknameQuotes(computedBody, joinedNickname);
 
     final payload = jsonEncode({
       'kind': 'PLAN_MEMBER_JOINED_BY_INVITE',
@@ -786,7 +1032,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
       if (joinedNickname.isNotEmpty) 'joined_nickname': joinedNickname,
       if (planTitle.isNotEmpty) 'plan_title': planTitle,
       'title': title,
-      'body': computedBody,
+      'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
@@ -831,7 +1077,7 @@ static Future<void> showPlanMemberLeft(RemoteMessage m) async {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(id, title, computedBody, details, payload: payload);
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
@@ -855,6 +1101,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showPlanMemberLeft(message);
     await PushNotifications.showPlanMemberRemoved(message);
     await PushNotifications.showPlanMemberJoinedByInvite(message);
+    await PushNotifications.showFriendRequest(message);
+    await PushNotifications.showFriendRemoved(message);
   } catch (e) {
     if (kDebugMode) debugPrint('[FCM-BG] error: $e');
   }
