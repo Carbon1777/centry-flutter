@@ -75,10 +75,67 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
   List<_PlanRowVm> _plans = const [];
   final Set<String> _localPendingPlanIds = <String>{};
 
+  RealtimeChannel? _membersSub;
+  RealtimeChannel? _invitesSub;
+  Timer? _refreshDebounce;
+
   @override
   void initState() {
     super.initState();
     unawaited(_load());
+    _startRealtimeAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshDebounce?.cancel();
+    _membersSub?.unsubscribe();
+    _invitesSub?.unsubscribe();
+    super.dispose();
+  }
+
+  void _scheduleRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      unawaited(_load());
+    });
+  }
+
+  void _startRealtimeAutoRefresh() {
+    final client = Supabase.instance.client;
+
+    // 1) Accept/leave/remove => changes in core_plan_members for friend user id
+    _membersSub = client
+        .channel('friends_add_to_plan_members_${widget.friendAppUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'core_plan_members',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'app_user_id',
+            value: widget.friendAppUserId,
+          ),
+          callback: (_) => _scheduleRefresh(),
+        )
+        .subscribe();
+
+    // 2) Invite status changes => changes in plan_internal_invites for invitee user id
+    _invitesSub = client
+        .channel('friends_add_to_plan_invites_${widget.friendAppUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'plan_internal_invites',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'invitee_app_user_id',
+            value: widget.friendAppUserId,
+          ),
+          callback: (_) => _scheduleRefresh(),
+        )
+        .subscribe();
   }
 
   Future<void> _load() async {
@@ -102,12 +159,13 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
       setState(() {
         _plans = list;
         _loading = false;
-        _localPendingPlanIds.clear();
-        for (final p in list) {
-          if (p.inviteState == 'PENDING') {
-            _localPendingPlanIds.add(p.planId);
-          }
-        }
+
+        // Recompute local pending from server state to keep it canonical.
+        _localPendingPlanIds
+          ..clear()
+          ..addAll(list
+              .where((p) => p.inviteState == 'PENDING')
+              .map((p) => p.planId));
       });
     } catch (e) {
       if (!mounted) return;
@@ -136,23 +194,20 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
     try {
       final client = Supabase.instance.client;
 
-      // Канон: никаких продуктовых решений на клиенте. Только дергаем RPC.
-      // ВАЖНО: эта RPC должна на сервере использовать тот же механизм internal invites,
-      // что и "invite by public_id".
       await client.rpc(
         'create_plan_internal_invite_by_user_id_v1',
         params: {
-          'p_plan_id': p.planId,
           'p_inviter_app_user_id': widget.ownerAppUserId,
+          'p_plan_id': p.planId,
           'p_invitee_app_user_id': widget.friendAppUserId,
         },
       );
 
       if (!mounted) return;
 
-      // Показываем только локальный статус "Отправлено приглашение" на этой карточке.
-      // Invitee получит стандартный INBOX/PUSH сценарий.
-      setState(() {});
+      // Server will emit INBOX/PUSH. We keep local pending.
+      // Realtime will refresh list and hide accepted (member) plans automatically.
+      _scheduleRefresh();
     } catch (e) {
       if (!mounted) return;
 
@@ -172,14 +227,12 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Full-width container with rounded top corners.
     return SafeArea(
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(
-            // max height ~ 90% screen
             maxHeight: MediaQuery.of(context).size.height * 0.9,
           ),
           decoration: BoxDecoration(
@@ -202,8 +255,6 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Header (fixed)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
@@ -226,11 +277,8 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
                   ],
                 ),
               ),
-
               const SizedBox(height: 12),
               const Divider(height: 1),
-
-              // Content (grows, scrolls)
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
@@ -384,7 +432,6 @@ class _PlanCard extends StatelessWidget {
 
     if (!pending) return card;
 
-    // Disabled + overlay
     return Stack(
       children: [
         Opacity(
@@ -399,20 +446,21 @@ class _PlanCard extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(
-          right: 12,
-          top: 12,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2E36).withOpacity(0.85),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: const Color(0xFF3A3F49)),
-            ),
-            child: Text(
-              'Отправлено приглашение',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
+        // ✅ Centered label
+        Positioned.fill(
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2E36).withOpacity(0.9),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFF3A3F49)),
+              ),
+              child: Text(
+                'Отправлено приглашение',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -422,7 +470,6 @@ class _PlanCard extends StatelessWidget {
   }
 
   static String _formatDeadline(DateTime dt) {
-    // Без локали/intl: компактный формат YYYY-MM-DD HH:mm
     final y = dt.year.toString().padLeft(4, '0');
     final m = dt.month.toString().padLeft(2, '0');
     final d = dt.day.toString().padLeft(2, '0');
