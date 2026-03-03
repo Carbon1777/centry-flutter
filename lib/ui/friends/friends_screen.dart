@@ -9,6 +9,7 @@ import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
 import 'widgets/add_friend_by_public_id_dialog.dart';
 import 'friends_refresh_bus.dart';
+import 'modals/add_friend_to_plan_modal.dart';
 
 class FriendsScreen extends StatefulWidget {
   final String appUserId; // доменный app_users.id
@@ -140,21 +141,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
           ),
           callback: (payload) {
             try {
-              // payload.newRecord / oldRecord доступны в supabase_flutter.
               final Map<String, dynamic>? record =
                   payload.newRecord as Map<String, dynamic>?;
               if (record == null) return;
 
-              // Рефреш только по INBOX, PUSH нам не нужен.
               final channel = record['channel'];
               if (channel != 'INBOX') return;
 
-              // Любое INBOX-событие на этом экране = рефреш.
-              // Debounce уже внутри _scheduleRefresh.
               _scheduleRefresh();
-            } catch (_) {
-              // Никаких крэшей UI из-за подписки на рефреш.
-            }
+            } catch (_) {}
           },
         )
         .subscribe();
@@ -239,13 +234,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
               unawaited(_editNote(context, friend));
             },
             onAddToPlan: () {
-              unawaited(
-                _showInDevelopmentModal(
-                  context,
-                  title: 'Добавить в план',
-                  message: 'В разработке',
-                ),
-              );
+              unawaited(AddFriendToPlanModal.show(
+                context,
+                ownerAppUserId: widget.appUserId,
+                friendAppUserId: friend.friendUserId,
+              ));
             },
             onRemoveFriend: () {
               unawaited(_removeFriend(context, friend));
@@ -339,32 +332,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
   // Shared modals
   // =============================
 
-  Future<void> _showInDevelopmentModal(
-    BuildContext context, {
-    required String title,
-    required String message,
-  }) async {
-    await showDialog<void>(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _showProfileStub(BuildContext context) async {
-    await _showInDevelopmentModal(
+    await _showInfo(
       context,
       title: 'Профиль',
       message: 'В разработке',
@@ -529,8 +498,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
       },
     );
 
-    // IMPORTANT: dispose the controller *after* the dialog fully leaves the tree.
-    // Otherwise, TextField/Animated widgets can still touch the controller during teardown.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.dispose();
     });
@@ -548,14 +515,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
       if (!mounted) return;
 
-      // Canon: note edit is not a destructive action; show a small success toast (no modal).
       unawaited(showCenterToast(
         context,
-        message: trimmed.isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
+        message:
+            trimmed.isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
         isError: false,
       ));
 
-      // Refresh exactly once.
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -574,15 +540,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
       if (!mounted) return;
 
-      // Canon: initiator gets only a destructive center toast, no modal.
-      // Do not await the toast to avoid coupling refresh to toast dismissal.
       unawaited(showCenterToast(
         context,
         message: 'Удален из друзей',
         isError: true,
       ));
 
-      // Refresh exactly once.
       await _load();
     } catch (e) {
       if (!mounted) return;
