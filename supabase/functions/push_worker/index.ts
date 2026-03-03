@@ -152,6 +152,10 @@ function isPlanInternalInvite(payload: Record<string, unknown>): boolean {
   return inviteId.length > 0 && planId.length > 0;
 }
 
+function isFriendEvent(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "").startsWith("FRIEND_");
+}
+
 function isUnregisteredFcmError(text: string): boolean {
   return text.includes('"UNREGISTERED"') || text.includes("UNREGISTERED");
 }
@@ -281,13 +285,18 @@ serve(async () => {
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
+    const friendEvent = isFriendEvent(payload);
+
     // ✅ Canon (server-first UX):
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
-    //   Reason: avoid OS auto-notification duplicates and route everything through app-controlled UI.
     // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
-    // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY (app shows local notification in background; in-app modal in foreground).
+    // - PLAN_MEMBER_REMOVED: STRICT DATA-ONLY.
+    // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY.
+    // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
     // - Other notification types may include OS notification.
-    const shouldIncludeNotification = !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite);
+    const shouldIncludeNotification =
+      !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite || friendEvent);
+
     let anyOk = false;
     let lastErr = "";
 
@@ -431,6 +440,7 @@ serve(async () => {
         internal_invite: internalInvite,
         invite_result_for_owner: inviteResultForOwner,
         invitee_interactive: isInviteeInteractiveInvite,
+        friend_event: friendEvent,
         include_notification: shouldIncludeNotification,
       },
       attempts: debugAttempts,
