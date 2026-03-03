@@ -301,8 +301,8 @@ class _MemberRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44, // +10%
-            height: 44, // +10%
+            width: 50, // +10%
+            height: 50, // +10%
             decoration: BoxDecoration(
               color: Colors.grey.shade800,
               borderRadius: BorderRadius.circular(9),
@@ -315,7 +315,7 @@ class _MemberRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: nicknameWeight,
-                fontSize: 17, // +10%
+                fontSize: 20, // +10%
               ),
             ),
           ),
