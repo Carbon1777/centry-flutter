@@ -213,8 +213,8 @@ class _EmailScreenState extends State<EmailScreen> {
               const Text(
                 'Email',
                 style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
+                  color: Color.fromARGB(255, 246, 245, 245),
+                  fontSize: 20,
                 ),
               ),
               const SizedBox(height: 8),
