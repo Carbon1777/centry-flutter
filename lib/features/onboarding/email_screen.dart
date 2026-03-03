@@ -226,7 +226,7 @@ class _EmailScreenState extends State<EmailScreen> {
                   height: 1.35,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               TextField(
                 controller: _controller,
                 keyboardType: TextInputType.emailAddress,
