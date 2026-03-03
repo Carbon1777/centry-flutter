@@ -15,7 +15,8 @@ class AddFriendToPlanModal {
   }) async {
     await showModalBottomSheet<void>(
       context: context,
-      useRootNavigator: true,
+      // ✅ важно: не rootNavigator, иначе в твоём стеке часто получается "закрыть два раза"
+      useRootNavigator: false,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
@@ -121,7 +122,6 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
     final client = Supabase.instance.client;
 
     // ✅ Канон: для owner самый надёжный триггер обновления — INBOX (источник истины).
-    // При ACCEPT/LEAVE/REMOVE сервер шлёт owner'у INBOX события — ловим и делаем refetch.
     _inboxSub = client
         .channel('friends_add_to_plan_inbox_${widget.ownerAppUserId}')
         .onPostgresChanges(
@@ -139,20 +139,15 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
                   payload.newRecord as Map<String, dynamic>?;
               if (record == null) return;
 
-              // Рефреш только по INBOX.
               final channel = record['channel'];
               if (channel != 'INBOX') return;
 
               _scheduleRefresh();
-            } catch (_) {
-              // Не крэшим UI.
-            }
+            } catch (_) {}
           },
         )
         .subscribe();
 
-    // (Дополнительно, если realtime по таблицам работает) —
-    // изменения членства/инвайтов для invitee тоже могут триггерить refresh.
     _membersSub = client
         .channel('friends_add_to_plan_members_${widget.friendAppUserId}')
         .onPostgresChanges(
@@ -249,8 +244,6 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
       );
 
       if (!mounted) return;
-
-      // Сервер пошлёт INBOX/PUSH, а INBOX-sub тут же дернёт refresh.
       _scheduleRefresh();
     } catch (e) {
       if (!mounted) return;
@@ -478,10 +471,7 @@ class _PlanCard extends StatelessWidget {
 
     return Stack(
       children: [
-        Opacity(
-          opacity: 0.55,
-          child: AbsorbPointer(child: card),
-        ),
+        Opacity(opacity: 0.55, child: AbsorbPointer(child: card)),
         Positioned.fill(
           child: Container(
             decoration: BoxDecoration(
