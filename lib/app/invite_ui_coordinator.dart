@@ -179,9 +179,6 @@ class InviteUiCoordinator {
   final Set<String> _queuedOwnerResultKeys = <String>{};
   final Set<String> _handledOwnerResultKeys = <String>{};
 
-  // ✅ NEW: prevents duplicate dialogs while one owner-result is currently being shown/processed.
-  final Set<String> _inFlightOwnerResultKeys = <String>{};
-
   GlobalKey<NavigatorState>? _navigatorKey;
 
   InviteUiActionHandler? _onAction;
@@ -259,6 +256,9 @@ class InviteUiCoordinator {
     _scheduleFlush();
   }
 
+  /// Показать информационное сообщение (toast/snackbar) последовательно, без перетирания.
+  /// Используется, например, для уведомлений владельца плана: "принято/отклонено".
+
   /// Добавить owner-result (ACCEPT/DECLINE) в очередь инфо-модалок (без дублей по inviteId+action).
   /// Канон: owner-result НЕ должен открывать accept/decline модалку. Только информационная модалка с кнопкой "Закрыть".
   void enqueueOwnerResult(OwnerResultUiRequest request) {
@@ -271,12 +271,6 @@ class InviteUiCoordinator {
 
     if (_handledOwnerResultKeys.contains(key)) {
       _log('enqueueOwnerResult ignored: already handled key=$key');
-      return;
-    }
-
-    // ✅ NEW: while dialog is visible / in-flight, ignore duplicates (backgroundIntent can fire twice).
-    if (_inFlightOwnerResultKeys.contains(key)) {
-      _log('enqueueOwnerResult ignored: in-flight key=$key');
       return;
     }
 
@@ -309,8 +303,7 @@ class InviteUiCoordinator {
     );
 
     _log(
-      'enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}',
-    );
+        'enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}');
     _scheduleFlush();
   }
 
@@ -326,7 +319,6 @@ class InviteUiCoordinator {
     _handledInviteIds.clear();
     _queuedOwnerResultKeys.clear();
     _handledOwnerResultKeys.clear();
-    _inFlightOwnerResultKeys.clear();
     _dialogVisible = false;
     _isFlushing = false;
     _log('resetForDebug');
@@ -334,6 +326,7 @@ class InviteUiCoordinator {
 
   void _scheduleFlush() {
     if (_isFlushing) return;
+    // Следующий кадр/тик — чтобы не спорить с текущим build/frame.
     scheduleMicrotask(_flushIfPossible);
   }
 
@@ -371,21 +364,20 @@ class InviteUiCoordinator {
           _queuedInviteIds.remove(request.inviteId);
 
           await _showDialogFor(request);
+          // loop — если в очереди есть еще invite, покажем следующий
           continue;
         }
 
         if (_ownerResultQueue.isNotEmpty) {
           final request = _ownerResultQueue.removeFirst();
-
-          // ✅ Do NOT remove from _queuedOwnerResultKeys here.
-          // Keep it queued/in-flight until the dialog is fully completed,
-          // otherwise backgroundIntent can enqueue the same key again.
-          _inFlightOwnerResultKeys.add(request.dedupKey);
+          _queuedOwnerResultKeys.remove(request.dedupKey);
 
           await _showOwnerResultDialogFor(request);
+          // loop — если в очереди есть еще owner-result, покажем следующий
           continue;
         }
 
+        // No dialogs left to show right now.
         return;
       }
     } finally {
@@ -462,6 +454,7 @@ class InviteUiCoordinator {
       _dialogVisible = false;
       _log('show dialog error inviteId=${request.inviteId}: $e');
       await _safeOnError(e, st);
+      // Вернем invite в начало очереди, чтобы не потерять.
       if (!_handledInviteIds.contains(request.inviteId) &&
           !_queuedInviteIds.contains(request.inviteId)) {
         _queue.addFirst(request);
@@ -475,6 +468,8 @@ class InviteUiCoordinator {
 
     if (decision == null) {
       _log('dialog dismissed without decision inviteId=${request.inviteId}');
+      // На всякий случай считаем это "без действия" и НЕ помечаем как handled.
+      // Можно вернуть в очередь, но по контракту у нас barrierDismissible=false.
       return;
     }
 
@@ -506,6 +501,7 @@ class InviteUiCoordinator {
 
       if (result.message != null && result.message!.trim().isNotEmpty) {
         var m = result.message!.trim();
+        // UI-only hint: decline should look negative even if outer toast uses a generic "success" icon.
         if (decision == InviteUiDecision.decline && !m.startsWith('⛔')) {
           m = '⛔ $m';
         }
@@ -534,14 +530,21 @@ class InviteUiCoordinator {
       );
 
       await _safeOnError(e, st);
+
+      // Покажем fallback-ошибку, если внешний слой не показал свой toast.
       await onToast('Ошибка. Попробуйте еще раз.');
+
+      // Важно: не помечаем handled. Можно переотправить/повторить.
     } finally {
+      // После завершения действия пробуем показать следующий invite.
       _scheduleFlush();
     }
   }
 
   Future<void> _ackOwnerResultDeliveryIfPossible(
       OwnerResultUiRequest request) async {
+    // Server-first contract: when owner-result is shown in foreground, we must ACK the corresponding INBOX delivery
+    // so that server can suppress the redundant PUSH for the same event.
     final client = Supabase.instance.client;
     final authUserId = client.auth.currentUser?.id;
     final authUserIdNorm = authUserId?.trim();
@@ -589,12 +592,13 @@ class InviteUiCoordinator {
     if (onError == null) return;
     try {
       await onError(error, stackTrace);
-    } catch (_) {}
+    } catch (_) {
+      // Не валим coordinator из-за ошибки в логгере.
+    }
   }
 
   Future<void> _showOwnerResultDialogFor(OwnerResultUiRequest request) async {
     final context = _navigatorKey!.currentContext!;
-    final key = request.dedupKey;
 
     _dialogVisible = true;
 
@@ -659,16 +663,12 @@ class InviteUiCoordinator {
 
       await _ackOwnerResultDeliveryIfPossible(request);
 
-      _handledOwnerResultKeys.add(key);
+      _handledOwnerResultKeys.add(request.dedupKey);
     } catch (e, st) {
-      _handledOwnerResultKeys.add(key);
+      _handledOwnerResultKeys.add(request.dedupKey);
       _onError?.call(e, st);
       _log('owner-result dialog error: $e');
     } finally {
-      // ✅ release dedup guards only after dialog is fully completed
-      _queuedOwnerResultKeys.remove(key);
-      _inFlightOwnerResultKeys.remove(key);
-
       _dialogVisible = false;
       _scheduleFlush();
     }
