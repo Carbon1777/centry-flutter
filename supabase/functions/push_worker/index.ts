@@ -304,7 +304,15 @@ serve(async () => {
 
     for (const t of tokens) {
       const type = String(payload["type"] ?? "");
+
+      // ✅ Correlation keys: must be present in data-only pushes so app can fetch INBOX by event_id.
+      const correlation: Record<string, string> = {
+        event_id: String(eventId),
+        push_delivery_id: String(deliveryId),
+      };
+
       const baseData: Record<string, string> = {
+        ...correlation,
         type: type.length > 0 ? type : "UNKNOWN",
         title: String(payload["title"] ?? title),
         body: String(payload["body"] ?? body),
@@ -313,6 +321,7 @@ serve(async () => {
 
       const dataPayload: Record<string, string> = internalInvite
         ? {
+            ...correlation,
             type: "PLAN_INTERNAL_INVITE",
             invite_id: String(payload["invite_id"] ?? ""),
             plan_id: String(payload["plan_id"] ?? ""),
@@ -326,6 +335,7 @@ serve(async () => {
           }
         : memberLeft
         ? {
+            ...correlation,
             type: "PLAN_MEMBER_LEFT",
             plan_id: String(payload["plan_id"] ?? ""),
             left_user_id: String(payload["left_user_id"] ?? ""),
@@ -334,6 +344,7 @@ serve(async () => {
           }
         : memberRemoved
         ? {
+            ...correlation,
             type: "PLAN_MEMBER_REMOVED",
             plan_id: String(payload["plan_id"] ?? ""),
             plan_title: String(payload["plan_title"] ?? ""),
@@ -345,6 +356,7 @@ serve(async () => {
           }
         : memberJoinedByInvite
         ? {
+            ...correlation,
             type: "PLAN_MEMBER_JOINED_BY_INVITE",
             plan_id: String(payload["plan_id"] ?? ""),
             plan_title: String(payload["plan_title"] ?? ""),
