@@ -77,6 +77,8 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
 
   RealtimeChannel? _membersSub;
   RealtimeChannel? _invitesSub;
+  RealtimeChannel? _inboxSub;
+
   Timer? _refreshDebounce;
 
   @override
@@ -91,6 +93,7 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
     _refreshDebounce?.cancel();
     _membersSub?.unsubscribe();
     _invitesSub?.unsubscribe();
+    _inboxSub?.unsubscribe();
     super.dispose();
   }
 
@@ -105,7 +108,39 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
   void _startRealtimeAutoRefresh() {
     final client = Supabase.instance.client;
 
-    // 1) Accept/leave/remove => changes in core_plan_members for friend user id
+    // ✅ Канон: для owner самый надёжный триггер обновления — INBOX (источник истины).
+    // При ACCEPT/LEAVE/REMOVE сервер шлёт owner'у INBOX события — ловим и делаем refetch.
+    _inboxSub = client
+        .channel('friends_add_to_plan_inbox_${widget.ownerAppUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notification_deliveries',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: widget.ownerAppUserId,
+          ),
+          callback: (payload) {
+            try {
+              final Map<String, dynamic>? record =
+                  payload.newRecord as Map<String, dynamic>?;
+              if (record == null) return;
+
+              // Рефреш только по INBOX.
+              final channel = record['channel'];
+              if (channel != 'INBOX') return;
+
+              _scheduleRefresh();
+            } catch (_) {
+              // Не крэшим UI.
+            }
+          },
+        )
+        .subscribe();
+
+    // (Дополнительно, если realtime по таблицам работает) —
+    // изменения членства/инвайтов для invitee тоже могут триггерить refresh.
     _membersSub = client
         .channel('friends_add_to_plan_members_${widget.friendAppUserId}')
         .onPostgresChanges(
@@ -121,7 +156,6 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
         )
         .subscribe();
 
-    // 2) Invite status changes => changes in plan_internal_invites for invitee user id
     _invitesSub = client
         .channel('friends_add_to_plan_invites_${widget.friendAppUserId}')
         .onPostgresChanges(
@@ -160,12 +194,11 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
         _plans = list;
         _loading = false;
 
-        // Recompute local pending from server state to keep it canonical.
         _localPendingPlanIds
           ..clear()
-          ..addAll(list
-              .where((p) => p.inviteState == 'PENDING')
-              .map((p) => p.planId));
+          ..addAll(
+            list.where((p) => p.inviteState == 'PENDING').map((p) => p.planId),
+          );
       });
     } catch (e) {
       if (!mounted) return;
@@ -205,8 +238,7 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
 
       if (!mounted) return;
 
-      // Server will emit INBOX/PUSH. We keep local pending.
-      // Realtime will refresh list and hide accepted (member) plans automatically.
+      // Сервер пошлёт INBOX/PUSH, а INBOX-sub тут же дернёт refresh.
       _scheduleRefresh();
     } catch (e) {
       if (!mounted) return;
@@ -446,7 +478,6 @@ class _PlanCard extends StatelessWidget {
             ),
           ),
         ),
-        // ✅ Centered label
         Positioned.fill(
           child: Center(
             child: Container(
