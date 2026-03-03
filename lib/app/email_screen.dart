@@ -209,34 +209,13 @@ class _EmailScreenState extends State<EmailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 100),
-            if (showInput) ...[
-              const Text(
-                'Email',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Укажите почту, чтобы открыть все функции и восстановить доступ после переустановки приложения.',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 12),
+            if (showInput)
               TextField(
                 controller: _controller,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
+                decoration: const InputDecoration(labelText: 'Email'),
                 onChanged: (_) => setState(() {}),
               ),
-            ],
             if (_state == EmailFlowState.emailExists) ...[
               const SizedBox(height: 16),
               const Text(
