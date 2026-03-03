@@ -219,7 +219,7 @@ class _EmailScreenState extends State<EmailScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Укажите почту, чтобы открыть все функции и восстановить доступ после переустановки приложения.',
+                'Укажите почту, чтобы иметь более широкий функционал и быстро восстановить доступ после переустановки приложения',
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 14,
