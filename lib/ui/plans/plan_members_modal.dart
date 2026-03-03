@@ -301,8 +301,8 @@ class _MemberRow extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 39.6, // +10%
-            height: 39.6, // +10%
+            width: 44, // +10%
+            height: 44, // +10%
             decoration: BoxDecoration(
               color: Colors.grey.shade800,
               borderRadius: BorderRadius.circular(9),
@@ -315,14 +315,14 @@ class _MemberRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontWeight: nicknameWeight,
-                fontSize: 15.4, // +10%
+                fontSize: 17, // +10%
               ),
             ),
           ),
           if (!isReadOnly && member.canAddFriend)
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.person_add_alt_1, size: 22), // +10%
+              icon: const Icon(Icons.person_add_alt_1, size: 25), // +10%
               onPressed: () {},
             ),
           if (!isReadOnly && member.canRemoveMember)
@@ -331,7 +331,7 @@ class _MemberRow extends StatelessWidget {
               icon: const Icon(
                 Icons.close,
                 color: Colors.red,
-                size: 22, // +10%
+                size: 25, // +10%
               ),
               onPressed: () => onRemoveMember(member.appUserId),
             ),
