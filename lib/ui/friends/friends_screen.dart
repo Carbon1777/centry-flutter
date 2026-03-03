@@ -529,25 +529,30 @@ class _FriendsScreenState extends State<FriendsScreen> {
       },
     );
 
-    controller.dispose();
+    // IMPORTANT: dispose the controller *after* the dialog fully leaves the tree.
+    // Otherwise, TextField/Animated widgets can still touch the controller during teardown.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+    });
 
     if (!mounted) return;
     if (saved == null) return;
+
+    final trimmed = saved.trim();
 
     try {
       await widget.repository.upsertFriendNote(
         appUserId: widget.appUserId,
         friendUserId: friend.friendUserId,
-        note: saved.trim(),
+        note: trimmed,
       );
       if (!mounted) return;
 
-      // Canon: initiator gets only a destructive center toast, no modal.
-      // Do not await the toast to avoid coupling refresh to toast dismissal.
+      // Canon: note edit is not a destructive action; show a small success toast (no modal).
       unawaited(showCenterToast(
         context,
-        message: 'Удален из друзей',
-        isError: true,
+        message: trimmed.isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
+        isError: false,
       ));
 
       // Refresh exactly once.
@@ -655,7 +660,7 @@ class _FriendCard extends StatelessWidget {
                         Text('Ник: ${friend.displayName}', style: titleStyle),
                         const SizedBox(height: 2),
                         Text(
-                          'Public ID: ${friend.publicId}',
+                          'Имя: не указано',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
