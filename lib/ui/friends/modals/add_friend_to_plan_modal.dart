@@ -70,7 +70,8 @@ class _AddFriendToPlanSheet extends StatefulWidget {
   State<_AddFriendToPlanSheet> createState() => _AddFriendToPlanSheetState();
 }
 
-class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
+class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
+    with WidgetsBindingObserver {
   bool _loading = true;
   List<_PlanRowVm> _plans = const [];
   final Set<String> _localPendingPlanIds = <String>{};
@@ -84,17 +85,28 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_load());
     _startRealtimeAutoRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _refreshDebounce?.cancel();
     _membersSub?.unsubscribe();
     _invitesSub?.unsubscribe();
     _inboxSub?.unsubscribe();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // ✅ Canon: PUSH is a "budilnik". On resume (tap from background/cold),
+    // we must refetch server truth (INBOX/RPC), not rely on realtime inserts.
+    if (state == AppLifecycleState.resumed) {
+      _scheduleRefresh();
+    }
   }
 
   void _scheduleRefresh() {
