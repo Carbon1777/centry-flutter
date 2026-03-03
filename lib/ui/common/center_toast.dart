@@ -17,12 +17,25 @@ Future<void> showCenterToast(
   bool isError = false,
   Duration duration = const Duration(seconds: 2),
 }) async {
-  final rootNav = Navigator.maybeOf(context, rootNavigator: true);
-  if (rootNav == null) return;
+  // We must only ever pop the toast route itself, never "whatever is on top".
+  BuildContext? toastRouteContext;
+  var closed = false;
 
-  final timer = Timer(duration, () {
-    if (rootNav.canPop()) rootNav.pop();
-  });
+  void closeToastSafely() {
+    if (closed) return;
+    final ctx = toastRouteContext;
+    if (ctx == null) return;
+
+    // Pop using the toast route's own context => гарантированно закрываем именно тост.
+    try {
+      Navigator.of(ctx).pop();
+      closed = true;
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  final timer = Timer(duration, closeToastSafely);
 
   await showGeneralDialog<void>(
     context: context,
@@ -31,6 +44,9 @@ Future<void> showCenterToast(
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 140),
     pageBuilder: (ctx, anim1, anim2) {
+      // Capture the route context for safe closing.
+      toastRouteContext ??= ctx;
+
       final theme = Theme.of(ctx);
 
       final effectiveIsError = isError || _looksNegativeToastMessage(message);
@@ -99,6 +115,7 @@ Future<void> showCenterToast(
       );
     },
   ).whenComplete(() {
+    closed = true;
     if (timer.isActive) timer.cancel();
   });
 }
