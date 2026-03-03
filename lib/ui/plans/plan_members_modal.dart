@@ -9,6 +9,8 @@ class PlanMembersModal extends StatefulWidget {
   final List<PlanMemberDto> members;
 
   final bool canAddMembers;
+  /// Read-only view (archive/history): hide any action icons.
+  final bool isReadOnly;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
@@ -20,6 +22,7 @@ class PlanMembersModal extends StatefulWidget {
     required this.ownerMember,
     required this.members,
     required this.canAddMembers,
+    this.isReadOnly = false,
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
@@ -191,6 +194,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: _MemberRow(
                   member: _owner,
+                  isReadOnly: widget.isReadOnly,
                   onRemoveMember: widget.onRemoveMember,
                 ),
               ),
@@ -205,12 +209,13 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                     final m = _members[index];
                     return _MemberRow(
                       member: m,
+                      isReadOnly: widget.isReadOnly,
                       onRemoveMember: widget.onRemoveMember,
                     );
                   },
                 ),
               ),
-              if (widget.canAddMembers) ...[
+              if (widget.canAddMembers && !widget.isReadOnly) ...[
                 const Divider(height: 1, thickness: 1),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
@@ -267,10 +272,12 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
 
 class _MemberRow extends StatelessWidget {
   final PlanMemberDto member;
+  final bool isReadOnly;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
   const _MemberRow({
     required this.member,
+    required this.isReadOnly,
     required this.onRemoveMember,
   });
 
@@ -307,27 +314,19 @@ class _MemberRow extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    member.nickname,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: nicknameWeight, fontSize: 14),
-                  ),
-                ),
-                // UX: показываем только ник (public_id не показываем в списке участников).
-
-              ],
+            child: Text(
+              member.nickname,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: nicknameWeight, fontSize: 14),
             ),
           ),
-          if (member.canAddFriend)
+          if (!isReadOnly && member.canAddFriend)
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.person_add_alt_1, size: 20),
               onPressed: () {},
             ),
-          if (member.canRemoveMember)
+          if (!isReadOnly && member.canRemoveMember)
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.close, color: Colors.red, size: 20),

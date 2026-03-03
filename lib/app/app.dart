@@ -285,6 +285,53 @@ class _BootstrapGateState extends State<BootstrapGate>
                   ((actionValue == 'ACCEPT' || actionValue == 'DECLINE'));
 
               if (isOwnerResult) {
+                // Canon: on tap "Посмотреть" we must build UI from PENDING INBOX (source of truth),
+                // then ACK/consume after enqueue/show to prevent late PUSH duplicates.
+                final pending =
+                    await _loadPendingOwnerInviteResultInboxByInviteId(inviteId);
+                if (pending != null) {
+                  final pendingAction = (pending['action'] ??
+                          pending['owner_action'] ??
+                          pending['ownerAction'] ??
+                          '')
+                      .toString()
+                      .trim()
+                      .toUpperCase();
+
+                  final effectiveAction =
+                      (pendingAction == 'ACCEPT' || pendingAction == 'DECLINE')
+                          ? pendingAction
+                          : (actionValue == 'ACCEPT' ? 'ACCEPT' : 'DECLINE');
+
+                  final pendingPlanId =
+                      (pending['plan_id'] ?? pending['planId'] ?? planId)
+                          .toString();
+                  final pendingTitleRaw = (pending['title'] ?? '').toString();
+                  final pendingTitle = pendingTitleRaw.trim().isEmpty
+                      ? (effectiveAction == 'ACCEPT'
+                          ? 'Приглашение принято'
+                          : 'Приглашение отклонено')
+                      : pendingTitleRaw;
+                  final pendingBody = (pending['body'] ?? body).toString();
+
+                  InviteUiCoordinator.instance.enqueueOwnerResult(
+                    OwnerResultUiRequest(
+                      inviteId: inviteId,
+                      planId: pendingPlanId,
+                      action: effectiveAction,
+                      title: pendingTitle,
+                      body: pendingBody,
+                      source: InviteUiSource.backgroundIntent,
+                    ),
+                  );
+
+                  final deliveryId =
+                      (pending['delivery_id'] ?? pending['deliveryId'] ?? '')
+                          .toString();
+                  _scheduleConsumeInboxDelivery(deliveryId);
+                  return;
+                }
+
                 final ownerTitle = actionValue == 'ACCEPT'
                     ? 'Приглашение принято'
                     : 'Приглашение отклонено';
@@ -429,9 +476,14 @@ if (type == 'PLAN_MEMBER_REMOVED') {
                 await _loadPendingOwnerInviteResultInboxByInviteId(inviteId);
             if (pending != null) {
               final pType = (pending['type'] ?? '').toString().trim();
-              final actionValue = pType == 'PLAN_INTERNAL_INVITE_ACCEPTED'
-                  ? 'ACCEPT'
-                  : 'DECLINE';
+              final pendingAction = (pending['action'] ?? pending['owner_action'] ?? pending['ownerAction'] ?? '')
+                  .toString()
+                  .trim()
+                  .toUpperCase();
+
+              final actionValue = (pendingAction == 'ACCEPT' || pendingAction == 'DECLINE')
+                  ? pendingAction
+                  : (pType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ? 'ACCEPT' : 'DECLINE');
 
               final pendingPlanId =
                   (pending['plan_id'] ?? pending['planId'] ?? planId).toString();
@@ -770,9 +822,24 @@ void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
 
         final payload = _asStringKeyedMap(payloadRaw);
         final t = (payload['type'] ?? '').toString().trim();
-        if (t != 'PLAN_INTERNAL_INVITE_ACCEPTED' &&
-            t != 'PLAN_INTERNAL_INVITE_DECLINED') {
+        final action = (payload['action'] ?? payload['owner_action'] ?? payload['ownerAction'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
+
+        final isOwnerResult = (t == 'PLAN_INTERNAL_INVITE' &&
+                (action == 'ACCEPT' || action == 'DECLINE')) ||
+            t == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+            t == 'PLAN_INTERNAL_INVITE_DECLINED';
+
+        if (!isOwnerResult) {
           continue;
+        }
+
+        // Backward compatibility: older payloads used separate types without explicit action.
+        if ((payload['action'] == null || payload['action'].toString().trim().isEmpty) &&
+            (t == 'PLAN_INTERNAL_INVITE_ACCEPTED' || t == 'PLAN_INTERNAL_INVITE_DECLINED')) {
+          payload['action'] = t == 'PLAN_INTERNAL_INVITE_ACCEPTED' ? 'ACCEPT' : 'DECLINE';
         }
 
         final payloadInviteId = (payload['invite_id'] ?? payload['inviteId'] ?? '')
@@ -1603,6 +1670,7 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                   source: InviteUiSource.foreground,
                 ),
               );
+              consumeIfReady();
               return;
             }
 
@@ -1691,13 +1759,6 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
         debugPrint('[INBOX] consume failed delivery id=$id error=$e');
       }
     }
-  }
-
-  void _consumeInboxDeliveryIfReady(String deliveryId) {
-    if (!_appShellReady) return;
-    final id = deliveryId.trim();
-    if (id.isEmpty) return;
-    unawaited(_consumeInboxDelivery(deliveryId: id));
   }
 
   void _scheduleConsumeInboxDelivery(String deliveryId) {
@@ -2107,9 +2168,7 @@ if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
       await _storage.clearPendingPlanInviteToken();
 
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('Ошибка инвайта: $e')),
-      );
+      unawaited(showCenterToast(context, message: 'Ошибка инвайта: $e', isError: true));
     } finally {
       _handlingPendingPlanInvite = false;
     }
