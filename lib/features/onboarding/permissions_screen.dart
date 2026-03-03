@@ -213,8 +213,10 @@ class _IntroText extends StatelessWidget {
       children: const [
         SizedBox(height: 40),
         Text(
-          'Для полноценной работы всех фукций приложения\n'
-          'нам необходимы ваши разрешения',
+          'Для полноценной работы \n'
+          'всех фукций приложения \n'
+          'нам необходимы \n'
+          'ваши разрешения',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 22,

@@ -965,12 +965,14 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
+            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
                 ownerMember: details.ownerMember!,
                 members: details.members,
                 canAddMembers: details.plan.canAddMembers,
+                isReadOnly: isArchiveReadOnly,
                 onRemoveMember: (memberAppUserId) async {
                   Navigator.of(dialogContext).pop();
                   await onRemoveMember(memberAppUserId);
