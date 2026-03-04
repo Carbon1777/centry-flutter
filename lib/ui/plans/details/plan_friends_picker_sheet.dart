@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import '../../../data/friends/friend_dto.dart';
 import '../common/center_toast.dart';
 
-/// Bottom sheet: выбор друга для приглашения в план.
-/// UI-only. Server-first: реальная истина о pending/accepted/declined должна приходить с сервера
-/// (следующим шагом подключим загрузку кандидатов с флагами).
+/// Bottom sheet UI: выбор друга для приглашения в план.
+/// UI-only: server-first истина о pending/accepted/declined должна приходить с сервера
+/// (позже можно расширить флагами).
 ///
-/// Пока здесь:
+/// Сейчас:
 /// - список друзей приходит через параметр [friends]
 /// - инвайт отправляется через callback [onInviteFriendByPublicId]
 /// - optimistic UI: "Отправлено приглашение" + disabled
@@ -112,25 +112,36 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             _Header(
               title: 'Список друзей',
               subtitle: 'Выберите друга для добавления в план.',
-              onClose: () => Navigator.of(context).pop(false),
+              onClose: () => Navigator.of(context).pop(),
             ),
             const Divider(height: 1, thickness: 1),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                itemCount: widget.friends.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (_, index) {
-                  final f = widget.friends[index];
-                  final disabled = _isDisabled(f);
-                  return _FriendPickCard(
-                    friend: f,
-                    disabled: disabled,
-                    showSentLabel: _pending.contains(f.friendUserId),
-                    onTap: () => unawaited(_invite(f)),
-                  );
-                },
-              ),
+              child: widget.friends.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Друзей пока нет',
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                      itemCount: widget.friends.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, index) {
+                        final f = widget.friends[index];
+                        final disabled = _isDisabled(f);
+                        return _FriendPickCard(
+                          friend: f,
+                          disabled: disabled,
+                          showSentLabel: _pending.contains(f.friendUserId),
+                          onTap: () => unawaited(_invite(f)),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -212,11 +223,7 @@ class _FriendPickCard extends StatelessWidget {
     final titleColor = disabled ? Colors.white38 : Colors.white;
     final subtitleColor = disabled ? Colors.white30 : Colors.white54;
 
-    // FriendDto даёт только displayName + note.
-    // Маппинг под твой UI:
-    // - Ник: displayName
-    // - Имя: пока "не указано" (будет server-first позже)
-    // - Комментарий: note
+    // FriendDto: displayName + note
     final nick =
         friend.displayName.trim().isEmpty ? '—' : friend.displayName.trim();
     final name = 'не указано';
