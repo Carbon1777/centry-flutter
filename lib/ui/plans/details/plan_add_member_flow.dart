@@ -73,7 +73,6 @@ class PlanAddMemberModal extends StatelessWidget {
                       _ActionCard(
                         title: 'Добавить из списка друзей',
                         enabled: canAddFromFriends,
-                        subtitle: null,
                         onTap: () async {
                           if (!canAddFromFriends) return;
 
@@ -172,7 +171,6 @@ class _Header extends StatelessWidget {
 
 class _ActionCard extends StatelessWidget {
   final String title;
-  final String? subtitle;
   final bool enabled;
   final VoidCallback onTap;
 
@@ -180,7 +178,6 @@ class _ActionCard extends StatelessWidget {
     required this.title,
     required this.enabled,
     required this.onTap,
-    this.subtitle,
   });
 
   @override
@@ -205,28 +202,13 @@ class _ActionCard extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: titleColor,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.white54,
-                        ),
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: titleColor,
+                  ),
                 ),
               ),
               Icon(Icons.chevron_right, color: chevronColor),
