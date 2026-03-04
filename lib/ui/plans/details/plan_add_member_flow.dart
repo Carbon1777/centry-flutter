@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'plan_add_by_id_modal.dart';
 import 'plan_friends_modal.dart';
@@ -71,14 +72,34 @@ class PlanAddMemberModal extends StatelessWidget {
                       const SizedBox(height: 12),
                       _ActionCard(
                         title: 'Добавить из списка друзей',
-                        enabled: true,
+                        enabled: canAddFromFriends,
                         subtitle: null,
                         onTap: () async {
-                          await showDialog<void>(
+                          if (!canAddFromFriends) return;
+
+                          final authUserId =
+                              Supabase.instance.client.auth.currentUser?.id ??
+                                  '';
+
+                          // Bottom-sheet, swipe-down to close
+                          final ok = await showModalBottomSheet<bool>(
                             context: context,
-                            barrierDismissible: true,
-                            builder: (_) => const PlanFriendsModal(),
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            barrierColor: Colors.black.withOpacity(0.55),
+                            builder: (_) => PlanFriendsModal(
+                              appUserId: authUserId,
+                              onInviteFriendByPublicId: onAddByPublicId,
+                            ),
                           );
+
+                          if (!context.mounted) return;
+
+                          // Если bottom-sheet вернул true -> закрываем этот диалог с true
+                          // (родитель обновит детали/список участников)
+                          if (ok == true) {
+                            Navigator.of(context).pop(true);
+                          }
                         },
                       ),
                       const SizedBox(height: 12),
