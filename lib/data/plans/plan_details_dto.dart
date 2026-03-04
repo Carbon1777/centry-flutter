@@ -42,6 +42,16 @@ class PlanDetailsDto {
   }
 }
 
+bool _asBool(dynamic v) {
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  if (v is String) {
+    final s = v.trim().toLowerCase();
+    return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
+  }
+  return false;
+}
+
 /* ===================== PLAN CORE ===================== */
 
 class PlanCoreDto {
@@ -147,8 +157,7 @@ class PlanMemberDto {
 
   /// server-first UI flags
   ///
-  /// canAddFriend: показывать ли иконку "добавить в друзья"
-  /// canRemoveMember: показывать ли действие "удалить участника"
+  /// canAddFriend: "показывать ли иконку Add friend" (сервер решает видимость)
   final bool canAddFriend;
   final bool canRemoveMember;
 
@@ -157,8 +166,8 @@ class PlanMemberDto {
   final bool isMe;
 
   /// ✅ server-first relationship flags (relative to текущему пользователю)
-  /// - isFriend: уже друзья
-  /// - hasPendingFriendRequest: есть активный pending friend request
+  /// isFriend -> скрыть иконку
+  /// hasPendingFriendRequest -> показать, но disabled
   final bool isFriend;
   final bool hasPendingFriendRequest;
 
@@ -174,16 +183,6 @@ class PlanMemberDto {
     this.isFriend = false,
     this.hasPendingFriendRequest = false,
   });
-
-  static bool _asBool(dynamic v) {
-    if (v is bool) return v;
-    if (v is num) return v != 0;
-    if (v is String) {
-      final s = v.trim().toLowerCase();
-      return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
-    }
-    return false;
-  }
 
   factory PlanMemberDto.fromJson(Map<String, dynamic> json) {
     return PlanMemberDto(
@@ -201,7 +200,8 @@ class PlanMemberDto {
       hasPendingFriendRequest: _asBool(
         json['has_pending_friend_request'] ??
             json['pending_friend_request'] ??
-            json['is_friend_request_pending'],
+            json['is_friend_request_pending'] ??
+            json['friend_request_pending'],
       ),
     );
   }
