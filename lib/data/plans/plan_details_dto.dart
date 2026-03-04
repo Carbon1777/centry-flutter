@@ -157,7 +157,8 @@ class PlanMemberDto {
 
   /// server-first UI flags
   ///
-  /// canAddFriend: "показывать ли иконку Add friend" (сервер решает видимость)
+  /// canAddFriend: видимость иконки Add friend (сервер решает).
+  /// canRemoveMember: видимость иконки удаления участника (сервер решает).
   final bool canAddFriend;
   final bool canRemoveMember;
 
@@ -166,8 +167,10 @@ class PlanMemberDto {
   final bool isMe;
 
   /// ✅ server-first relationship flags (relative to текущему пользователю)
-  /// - isFriend: уже друзья -> иконки нет
-  /// - hasPendingFriendRequest: есть активный pending запрос -> иконка есть, но disabled
+  /// - isFriend: уже друзья (иконки Add friend быть не должно)
+  /// - hasPendingFriendRequest: есть активный pending friend request (иконка есть, но disabled)
+  ///
+  /// ВАЖНО: пока сервер не отдаёт эти поля, они по дефолту false и ничего не ломают.
   final bool isFriend;
   final bool hasPendingFriendRequest;
 
@@ -186,12 +189,12 @@ class PlanMemberDto {
 
   factory PlanMemberDto.fromJson(Map<String, dynamic> json) {
     return PlanMemberDto(
-      appUserId: json['app_user_id'],
-      nickname: json['nickname'],
-      publicId: json['public_id'],
-      role: json['role'],
+      appUserId: (json['app_user_id'] ?? '').toString(),
+      nickname: (json['nickname'] ?? '').toString(),
+      publicId: (json['public_id'] ?? '').toString(),
+      role: (json['role'] ?? '').toString(),
       joinedAt: json['joined_at'] != null
-          ? DateTime.tryParse(json['joined_at'])
+          ? DateTime.tryParse(json['joined_at'].toString())
           : null,
       canAddFriend: _asBool(json['can_add_friend']),
       canRemoveMember: _asBool(json['can_remove_member']),
