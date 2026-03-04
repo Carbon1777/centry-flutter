@@ -180,6 +180,10 @@ function isPlanMemberJoinedByInvite(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_MEMBER_JOINED_BY_INVITE";
 }
 
+function isPlanDeleted(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PLAN_DELETED";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -282,6 +286,7 @@ serve(async () => {
 
     const memberRemoved = isPlanMemberRemoved(payload);
     const memberJoinedByInvite = isPlanMemberJoinedByInvite(payload);
+    const planDeleted = isPlanDeleted(payload);
     const inviteResultForOwner = isInternalInviteResult(payload);
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
@@ -295,7 +300,7 @@ serve(async () => {
     // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
     // - Other notification types may include OS notification.
     const shouldIncludeNotification =
-      !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite || friendEvent);
+      !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite || planDeleted || friendEvent);
 
     let anyOk = false;
     let lastErr = "";
@@ -362,6 +367,17 @@ serve(async () => {
             plan_title: String(payload["plan_title"] ?? ""),
             joined_user_id: String(payload["joined_user_id"] ?? ""),
             joined_nickname: String(payload["joined_nickname"] ?? ""),
+            title: String(payload["title"] ?? title),
+            body: String(payload["body"] ?? body),
+          }
+        : planDeleted
+        ? {
+            ...correlation,
+            type: "PLAN_DELETED",
+            plan_id: String(payload["plan_id"] ?? ""),
+            plan_title: String(payload["plan_title"] ?? ""),
+            owner_app_user_id: String(payload["owner_app_user_id"] ?? payload["owner_user_id"] ?? ""),
+            owner_nickname: String(payload["owner_nickname"] ?? ""),
             title: String(payload["title"] ?? title),
             body: String(payload["body"] ?? body),
           }
@@ -452,6 +468,7 @@ serve(async () => {
         internal_invite: internalInvite,
         invite_result_for_owner: inviteResultForOwner,
         invitee_interactive: isInviteeInteractiveInvite,
+        plan_deleted: planDeleted,
         friend_event: friendEvent,
         include_notification: shouldIncludeNotification,
       },

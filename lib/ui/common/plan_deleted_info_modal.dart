@@ -17,8 +17,6 @@ class PlanDeletedInfoModal extends StatelessWidget {
     final t = title.trim().isNotEmpty ? title.trim() : 'План был удален';
     final b = body.trim();
 
-    // ⚠️ Цвет можно легко поменять позже.
-    // Сейчас оставляю красный, как в существующей модалке, чтобы стиль был единый и без регрессов.
     final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
           color: Colors.red,
           fontWeight: FontWeight.w700,
