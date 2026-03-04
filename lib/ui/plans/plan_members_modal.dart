@@ -125,8 +125,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
         a.canAddFriend == b.canAddFriend &&
         a.canRemoveMember == b.canRemoveMember &&
         a.isMe == b.isMe &&
-        // These fields are required for canonical "pending disabled" UX.
-        // Ensure PlanMemberDto contains them (server-first snapshot fields).
         a.isFriend == b.isFriend &&
         a.hasPendingFriendRequest == b.hasPendingFriendRequest;
   }
@@ -187,7 +185,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
           if (membersChanged) _members = nextMembers;
         });
       } else {
-        // still reconcile optimistic state even if lists are "same"
         _owner = nextOwner;
         _members = nextMembers;
       }
@@ -196,7 +193,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     } catch (e) {
       if (!mounted) return;
       if (showError) {
-        // CANON: no SnackBar. Use central toast.
         unawaited(showCenterToast(
           context,
           message: 'Ошибка обновления: $e',
@@ -217,11 +213,8 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     if (widget.isReadOnly) return false;
     if (m.isMe == true) return false;
 
-    // Server-first: if already friends => icon must not be shown.
     if (m.isFriend == true) return false;
 
-    // Show if canAddFriend (base visibility) OR request is pending (disabled view)
-    // OR we have local optimistic pending.
     return m.canAddFriend == true ||
         m.hasPendingFriendRequest == true ||
         _optimisticFriendPending.contains(m.appUserId);
@@ -231,10 +224,8 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     if (widget.isReadOnly) return true;
     if (_friendRequestInFlight.contains(m.appUserId)) return true;
 
-    // Server-first: pending request disables the icon.
     if (m.hasPendingFriendRequest == true) return true;
 
-    // Local optimistic: disable immediately after tap until server confirms.
     if (_optimisticFriendPending.contains(m.appUserId)) return true;
 
     return false;
@@ -284,7 +275,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
         await showCenterToast(context, message: 'Уже в друзьях');
       } else if (r.requestStatus == 'PENDING' &&
           r.requestDirection == 'OUTGOING') {
-        // Каноничный центральный тост (как в friends flow).
         await showCenterToast(context, message: 'Запрос отправлен');
       } else if (r.requestStatus == 'PENDING' &&
           r.requestDirection == 'INCOMING') {
@@ -305,7 +295,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
           _friendRequestInFlight.remove(target.appUserId);
         });
       }
-      // Pull server truth ASAP (icon state must follow server snapshot)
       unawaited(_refreshOnce(showError: false, showSpinner: false));
     }
   }
@@ -464,6 +453,9 @@ class _MemberRow extends StatelessWidget {
     final nicknameWeight =
         isSelfParticipant ? FontWeight.w800 : FontWeight.w600;
 
+    final showAddFriendButton = !isReadOnly && showAddFriend;
+    final showRemoveMemberButton = !isReadOnly && member.canRemoveMember;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -492,7 +484,7 @@ class _MemberRow extends StatelessWidget {
               ),
             ),
           ),
-          if (!isReadOnly && showAddFriend)
+          if (showAddFriendButton)
             Padding(
               padding: const EdgeInsets.only(left: 4),
               child: DecoratedBox(
@@ -523,15 +515,30 @@ class _MemberRow extends StatelessWidget {
                 ),
               ),
             ),
-          if (!isReadOnly && member.canRemoveMember)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(
-                Icons.close,
-                color: Colors.red,
-                size: 25, // +10%
+          if (showAddFriendButton && showRemoveMemberButton)
+            const SizedBox(width: 10),
+          if (showRemoveMemberButton)
+            Padding(
+              padding: EdgeInsets.only(left: showAddFriendButton ? 0 : 4),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.redAccent.withOpacity(0.38),
+                    width: 1,
+                  ),
+                ),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.close,
+                    color: Colors.redAccent.shade200,
+                    size: 25, // +10%
+                  ),
+                  onPressed: () => onRemoveMember(member.appUserId),
+                ),
               ),
-              onPressed: () => onRemoveMember(member.appUserId),
             ),
         ],
       ),
