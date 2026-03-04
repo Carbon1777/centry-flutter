@@ -16,9 +16,18 @@ import 'widgets/plan_card.dart';
 class PlansScreen extends StatefulWidget {
   final String appUserId;
 
+
+  /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
+  /// Optional: if null, plan members "add friend" icon will be disabled/no-op.
+  final Future<void> Function({
+    required String targetPublicId,
+    required String targetAppUserId,
+  })? onAddFriend;
+
   const PlansScreen({
     super.key,
     required this.appUserId,
+    this.onAddFriend,
   });
 
   @override
@@ -199,6 +208,7 @@ class _PlansScreenState extends State<PlansScreen>
           appUserId: appUserId,
           planId: plan.id,
           repository: _repo,
+            onAddFriend: widget.onAddFriend,
         ),
       ),
     );
@@ -293,6 +303,7 @@ class _PlansScreenState extends State<PlansScreen>
             appUserId: appUserId,
             planId: planId,
             repository: _repo,
+            onAddFriend: widget.onAddFriend,
           ),
         ),
       );

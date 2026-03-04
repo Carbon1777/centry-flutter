@@ -29,6 +29,7 @@ import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_deleted_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
+import '../data/friends/friends_repository_impl.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
