@@ -146,12 +146,21 @@ class PlanMemberDto {
   final DateTime? joinedAt;
 
   /// server-first UI flags
+  ///
+  /// canAddFriend: показывать ли иконку "добавить в друзья"
+  /// canRemoveMember: показывать ли действие "удалить участника"
   final bool canAddFriend;
   final bool canRemoveMember;
 
   /// ✅ server-first: backend must provide this
   /// true when member.app_user_id == p_app_user_id in get_plan_details_v1
   final bool isMe;
+
+  /// ✅ server-first relationship flags (relative to текущему пользователю)
+  /// - isFriend: уже друзья
+  /// - hasPendingFriendRequest: есть активный pending friend request
+  final bool isFriend;
+  final bool hasPendingFriendRequest;
 
   PlanMemberDto({
     required this.appUserId,
@@ -162,7 +171,19 @@ class PlanMemberDto {
     required this.canAddFriend,
     required this.canRemoveMember,
     required this.isMe,
+    this.isFriend = false,
+    this.hasPendingFriendRequest = false,
   });
+
+  static bool _asBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
+    }
+    return false;
+  }
 
   factory PlanMemberDto.fromJson(Map<String, dynamic> json) {
     return PlanMemberDto(
@@ -173,9 +194,15 @@ class PlanMemberDto {
       joinedAt: json['joined_at'] != null
           ? DateTime.tryParse(json['joined_at'])
           : null,
-      canAddFriend: json['can_add_friend'] ?? false,
-      canRemoveMember: json['can_remove_member'] ?? false,
-      isMe: json['is_me'] ?? false,
+      canAddFriend: _asBool(json['can_add_friend']),
+      canRemoveMember: _asBool(json['can_remove_member']),
+      isMe: _asBool(json['is_me']),
+      isFriend: _asBool(json['is_friend']),
+      hasPendingFriendRequest: _asBool(
+        json['has_pending_friend_request'] ??
+            json['pending_friend_request'] ??
+            json['is_friend_request_pending'],
+      ),
     );
   }
 }
