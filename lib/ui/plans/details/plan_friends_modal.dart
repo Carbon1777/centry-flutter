@@ -12,19 +12,16 @@ import '../common/center_toast.dart';
 ///
 /// Показывается через showModalBottomSheet (свайп вниз для закрытия).
 ///
-/// Server-first:
-/// - список друзей грузим с сервера через FriendsRepository
-/// - реальная истина о pending/accepted/declined по приглашениям в план должна приходить с сервера
-///   (следующим шагом подключим server-first кандидатов/флаги, если нужно)
-///
 /// Сейчас UX:
+/// - грузим список друзей
 /// - при тапе: optimistic "Отправлено приглашение" + disabled
-/// - вызываем существующий flow приглашения в план через callback onInviteFriendByPublicId
+/// - зовём существующий server-first механизм инвайта в план через callback
 class PlanFriendsModal extends StatefulWidget {
   /// текущий app_user_id (public.app_users.id)
   final String appUserId;
 
   /// server-first entrypoint: инвайт в текущий план по friend's public_id
+  /// (это существующий механизм инвайта в план; мы просто новая точка входа)
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
 
   const PlanFriendsModal({
@@ -287,9 +284,9 @@ class _FriendPickCard extends StatelessWidget {
     final subtitleColor = disabled ? Colors.white30 : Colors.white54;
 
     // FriendDto даёт displayName + note.
-    // Маппинг под твой UI:
+    // Под твой макет:
     // - Ник: displayName
-    // - Имя: пока "не указано" (server-first добавим позже, если нужно)
+    // - Имя: пока "не указано" (если нужно строго как на скрине — добавим server-first поле позже)
     // - Комментарий: note
     final nick =
         friend.displayName.trim().isEmpty ? '—' : friend.displayName.trim();
