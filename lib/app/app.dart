@@ -685,6 +685,26 @@ class _BootstrapGateState extends State<BootstrapGate>
           ),
         );
       },
+      onPlanDeletedOpen: ({
+        required String planId,
+        required String ownerUserId,
+        String? ownerNickname,
+        String? planTitle,
+        String? eventId,
+        String? title,
+        String? body,
+      }) async {
+        await _handlePlanDeletedOpenFromLocalNotification(
+          planId: planId,
+          ownerUserId: ownerUserId,
+          ownerNickname: ownerNickname,
+          planTitle: planTitle,
+          eventId: eventId,
+          title: title,
+          body: body,
+        );
+      },
+
     );
   }
 
@@ -1056,6 +1076,140 @@ class _BootstrapGateState extends State<BootstrapGate>
     return null;
   }
 
+
+
+  Future<Map<String, dynamic>?> _loadPendingPlanDeletedInboxDelivery({
+    required String planId,
+    String? eventId,
+  }) async {
+    final appUserId = _userId;
+    if (appUserId == null || appUserId.trim().isEmpty) return null;
+
+    final pid = planId.trim();
+    if (pid.isEmpty) return null;
+
+    final eid = (eventId ?? '').trim();
+
+    try {
+      // Best correlation: event_id is stable (notification_deliveries.event_id).
+      if (eid.isNotEmpty) {
+        final dynamic raw = await _supabase
+            .from('notification_deliveries')
+            .select('id,event_id,payload,created_at')
+            .eq('user_id', appUserId)
+            .eq('channel', 'INBOX')
+            .eq('status', 'PENDING')
+            .eq('event_id', eid)
+            .order('created_at', ascending: false)
+            .limit(1);
+
+        if (raw is List && raw.isNotEmpty) {
+          final r = raw.first;
+          if (r is Map) {
+            final id = (r['id'] ?? '').toString().trim();
+            final payloadRaw = r['payload'];
+            if (id.isNotEmpty && payloadRaw is Map) {
+              final payload = _asStringKeyedMap(payloadRaw);
+              final payloadType = (payload['type'] ?? '').toString().trim();
+              final payloadPlanId =
+                  (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+
+              if (payloadType == 'PLAN_DELETED' && payloadPlanId == pid) {
+                payload['delivery_id'] = id;
+                payload['event_id'] = (r['event_id'] ?? eid).toString();
+                return payload;
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback: scan recent pending INBOX deliveries by type + plan_id.
+      final dynamic raw = await _supabase
+          .from('notification_deliveries')
+          .select('id,event_id,payload,created_at')
+          .eq('user_id', appUserId)
+          .eq('channel', 'INBOX')
+          .eq('status', 'PENDING')
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      if (raw is! List) return null;
+
+      for (final r in raw) {
+        if (r is! Map) continue;
+        final id = (r['id'] ?? '').toString().trim();
+        final payloadRaw = r['payload'];
+        if (id.isEmpty || payloadRaw is! Map) continue;
+
+        final payload = _asStringKeyedMap(payloadRaw);
+        final payloadType = (payload['type'] ?? '').toString().trim();
+        if (payloadType != 'PLAN_DELETED') continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        if (payloadPlanId != pid) continue;
+
+        payload['delivery_id'] = id;
+        final rowEventId = (r['event_id'] ?? '').toString().trim();
+        if (rowEventId.isNotEmpty) payload['event_id'] = rowEventId;
+        return payload;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    return null;
+  }
+
+  Future<void> _handlePlanDeletedOpenFromLocalNotification({
+    required String planId,
+    required String ownerUserId,
+    String? ownerNickname,
+    String? planTitle,
+    String? eventId,
+    String? title,
+    String? body,
+  }) async {
+    // Canon: build UI from INBOX (source of truth).
+    final resolved = await _loadPendingPlanDeletedInboxDelivery(
+      planId: planId,
+      eventId: eventId,
+    );
+
+    if (resolved == null) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanDeleted] open-from-local-notif: no pending INBOX found planId=$planId eventId=$eventId',
+        );
+      }
+
+      // No correlation => DO NOT consume anything. Only show safe info toast/dialog.
+      final ctx = App.navigatorKey.currentContext;
+      if (ctx != null) {
+        await showCenterToast(
+          ctx,
+          message: (title ?? '').trim().isNotEmpty
+              ? (title ?? '').trim()
+              : 'План был удален',
+        );
+      }
+      return;
+    }
+
+    final payloadTitle = (resolved['title'] ?? title ?? '').toString().trim();
+    final payloadBody = (resolved['body'] ?? body ?? '').toString().trim();
+
+    await _showInfoDialog(
+      title: payloadTitle.isEmpty ? 'План был удален' : payloadTitle,
+      body: payloadBody.isEmpty
+          ? 'Откройте приложение, чтобы посмотреть.'
+          : payloadBody,
+    );
+
+    // ✅ ACK/consume строго после реального UI
+    await _consumeInboxDeliveryIfPossibleFromPayload(resolved);
+  }
   Future<void> _handleFriendOpenFromLocalNotification({
     required String type,
     String? eventId,
