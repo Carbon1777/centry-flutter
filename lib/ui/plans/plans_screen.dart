@@ -338,18 +338,23 @@ class _PlansScreenState extends State<PlansScreen>
           final type = (payloadJson['type'] ?? '').toString().trim().toUpperCase();
 
           // Refresh list for membership-affecting events.
-          final shouldRefresh =
-              type == 'PLAN_MEMBER_REMOVED' || type == 'PLAN_MEMBER_LEFT';
+          // ✅ PLAN_DELETED must also refresh (plan disappears for this user).
+          final shouldRefresh = type == 'PLAN_MEMBER_REMOVED' ||
+              type == 'PLAN_MEMBER_LEFT' ||
+              type == 'PLAN_DELETED';
           if (!shouldRefresh) return;
-
-          final planId = (payloadJson['plan_id'] ?? '').toString();
+final planId = (payloadJson['plan_id'] ?? '').toString();
 
           // IMPORTANT:
           // - For PLAN_MEMBER_LEFT / PLAN_MEMBER_REMOVED we receive the event on the OWNER side too.
           // - We must hide the plan card only when *this* user is the one who left/was removed.
           //   Otherwise the owner's (and other members') plan must remain visible.
           bool shouldHide = false;
-          if (type == 'PLAN_MEMBER_REMOVED') {
+          if (type == 'PLAN_DELETED') {
+            // Server emits PLAN_DELETED only to non-owner members, so for this user
+            // the plan must disappear immediately.
+            shouldHide = true;
+          } else if (type == 'PLAN_MEMBER_REMOVED') {
             final removedUserId =
                 (payloadJson['removed_user_id'] ?? payloadJson['removed_app_user_id'] ?? '')
                     .toString();
@@ -358,8 +363,7 @@ class _PlansScreenState extends State<PlansScreen>
             final leftUserId = (payloadJson['left_user_id'] ?? '').toString();
             shouldHide = leftUserId.isNotEmpty && leftUserId == appUserId;
           }
-
-          if (shouldHide && planId.isNotEmpty) {
+if (shouldHide && planId.isNotEmpty) {
             // Hide immediately to prevent tapping a dead card before refetch completes.
             if (mounted) {
               setState(() {

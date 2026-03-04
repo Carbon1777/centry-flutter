@@ -21,9 +21,6 @@ class PlanDeletedUiRequest {
   final String? title;
   final String? body;
 
-  /// ✅ Canon: consume INBOX строго после реального UI close.
-  final Future<void> Function()? onClosed;
-
   final PlanDeletedUiSource source;
 
   const PlanDeletedUiRequest({
@@ -34,7 +31,6 @@ class PlanDeletedUiRequest {
     this.planTitle,
     this.title,
     this.body,
-    this.onClosed,
   });
 
   String stableKey() {
@@ -137,19 +133,9 @@ class PlanDeletedUiCoordinator {
           final body = _resolveBody(next).trim();
           return PlanDeletedInfoModal(title: title, body: body);
         },
-      ).then((_) async {
-        // ✅ Canon: consume only AFTER close (caller provides closure).
-        try {
-          final cb = next.onClosed;
-          if (cb != null) await cb();
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('[PlanDeletedCoordinator] onClosed failed: $e');
-          }
-        } finally {
-          _showing = false;
-          _tryShowNext();
-        }
+      ).then((_) {
+        _showing = false;
+        _tryShowNext();
       });
     }
 
