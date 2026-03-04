@@ -263,6 +263,17 @@ class PushNotifications {
       String? title,
       String? body,
     })? onPlanMemberJoinedByInviteOpen,
+
+    /// Plan deleted OPEN callback (Scenario B/C). Must route via INBOX lookup in app layer.
+    Future<void> Function({
+      required String planId,
+      required String ownerUserId,
+      String? ownerNickname,
+      String? planTitle,
+      String? eventId,
+      String? title,
+      String? body,
+    })? onPlanDeletedOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -306,6 +317,37 @@ class PushNotifications {
       final planId = (map['plan_id'] ?? '').toString();
       final notifTitle = (map['title'] ?? '').toString().trim();
       final notifBody = (map['body'] ?? '').toString().trim();
+
+      if (kind == 'PLAN_DELETED') {
+        final ownerUserId =
+            (map['owner_app_user_id'] ?? map['owner_user_id'] ?? '').toString();
+        final ownerNickname = (map['owner_nickname'] ?? '').toString().trim();
+        final planTitle = (map['plan_title'] ?? '').toString().trim();
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
+
+        if (planId.isEmpty || ownerUserId.isEmpty) return;
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PushNotifications] open PLAN_DELETED plan_id=$planId owner_user_id=$ownerUserId event_id=$eventId',
+          );
+        }
+
+        final cb = onPlanDeletedOpen;
+        if (cb == null) return;
+
+        await cb(
+          planId: planId,
+          ownerUserId: ownerUserId,
+          ownerNickname: ownerNickname.isEmpty ? null : ownerNickname,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          eventId: eventId.isEmpty ? null : eventId,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
+        );
+        return;
+      }
 
       if (kind == 'PLAN_MEMBER_LEFT') {
         final leftUserId =
@@ -512,6 +554,17 @@ class PushNotifications {
     final planId = (m.data['plan_id'] ?? '').toString();
     final joinedUserId = (m.data['joined_user_id'] ?? '').toString();
     return planId.isNotEmpty && joinedUserId.isNotEmpty;
+  }
+
+  static bool isPlanDeleted(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString();
+    if (t == 'PLAN_DELETED') return true;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final ownerUserId =
+        (m.data['owner_app_user_id'] ?? m.data['owner_user_id'] ?? '')
+            .toString();
+    return planId.isNotEmpty && ownerUserId.isNotEmpty;
   }
 
   static bool isFriendRequestReceived(RemoteMessage m) {
@@ -803,6 +856,127 @@ class PushNotifications {
         payload: payload);
     if (kDebugMode)
       debugPrint('[PushNotifications] local.show done id=$id kind=$t');
+  }
+
+  static Future<void> showPlanDeleted(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showPlanDeleted id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showPlanDeleted data=${m.data}');
+      debugPrint(
+        '[PushNotifications] showPlanDeleted notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
+      );
+    }
+
+    if (!isPlanDeleted(m)) return;
+
+    final planId = (m.data['plan_id'] ?? '').toString();
+    final ownerUserId =
+        (m.data['owner_app_user_id'] ?? m.data['owner_user_id'] ?? '')
+            .toString();
+    if (planId.isEmpty || ownerUserId.isEmpty) return;
+
+    final ownerNickname = (m.data['owner_nickname'] ?? '').toString().trim();
+    final planTitle =
+        (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
+
+    // Canon: title/body should come from server; fallbacks are only for safety.
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'План был удален';
+
+    final rawBody = (m.data['body'] ?? '').toString().trim();
+    final computedBody = rawBody.isNotEmpty
+        ? rawBody
+        : (() {
+            if (ownerNickname.isNotEmpty && planTitle.isNotEmpty) {
+              return 'Пользователь ${_quoteNickname(ownerNickname)} удалил план «$planTitle».';
+            }
+            if (planTitle.isNotEmpty) {
+              return 'План «$planTitle» был удален.';
+            }
+            return 'Откройте приложение, чтобы посмотреть.';
+          })();
+
+    final nickname = ownerNickname.isNotEmpty
+        ? ownerNickname
+        : (_extractAnyNickname(m.data) ??
+            _inferLeadingNicknameFromBody(computedBody) ??
+            '');
+    final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
+    final normalizedBody =
+        _normalizeTextWithNicknameQuotes(computedBody, nickname);
+
+    // ✅ Correlation keys (server may add these in data-only push)
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
+    final msgId = (m.messageId ?? '').toString();
+    final idSeed = eventId.isNotEmpty
+        ? 'plan_deleted:$planId:$eventId'
+        : (msgId.isNotEmpty
+            ? 'plan_deleted:$planId:$msgId'
+            : 'plan_deleted:$planId');
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      'kind': 'PLAN_DELETED',
+      'type': 'PLAN_DELETED',
+      'plan_id': planId,
+      'owner_app_user_id': ownerUserId,
+      if (ownerNickname.isNotEmpty) 'owner_nickname': ownerNickname,
+      if (planTitle.isNotEmpty) 'plan_title': planTitle,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
+      ...m.data,
+      'title': normalizedTitle,
+      'body': normalizedBody,
+    });
+
+    await _local.cancel(id);
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_DELETED planId=$planId ownerUserId=$ownerUserId eventId=$eventId',
+      );
+    }
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, normalizedTitle, normalizedBody, details,
+        payload: payload);
+    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showPlanMemberLeft(RemoteMessage m) async {
@@ -1132,6 +1306,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showPlanMemberLeft(message);
     await PushNotifications.showPlanMemberRemoved(message);
     await PushNotifications.showPlanMemberJoinedByInvite(message);
+    await PushNotifications.showPlanDeleted(message);
     await PushNotifications.showFriendRequest(message);
     await PushNotifications.showFriendRemoved(message);
   } catch (e) {
