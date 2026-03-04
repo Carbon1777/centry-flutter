@@ -12,16 +12,15 @@ import '../common/center_toast.dart';
 ///
 /// Показывается через showModalBottomSheet (свайп вниз для закрытия).
 ///
-/// Сейчас UX:
+/// UX:
 /// - грузим список друзей
 /// - при тапе: optimistic "Отправлено приглашение" + disabled
-/// - зовём существующий server-first механизм инвайта в план через callback
+/// - вызываем существующий server-first механизм инвайта в план через callback
 class PlanFriendsModal extends StatefulWidget {
   /// текущий app_user_id (public.app_users.id)
   final String appUserId;
 
   /// server-first entrypoint: инвайт в текущий план по friend's public_id
-  /// (это существующий механизм инвайта в план; мы просто новая точка входа)
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
 
   const PlanFriendsModal({
@@ -163,7 +162,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
             _Header(
               title: 'Список друзей',
               subtitle: 'Выберите друга для добавления в план.',
-              onClose: () => Navigator.of(context).pop(false),
+              onClose: () => Navigator.of(context).pop(),
             ),
             const Divider(height: 1, thickness: 1),
             Expanded(
@@ -283,11 +282,6 @@ class _FriendPickCard extends StatelessWidget {
     final titleColor = disabled ? Colors.white38 : Colors.white;
     final subtitleColor = disabled ? Colors.white30 : Colors.white54;
 
-    // FriendDto даёт displayName + note.
-    // Под твой макет:
-    // - Ник: displayName
-    // - Имя: пока "не указано" (если нужно строго как на скрине — добавим server-first поле позже)
-    // - Комментарий: note
     final nick =
         friend.displayName.trim().isEmpty ? '—' : friend.displayName.trim();
     final name = 'не указано';
