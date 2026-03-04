@@ -166,8 +166,8 @@ class PlanMemberDto {
   final bool isMe;
 
   /// ✅ server-first relationship flags (relative to текущему пользователю)
-  /// isFriend -> скрыть иконку
-  /// hasPendingFriendRequest -> показать, но disabled
+  /// - isFriend: уже друзья -> иконки нет
+  /// - hasPendingFriendRequest: есть активный pending запрос -> иконка есть, но disabled
   final bool isFriend;
   final bool hasPendingFriendRequest;
 
