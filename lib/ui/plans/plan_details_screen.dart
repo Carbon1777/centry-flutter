@@ -24,9 +24,9 @@ class PlanDetailsScreen extends StatefulWidget {
   final String planId;
   final PlansRepository repository;
 
+
   /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
-  ///
-  /// Server-first: this screen does not implement business logic; it only forwards the tap from plan members list.
+  /// Optional: if null, add-friend icon will be effectively disabled.
   final Future<void> Function({
     required String targetPublicId,
     required String targetAppUserId,
@@ -37,8 +37,8 @@ class PlanDetailsScreen extends StatefulWidget {
     required this.appUserId,
     required this.planId,
     required this.repository,
-    this.onAddFriend,
-  });
+      this.onAddFriend,
+});
 
   @override
   State<PlanDetailsScreen> createState() => _PlanDetailsScreenState();
@@ -57,6 +57,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   static const Duration _liveRefreshInterval = Duration(seconds: 10);
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
+
 
   String _humanizeError(Object e) {
     return _userMessageForError(e);
@@ -149,6 +150,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
+
   String _userMessageForError(Object e) {
     // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
@@ -157,9 +159,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied = code == 'P0001' ||
-          msg.contains('access denied') ||
-          details.contains('access denied');
+      final isAccessDenied =
+          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -426,8 +427,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       }
     }
   }
-
-  Future<void> _editTitle() async {
+Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -832,15 +832,14 @@ class _Body extends StatelessWidget {
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
 
-  /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
-  /// Optional: if null, add-friend icon should be effectively disabled by caller.
-  final Future<void> Function({
-    required String targetPublicId,
-    required String targetAppUserId,
-  })? onAddFriend;
+/// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
+final Future<void> Function({
+  required String targetPublicId,
+  required String targetAppUserId,
+})? onAddFriend;
 
-  /// ✅ server-first: provides canonical snapshot for live modal updates
-  final Future<PlanDetailsDto> Function() onReloadDetails;
+/// ✅ server-first: provides canonical snapshot for live modal updates
+final Future<PlanDetailsDto> Function() onReloadDetails;
 
   const _Body({
     required this.details,
@@ -983,8 +982,7 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly =
-                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
@@ -1001,6 +999,11 @@ class _Body extends StatelessWidget {
                 },
                 onAddByPublicId: (publicId) async {
                   await onAddByPublicId(publicId);
+                },
+                onAddFriend: onAddFriend,
+                onShowFriendInviteSentToast: () {
+                  // Каноничный центральный тост (тот же компонент/текст, что в add-friend-by-ID).
+                  unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
                 },
                 onReloadDetails: onReloadDetails, // ✅ live modal updates
               ),

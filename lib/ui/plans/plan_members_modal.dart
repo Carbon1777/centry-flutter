@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../../../data/plans/plan_details_dto.dart';
 import 'details/plan_add_member_flow.dart';
 
@@ -12,22 +14,22 @@ class PlanMembersModal extends StatefulWidget {
 
   /// Read-only view (archive/history): hide any action icons.
   final bool isReadOnly;
+
   final Future<void> Function(String memberAppUserId) onRemoveMember;
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
 
-  /// Second entry-point into existing friends flow: send friend request to this member.
-  /// Server-first: caller must invoke the canonical RPC already used by "add friend by ID".
-  ///
-  /// If null, the icon is still rendered but tap does nothing.
+  /// Second entry-point into existing Friends flow (same RPC as "add friend by ID/public_id").
+  /// Server-first: caller must implement the canonical RPC; UI only forwards the tap.
   final Future<void> Function({
     required String targetPublicId,
     required String targetAppUserId,
   })? onAddFriend;
 
-  /// Canonical central toast "Приглашение отправлено" (same component/text as add-by-ID flow).
+  /// Canonical central toast "Приглашение отправлено" (same component/text as add-by-ID).
   final VoidCallback? onShowFriendInviteSentToast;
 
+  /// Fetch latest plan snapshot for live updates in this modal (server-first).
   final Future<PlanDetailsDto> Function()? onReloadDetails;
 
   const PlanMembersModal({
@@ -56,7 +58,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   bool _autoRefreshing = false;
 
   /// Local optimistic state: immediately disable the add-friend icon after tap.
-  /// Cleared when server snapshot indicates user can add again (declined) or icon disappears (friend).
   final Set<String> _optimisticFriendRequests = <String>{};
 
   static const Duration _kAutoRefreshInterval = Duration(seconds: 3);
@@ -98,7 +99,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   Future<void> _sendFriendRequestForMember(PlanMemberDto member) async {
     if (!mounted) return;
 
-    // Guard: if caller didn't wire the existing friends-RPC yet, we do nothing.
     final fn = widget.onAddFriend;
     if (fn == null) return;
 
@@ -122,7 +122,6 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       // Pull latest server snapshot ASAP (without spinner).
       unawaited(_refreshOnce(showError: false, showSpinner: false));
     } catch (_) {
-      // If RPC failed, revert optimistic disabled state.
       if (!mounted) return;
       setState(() => _optimisticFriendRequests.remove(member.appUserId));
       rethrow;
@@ -130,10 +129,8 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   }
 
   void _reconcileOptimisticFriendRequestsWithServer() {
-    // If server says we can add friend again => request declined / cleared => re-enable.
-    // If member disappeared (removed from list) => clear.
-    // If member became a friend, current DTO should already render without the icon
-    // (server should set canAddFriend=false for friends and the icon will not render).
+    // If server says we can add friend again => request declined/cleared => re-enable.
+    // If member disappeared => clear.
     _optimisticFriendRequests.removeWhere((appUserId) {
       PlanMemberDto? member;
       if (appUserId == _owner.appUserId) {
@@ -148,7 +145,10 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       }
 
       if (member == null) return true;
+
+      // If server allows adding again => no longer pending => clear optimistic flag.
       if (member.canAddFriend) return true;
+
       return false;
     });
   }
@@ -170,7 +170,10 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     return a.appUserId == b.appUserId &&
         a.publicId == b.publicId &&
         a.nickname == b.nickname &&
-        a.role == b.role;
+        a.role == b.role &&
+        a.canAddFriend == b.canAddFriend &&
+        a.canRemoveMember == b.canRemoveMember &&
+        a.isMe == b.isMe;
   }
 
   bool _sameMembersList(List<PlanMemberDto> a, List<PlanMemberDto> b) {
@@ -182,8 +185,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     return true;
   }
 
-  Future<void> _refreshOnce(
-      {bool showError = true, bool showSpinner = true}) async {
+  Future<void> _refreshOnce({bool showError = true, bool showSpinner = true}) async {
     if (!mounted) return;
     if (widget.onReloadDetails == null) return;
     if (_manualRefreshing || _autoRefreshing) return;
@@ -211,13 +213,12 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
           _reconcileOptimisticFriendRequestsWithServer();
         });
       } else {
-        // Even if nothing changed, server might have flipped request state.
         _reconcileOptimisticFriendRequestsWithServer();
       }
     } catch (e) {
       if (!mounted) return;
       if (showError) {
-        // Канон: никакие SnackBar. Ошибку обновления молча игнорируем (UI подтянется на следующем тике).
+        // Канон: никаких SnackBar. Ошибку обновления молча логируем.
         debugPrint('PlanMembersModal: refresh failed: $e');
       }
     } finally {
@@ -265,8 +266,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
               ),
               const Divider(height: 1, thickness: 1),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: _MemberRow(
                   member: _owner,
                   isReadOnly: widget.isReadOnly,
@@ -279,8 +279,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
               const Divider(height: 1, thickness: 1),
               Expanded(
                 child: ListView.separated(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   itemCount: _members.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemBuilder: (_, index) {
@@ -357,7 +356,7 @@ class _MemberRow extends StatelessWidget {
   final bool isReadOnly;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
-  /// Called to send friend request via existing friends flow (RPC is owned by caller via PlanMembersModal.onAddFriend).
+  /// Optional: if null, icon is rendered but disabled.
   final Future<void> Function(PlanMemberDto member)? onAddFriend;
 
   /// Optimistic local disabled state: immediately grey out after tap.
@@ -384,6 +383,13 @@ class _MemberRow extends StatelessWidget {
 
     final nicknameWeight =
         isSelfParticipant ? FontWeight.w800 : FontWeight.w600;
+
+    final showAddFriendIcon =
+        !isReadOnly && (member.canAddFriend || isAddFriendOptimisticallyDisabled);
+
+    final addFriendEnabled = member.canAddFriend &&
+        !isAddFriendOptimisticallyDisabled &&
+        onAddFriend != null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -413,24 +419,15 @@ class _MemberRow extends StatelessWidget {
               ),
             ),
           ),
-          if (!isReadOnly &&
-              (member.canAddFriend || isAddFriendOptimisticallyDisabled))
+          if (showAddFriendIcon)
             IconButton(
               visualDensity: VisualDensity.compact,
               icon: Icon(
                 Icons.person_add_alt_1,
                 size: 25, // +10%
-                color: (member.canAddFriend &&
-                        !isAddFriendOptimisticallyDisabled &&
-                        onAddFriend != null)
-                    ? null
-                    : Colors.white.withOpacity(0.35),
+                color: addFriendEnabled ? null : Colors.white.withOpacity(0.35),
               ),
-              onPressed: (member.canAddFriend &&
-                      !isAddFriendOptimisticallyDisabled &&
-                      onAddFriend != null)
-                  ? () => onAddFriend!.call(member)
-                  : null,
+              onPressed: addFriendEnabled ? () => onAddFriend!.call(member) : null,
             ),
           if (!isReadOnly && member.canRemoveMember)
             IconButton(
