@@ -464,8 +464,6 @@ class _MemberRow extends StatelessWidget {
     final nicknameWeight =
         isSelfParticipant ? FontWeight.w800 : FontWeight.w600;
 
-    final disabledColor = Theme.of(context).disabledColor;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -495,14 +493,35 @@ class _MemberRow extends StatelessWidget {
             ),
           ),
           if (!isReadOnly && showAddFriend)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              icon: Icon(
-                Icons.person_add_alt_1,
-                size: 25, // +10%
-                color: addFriendDisabled ? disabledColor : null,
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: addFriendDisabled
+                      ? Colors.white.withOpacity(0.06)
+                      : Colors.greenAccent.withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: addFriendDisabled
+                        ? Colors.white.withOpacity(0.14)
+                        : Colors.greenAccent.withOpacity(0.38),
+                    width: 1,
+                  ),
+                ),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    addFriendDisabled
+                        ? Icons.person_add_disabled
+                        : Icons.person_add_alt_1,
+                    size: 25, // +10%
+                    color: addFriendDisabled
+                        ? Colors.grey.shade600
+                        : Colors.greenAccent.shade400,
+                  ),
+                  onPressed: addFriendDisabled ? null : onAddFriend,
+                ),
               ),
-              onPressed: addFriendDisabled ? null : onAddFriend,
             ),
           if (!isReadOnly && member.canRemoveMember)
             IconButton(
