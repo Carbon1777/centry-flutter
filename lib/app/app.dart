@@ -28,6 +28,7 @@ import 'invite_ui_coordinator.dart';
 import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
+import 'plan_deleted_ui_coordinator.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
@@ -181,7 +182,9 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     PlanMemberJoinedByInviteUiCoordinator.instance
         .attachNavigatorKey(App.navigatorKey);
+    PlanDeletedUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(false);
+    PlanDeletedUiCoordinator.instance.setRootUiReady(false);
 
     unawaited(GeoService.instance.refresh());
 
@@ -1200,15 +1203,36 @@ class _BootstrapGateState extends State<BootstrapGate>
     final payloadTitle = (resolved['title'] ?? title ?? '').toString().trim();
     final payloadBody = (resolved['body'] ?? body ?? '').toString().trim();
 
-    await _showInfoDialog(
-      title: payloadTitle.isEmpty ? 'План был удален' : payloadTitle,
-      body: payloadBody.isEmpty
-          ? 'Откройте приложение, чтобы посмотреть.'
-          : payloadBody,
-    );
+    final cleanOwnerNickname = (resolved['owner_nickname'] ?? ownerNickname ?? '')
+            .toString()
+            .trim()
+            .isEmpty
+        ? null
+        : (resolved['owner_nickname'] ?? ownerNickname ?? '').toString().trim();
+    final cleanPlanTitle = (resolved['plan_title'] ?? planTitle ?? '')
+            .toString()
+            .trim()
+            .isEmpty
+        ? null
+        : (resolved['plan_title'] ?? planTitle ?? '').toString().trim();
+    final cleanTitle = payloadTitle.isEmpty ? null : payloadTitle;
+    final cleanBody = payloadBody.isEmpty ? null : payloadBody;
 
-    // ✅ ACK/consume строго после реального UI
-    await _consumeInboxDeliveryIfPossibleFromPayload(resolved);
+    PlanDeletedUiCoordinator.instance.enqueue(
+      PlanDeletedUiRequest(
+        planId: planId,
+        ownerUserId: ownerUserId,
+        ownerNickname: cleanOwnerNickname,
+        planTitle: cleanPlanTitle,
+        title: cleanTitle,
+        body: cleanBody,
+        source: PlanDeletedUiSource.backgroundIntent,
+        onClosed: () async {
+          // ✅ ACK/consume строго после реального UI close
+          await _consumeInboxDeliveryIfPossibleFromPayload(resolved);
+        },
+      ),
+    );
   }
   Future<void> _handleFriendOpenFromLocalNotification({
     required String type,
@@ -1984,7 +2008,69 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-            if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+            
+            // ✅ Separate layer: PLAN_DELETED -> in-app info modal (foreground).
+            if (payloadType == 'PLAN_DELETED') {
+              final planId = (payloadMap['plan_id'] ??
+                      payloadMap['planId'] ??
+                      newRow['plan_id'] ??
+                      newRow['planId'] ??
+                      '')
+                  .toString();
+              final ownerUserId = (payloadMap['owner_app_user_id'] ??
+                      payloadMap['owner_user_id'] ??
+                      payloadMap['ownerUserId'] ??
+                      payloadMap['ownerUserId'] ??
+                      payloadMap['owner_userId'] ??
+                      payloadMap['owner_userId'] ??
+                      '')
+                  .toString();
+
+              if (planId.isEmpty || ownerUserId.isEmpty) return;
+
+              final title = (payloadMap['title'] ?? '').toString();
+              final body = (payloadMap['body'] ?? '').toString();
+              final ownerNickname = (payloadMap['owner_nickname'] ??
+                      payloadMap['ownerNickname'] ??
+                      '')
+                  .toString();
+              final planTitle =
+                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
+                      .toString();
+
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] plan-deleted insert planId=$planId ownerUserId=$ownerUserId',
+                );
+              }
+
+              final cleanOwnerNickname =
+                  ownerNickname.trim().isEmpty ? null : ownerNickname.trim();
+              final cleanPlanTitle =
+                  planTitle.trim().isEmpty ? null : planTitle.trim();
+              final cleanTitle = title.trim().isEmpty ? null : title.trim();
+              final cleanBody = body.trim().isEmpty ? null : body.trim();
+
+              PlanDeletedUiCoordinator.instance.enqueue(
+                PlanDeletedUiRequest(
+                  planId: planId,
+                  ownerUserId: ownerUserId,
+                  ownerNickname: cleanOwnerNickname,
+                  planTitle: cleanPlanTitle,
+                  title: cleanTitle,
+                  body: cleanBody,
+                  source: PlanDeletedUiSource.foreground,
+                  onClosed: () async {
+                    // ✅ ACK/consume строго после реального UI close
+                    if (deliveryId.isEmpty) return;
+                    _scheduleConsumeInboxDelivery(deliveryId);
+                  },
+                ),
+              );
+              return;
+            }
+
+if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 payloadType == 'PLAN_INTERNAL_INVITE_DECLINED') {
               final inviteId =
                   (payloadMap['invite_id'] ?? payloadMap['inviteId'] ?? '')
@@ -2840,6 +2926,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
+    PlanDeletedUiCoordinator.instance.setRootUiReady(true);
     _flushPendingFriendRequestsIfAny();
     _ensureInboxInvitesRealtimeSubscribed();
 

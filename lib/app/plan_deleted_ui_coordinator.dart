@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../ui/common/plan_member_removed_info_modal.dart';
+import '../ui/common/plan_deleted_info_modal.dart';
 
 enum PlanDeletedUiSource {
   foreground,
@@ -135,8 +135,7 @@ class PlanDeletedUiCoordinator {
         builder: (_) {
           final title = (next.title ?? 'План был удален').trim();
           final body = _resolveBody(next).trim();
-          // ✅ reuse existing canonical info-modal layout to avoid UI regressions
-          return PlanMemberRemovedInfoModal(title: title, body: body);
+          return PlanDeletedInfoModal(title: title, body: body);
         },
       ).then((_) async {
         // ✅ Canon: consume only AFTER close (caller provides closure).
