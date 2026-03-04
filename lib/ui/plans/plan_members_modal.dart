@@ -1,6 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../common/center_toast.dart';
+
+import '../../../data/friends/friend_request_result_dto.dart';
+import '../../../data/friends/friends_repository.dart';
+import '../../../data/friends/friends_repository_impl.dart';
 import '../../../data/plans/plan_details_dto.dart';
 import 'details/plan_add_member_flow.dart';
 
@@ -35,11 +42,20 @@ class PlanMembersModal extends StatefulWidget {
 }
 
 class _PlanMembersModalState extends State<PlanMembersModal> {
+  late final FriendsRepository _friendsRepository;
+
   late PlanMemberDto _owner;
   late List<PlanMemberDto> _members;
 
   bool _manualRefreshing = false;
   bool _autoRefreshing = false;
+
+  /// Local optimistic UX: we "тушим" иконку сразу после тапа.
+  /// Истина всё равно на сервере; после refresh/realtime состояние должно прийти с бэка.
+  final Set<String> _optimisticFriendPending = <String>{};
+
+  /// Защита от двойного тапа/гонок
+  final Set<String> _friendRequestInFlight = <String>{};
 
   static const Duration _kAutoRefreshInterval = Duration(seconds: 3);
   Timer? _autoRefreshTimer;
@@ -47,6 +63,8 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   @override
   void initState() {
     super.initState();
+    _friendsRepository = FriendsRepositoryImpl(Supabase.instance.client);
+
     _owner = widget.ownerMember;
     _members = List<PlanMemberDto>.from(widget.members);
     _startAutoRefresh();
@@ -60,6 +78,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
         oldWidget.members != widget.members) {
       _owner = widget.ownerMember;
       _members = List<PlanMemberDto>.from(widget.members);
+      _reconcileOptimisticPendingFromCurrentSnapshot();
     }
 
     if (oldWidget.onReloadDetails == null && widget.onReloadDetails != null) {
@@ -89,11 +108,27 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     _autoRefreshTimer = null;
   }
 
+  String _resolveMyAppUserId() {
+    if (_owner.isMe == true) return _owner.appUserId;
+    for (final m in _members) {
+      if (m.isMe == true) return m.appUserId;
+    }
+    return '';
+  }
+
   bool _sameMember(PlanMemberDto a, PlanMemberDto b) {
+    // IMPORTANT: include all server-first fields that affect UI.
     return a.appUserId == b.appUserId &&
         a.publicId == b.publicId &&
         a.nickname == b.nickname &&
-        a.role == b.role;
+        a.role == b.role &&
+        a.canAddFriend == b.canAddFriend &&
+        a.canRemoveMember == b.canRemoveMember &&
+        a.isMe == b.isMe &&
+        // These fields are required for canonical "pending disabled" UX.
+        // Ensure PlanMemberDto contains them (server-first snapshot fields).
+        a.isFriend == b.isFriend &&
+        a.hasPendingFriendRequest == b.hasPendingFriendRequest;
   }
 
   bool _sameMembersList(List<PlanMemberDto> a, List<PlanMemberDto> b) {
@@ -103,6 +138,25 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       if (!_sameMember(a[i], b[i])) return false;
     }
     return true;
+  }
+
+  void _reconcileOptimisticPendingFromCurrentSnapshot() {
+    if (_optimisticFriendPending.isEmpty) return;
+
+    final byId = <String, PlanMemberDto>{};
+    byId[_owner.appUserId] = _owner;
+    for (final m in _members) {
+      byId[m.appUserId] = m;
+    }
+
+    _optimisticFriendPending.removeWhere((appUserId) {
+      final m = byId[appUserId];
+      if (m == null) return true; // disappeared => cleanup
+      if (m.isFriend == true) return true; // now friends => icon must disappear
+      // If server says no pending anymore => re-enable (DECLINE/none)
+      if (m.hasPendingFriendRequest != true) return true;
+      return false;
+    });
   }
 
   Future<void> _refreshOnce(
@@ -132,13 +186,22 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
           if (ownerChanged) _owner = nextOwner;
           if (membersChanged) _members = nextMembers;
         });
+      } else {
+        // still reconcile optimistic state even if lists are "same"
+        _owner = nextOwner;
+        _members = nextMembers;
       }
+
+      _reconcileOptimisticPendingFromCurrentSnapshot();
     } catch (e) {
       if (!mounted) return;
       if (showError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка обновления: $e')),
-        );
+        // CANON: no SnackBar. Use central toast.
+        unawaited(showCenterToast(
+          context,
+          message: 'Ошибка обновления: $e',
+          isError: true,
+        ));
       }
     } finally {
       if (!mounted) return;
@@ -147,6 +210,103 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       } else {
         _autoRefreshing = false;
       }
+    }
+  }
+
+  bool _shouldShowAddFriend(PlanMemberDto m) {
+    if (widget.isReadOnly) return false;
+    if (m.isMe == true) return false;
+
+    // Server-first: if already friends => icon must not be shown.
+    if (m.isFriend == true) return false;
+
+    // Show if canAddFriend (base visibility) OR request is pending (disabled view)
+    // OR we have local optimistic pending.
+    return m.canAddFriend == true ||
+        m.hasPendingFriendRequest == true ||
+        _optimisticFriendPending.contains(m.appUserId);
+  }
+
+  bool _isAddFriendDisabled(PlanMemberDto m) {
+    if (widget.isReadOnly) return true;
+    if (_friendRequestInFlight.contains(m.appUserId)) return true;
+
+    // Server-first: pending request disables the icon.
+    if (m.hasPendingFriendRequest == true) return true;
+
+    // Local optimistic: disable immediately after tap until server confirms.
+    if (_optimisticFriendPending.contains(m.appUserId)) return true;
+
+    return false;
+  }
+
+  Future<void> _handleAddFriendPressed(PlanMemberDto target) async {
+    if (!mounted) return;
+    if (widget.isReadOnly) return;
+
+    final targetPublicId = target.publicId.trim();
+    if (targetPublicId.isEmpty) {
+      await showCenterToast(
+        context,
+        message: 'Не найден public_id пользователя',
+        isError: true,
+      );
+      return;
+    }
+
+    final myAppUserId = _resolveMyAppUserId();
+    if (myAppUserId.isEmpty) {
+      await showCenterToast(
+        context,
+        message: 'Не удалось определить текущего пользователя',
+        isError: true,
+      );
+      return;
+    }
+
+    if (_friendRequestInFlight.contains(target.appUserId)) return;
+
+    setState(() {
+      _friendRequestInFlight.add(target.appUserId);
+      _optimisticFriendPending.add(target.appUserId);
+    });
+
+    try {
+      final FriendRequestResultDto r =
+          await _friendsRepository.requestFriendByPublicId(
+        appUserId: myAppUserId,
+        targetPublicId: targetPublicId,
+      );
+
+      if (!mounted) return;
+
+      if (r.requestStatus == 'ALREADY_FRIENDS') {
+        await showCenterToast(context, message: 'Уже в друзьях');
+      } else if (r.requestStatus == 'PENDING' &&
+          r.requestDirection == 'OUTGOING') {
+        // Каноничный центральный тост (как в friends flow).
+        await showCenterToast(context, message: 'Запрос отправлен');
+      } else if (r.requestStatus == 'PENDING' &&
+          r.requestDirection == 'INCOMING') {
+        await showCenterToast(context, message: 'Уже есть входящий запрос');
+      } else {
+        await showCenterToast(context, message: 'Готово');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(
+        context,
+        message: 'Ошибка отправки запроса: $e',
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _friendRequestInFlight.remove(target.appUserId);
+        });
+      }
+      // Pull server truth ASAP (icon state must follow server snapshot)
+      unawaited(_refreshOnce(showError: false, showSpinner: false));
     }
   }
 
@@ -191,6 +351,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                   member: _owner,
                   isReadOnly: widget.isReadOnly,
                   onRemoveMember: widget.onRemoveMember,
+                  showAddFriend: _shouldShowAddFriend(_owner),
+                  addFriendDisabled: _isAddFriendDisabled(_owner),
+                  onAddFriend: () => unawaited(_handleAddFriendPressed(_owner)),
                 ),
               ),
               const Divider(height: 1, thickness: 1),
@@ -206,6 +369,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                       member: m,
                       isReadOnly: widget.isReadOnly,
                       onRemoveMember: widget.onRemoveMember,
+                      showAddFriend: _shouldShowAddFriend(m),
+                      addFriendDisabled: _isAddFriendDisabled(m),
+                      onAddFriend: () => unawaited(_handleAddFriendPressed(m)),
                     );
                   },
                 ),
@@ -271,10 +437,17 @@ class _MemberRow extends StatelessWidget {
   final bool isReadOnly;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
+  final bool showAddFriend;
+  final bool addFriendDisabled;
+  final VoidCallback onAddFriend;
+
   const _MemberRow({
     required this.member,
     required this.isReadOnly,
     required this.onRemoveMember,
+    required this.showAddFriend,
+    required this.addFriendDisabled,
+    required this.onAddFriend,
   });
 
   @override
@@ -290,6 +463,8 @@ class _MemberRow extends StatelessWidget {
 
     final nicknameWeight =
         isSelfParticipant ? FontWeight.w800 : FontWeight.w600;
+
+    final disabledColor = Theme.of(context).disabledColor;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -319,11 +494,15 @@ class _MemberRow extends StatelessWidget {
               ),
             ),
           ),
-          if (!isReadOnly && member.canAddFriend)
+          if (!isReadOnly && showAddFriend)
             IconButton(
               visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.person_add_alt_1, size: 25), // +10%
-              onPressed: () {},
+              icon: Icon(
+                Icons.person_add_alt_1,
+                size: 25, // +10%
+                color: addFriendDisabled ? disabledColor : null,
+              ),
+              onPressed: addFriendDisabled ? null : onAddFriend,
             ),
           if (!isReadOnly && member.canRemoveMember)
             IconButton(
