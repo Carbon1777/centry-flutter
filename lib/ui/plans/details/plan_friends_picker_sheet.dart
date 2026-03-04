@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/friends/friend_dto.dart';
-import '../common/center_toast.dart';
+import '../../common/center_toast.dart';
 
 /// Bottom sheet UI: выбор друга для приглашения в план.
 /// UI-only: server-first истина о pending/accepted/declined должна приходить с сервера
