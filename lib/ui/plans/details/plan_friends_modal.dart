@@ -9,12 +9,13 @@ import '../../../data/friends/friends_repository_impl.dart';
 import '../../common/center_toast.dart';
 import 'plan_friends_picker_sheet.dart';
 
-/// Wrapper for bottom-sheet: loads friends from server and shows PlanFriendsPickerSheet.
+/// Bottom-sheet wrapper: загружает друзей с сервера и показывает PlanFriendsPickerSheet.
+/// UI живёт в plan_friends_picker_sheet.dart (один источник истины).
 class PlanFriendsModal extends StatefulWidget {
-  /// current app_user_id (uuid)
+  /// текущий app_user_id (uuid)
   final String appUserId;
 
-  /// Server-first entrypoint: invite into current plan by friend's public_id
+  /// server-first entrypoint: инвайт в текущий план по friend's public_id
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
 
   const PlanFriendsModal({
@@ -59,9 +60,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
     try {
       final list = await _friendsRepository.listMyFriends(appUserId: appUserId);
       if (!mounted) return;
-      setState(() {
-        _friends = list;
-      });
+      setState(() => _friends = list);
     } catch (e) {
       if (!mounted) return;
       await showCenterToast(
@@ -77,9 +76,9 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      final maxHeight = MediaQuery.of(context).size.height * 0.78;
+    final maxHeight = MediaQuery.of(context).size.height * 0.78;
 
+    if (_loading) {
       return SafeArea(
         child: Container(
           constraints: BoxConstraints(maxHeight: maxHeight),
