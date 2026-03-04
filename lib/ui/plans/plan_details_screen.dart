@@ -24,11 +24,20 @@ class PlanDetailsScreen extends StatefulWidget {
   final String planId;
   final PlansRepository repository;
 
+  /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
+  ///
+  /// Server-first: this screen does not implement business logic; it only forwards the tap from plan members list.
+  final Future<void> Function({
+    required String targetPublicId,
+    required String targetAppUserId,
+  })? onAddFriend;
+
   const PlanDetailsScreen({
     super.key,
     required this.appUserId,
     required this.planId,
     required this.repository,
+    this.onAddFriend,
   });
 
   @override
@@ -48,7 +57,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   static const Duration _liveRefreshInterval = Duration(seconds: 10);
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
-
 
   String _humanizeError(Object e) {
     return _userMessageForError(e);
@@ -141,7 +149,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
-
   String _userMessageForError(Object e) {
     // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
@@ -150,8 +157,9 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied =
-          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
+      final isAccessDenied = code == 'P0001' ||
+          msg.contains('access denied') ||
+          details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -418,7 +426,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       }
     }
   }
-Future<void> _editTitle() async {
+
+  Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -799,6 +808,7 @@ Future<void> _editTitle() async {
                   onRemoveMember: _removeMember,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
+                  onAddFriend: widget.onAddFriend,
                   onReloadDetails: _reloadDetails, // ✅ key line
                 ),
     );
@@ -822,6 +832,13 @@ class _Body extends StatelessWidget {
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
 
+  /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
+  /// Optional: if null, add-friend icon should be effectively disabled by caller.
+  final Future<void> Function({
+    required String targetPublicId,
+    required String targetAppUserId,
+  })? onAddFriend;
+
   /// ✅ server-first: provides canonical snapshot for live modal updates
   final Future<PlanDetailsDto> Function() onReloadDetails;
 
@@ -839,6 +856,7 @@ class _Body extends StatelessWidget {
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
+    this.onAddFriend,
     required this.onReloadDetails,
   });
 
@@ -965,7 +983,8 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly =
+                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
