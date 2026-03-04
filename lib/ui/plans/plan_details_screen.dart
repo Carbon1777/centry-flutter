@@ -24,21 +24,12 @@ class PlanDetailsScreen extends StatefulWidget {
   final String planId;
   final PlansRepository repository;
 
-
-  /// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
-  /// Optional: if null, add-friend icon will be effectively disabled.
-  final Future<void> Function({
-    required String targetPublicId,
-    required String targetAppUserId,
-  })? onAddFriend;
-
   const PlanDetailsScreen({
     super.key,
     required this.appUserId,
     required this.planId,
     required this.repository,
-      this.onAddFriend,
-});
+  });
 
   @override
   State<PlanDetailsScreen> createState() => _PlanDetailsScreenState();
@@ -808,7 +799,6 @@ Future<void> _editTitle() async {
                   onRemoveMember: _removeMember,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
-                  onAddFriend: widget.onAddFriend,
                   onReloadDetails: _reloadDetails, // ✅ key line
                 ),
     );
@@ -832,14 +822,8 @@ class _Body extends StatelessWidget {
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
 
-/// Second entry-point into existing Friends flow (same RPC as add-friend-by-ID/public_id).
-final Future<void> Function({
-  required String targetPublicId,
-  required String targetAppUserId,
-})? onAddFriend;
-
-/// ✅ server-first: provides canonical snapshot for live modal updates
-final Future<PlanDetailsDto> Function() onReloadDetails;
+  /// ✅ server-first: provides canonical snapshot for live modal updates
+  final Future<PlanDetailsDto> Function() onReloadDetails;
 
   const _Body({
     required this.details,
@@ -855,7 +839,6 @@ final Future<PlanDetailsDto> Function() onReloadDetails;
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
-    this.onAddFriend,
     required this.onReloadDetails,
   });
 
@@ -999,11 +982,6 @@ final Future<PlanDetailsDto> Function() onReloadDetails;
                 },
                 onAddByPublicId: (publicId) async {
                   await onAddByPublicId(publicId);
-                },
-                onAddFriend: onAddFriend,
-                onShowFriendInviteSentToast: () {
-                  // Каноничный центральный тост (тот же компонент/текст, что в add-friend-by-ID).
-                  unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
                 },
                 onReloadDetails: onReloadDetails, // ✅ live modal updates
               ),

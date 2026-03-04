@@ -29,7 +29,6 @@ import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_deleted_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
-import '../data/friends/friends_repository_impl.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
@@ -707,15 +706,14 @@ class _BootstrapGateState extends State<BootstrapGate>
             ownerNickname: (ownerNickname ?? '').trim().isEmpty
                 ? null
                 : (ownerNickname ?? '').trim(),
-            planTitle: (planTitle ?? '').trim().isEmpty
-                ? null
-                : (planTitle ?? '').trim(),
+            planTitle: (planTitle ?? '').trim().isEmpty ? null : (planTitle ?? '').trim(),
             title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
             body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
             source: PlanDeletedUiSource.backgroundIntent,
           ),
         );
       },
+
     );
   }
 
@@ -1862,6 +1860,7 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
+            
             // ✅ Separate layer: PLAN_DELETED -> in-app info modal (foreground).
             if (payloadType == 'PLAN_DELETED') {
               final planId = (payloadMap['plan_id'] ??
@@ -1897,8 +1896,7 @@ class _BootstrapGateState extends State<BootstrapGate>
                       '')
                   .toString();
               final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString();
+                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '').toString();
 
               if (kDebugMode) {
                 debugPrint(
@@ -1910,9 +1908,8 @@ class _BootstrapGateState extends State<BootstrapGate>
                 PlanDeletedUiRequest(
                   planId: planId,
                   ownerUserId: ownerUserId,
-                  ownerNickname: ownerNickname.trim().isEmpty
-                      ? null
-                      : ownerNickname.trim(),
+                  ownerNickname:
+                      ownerNickname.trim().isEmpty ? null : ownerNickname.trim(),
                   planTitle: planTitle.trim().isEmpty ? null : planTitle.trim(),
                   title: title.trim().isEmpty ? null : title.trim(),
                   body: body.trim().isEmpty ? null : body.trim(),
@@ -1925,7 +1922,7 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-            if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 payloadType == 'PLAN_INTERNAL_INVITE_DECLINED') {
               final inviteId =
                   (payloadMap['invite_id'] ?? payloadMap['inviteId'] ?? '')
@@ -2313,19 +2310,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     nav.push(
       noAnimRoute(
-        PlansScreen(
-          appUserId: userId,
-          onAddFriend: (
-              {required targetPublicId, required targetAppUserId}) async {
-            // Reuse existing Friends flow (server-first).
-            // targetAppUserId is available for future needs; current RPC uses public_id.
-            final friendsRepo = FriendsRepositoryImpl(Supabase.instance.client);
-            await friendsRepo.requestFriendByPublicId(
-              appUserId: userId,
-              targetPublicId: targetPublicId,
-            );
-          },
-        ),
+        PlansScreen(appUserId: userId),
       ),
     );
 
@@ -2356,22 +2341,10 @@ class _BootstrapGateState extends State<BootstrapGate>
           if (nav3 == null) return;
 
           // We are now back on PlansScreen (PlanDetails popped). Replace the route
+          // with a fresh instance to trigger canonical refetch in initState.
           nav3.pushReplacement(
             noAnimRoute(
-              PlansScreen(
-                appUserId: userId,
-                onAddFriend: (
-                    {required targetPublicId, required targetAppUserId}) async {
-                  // Reuse existing Friends flow (server-first).
-                  // targetAppUserId is available for future needs; current RPC uses public_id.
-                  final friendsRepo =
-                      FriendsRepositoryImpl(Supabase.instance.client);
-                  await friendsRepo.requestFriendByPublicId(
-                    appUserId: userId,
-                    targetPublicId: targetPublicId,
-                  );
-                },
-              ),
+              PlansScreen(appUserId: userId),
             ),
           );
         }
