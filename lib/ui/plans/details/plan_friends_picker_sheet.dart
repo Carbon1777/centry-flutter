@@ -5,25 +5,59 @@ import 'package:flutter/material.dart';
 import '../../../data/friends/friend_dto.dart';
 import '../../common/center_toast.dart';
 
+/// Server-first invite state for a friend relative to a plan.
+/// Values are produced by `list_plan_friend_invite_states_v1`.
+class PlanFriendInviteState {
+  /// 'NONE' | 'PENDING' | 'DECLINED'
+  final String inviteState;
+
+  /// Server-first: whether owner can invite right now.
+  final bool canInvite;
+
+  /// Server-first: friend is already a member of the plan.
+  final bool isMember;
+
+  const PlanFriendInviteState({
+    required this.inviteState,
+    required this.canInvite,
+    required this.isMember,
+  });
+
+  static const none = PlanFriendInviteState(
+    inviteState: 'NONE',
+    canInvite: true,
+    isMember: false,
+  );
+
+  bool get isPending => inviteState == 'PENDING';
+}
+
 /// Bottom sheet UI: выбор друга для приглашения в план.
-/// UI-only: server-first истина о pending/accepted/declined должна приходить с сервера
-/// (позже можно расширить флагами).
 ///
-/// Сейчас:
-/// - список друзей приходит через параметр [friends]
-/// - инвайт отправляется через callback [onInviteFriendByPublicId]
-/// - optimistic UI: "Отправлено приглашение" + disabled
+/// Server-first:
+/// - реальные факты (PENDING/DECLINED/is_member/can_invite) приходят с сервера,
+///   а UI только рендерит их.
+/// - optimistic UI используется только для мгновенной реакции на тап, пока не пришла серверная правда.
 class PlanFriendsPickerSheet extends StatefulWidget {
   final List<FriendDto> friends;
+
+  /// Optional server-first state map by friend_user_id.
+  /// If not provided, UI falls back to optimistic-only behaviour.
+  final Map<String, PlanFriendInviteState> inviteStatesByFriendUserId;
 
   /// Server-first entrypoint:
   /// Invite into current plan by friend's public_id (existing plan invite mechanism).
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
 
+  /// Optional hook to trigger parent refresh (e.g. re-fetch invite states).
+  final Future<void> Function()? onAfterInvite;
+
   const PlanFriendsPickerSheet({
     super.key,
     required this.friends,
     required this.onInviteFriendByPublicId,
+    this.inviteStatesByFriendUserId = const {},
+    this.onAfterInvite,
   });
 
   @override
@@ -31,18 +65,47 @@ class PlanFriendsPickerSheet extends StatefulWidget {
 }
 
 class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
-  /// optimistic pending set by friend_user_id
+  /// optimistic pending set by friend_user_id (until server snapshot arrives)
   final Set<String> _pending = <String>{};
 
   /// in-flight guard by friend_user_id
   final Set<String> _inFlight = <String>{};
 
-  bool _isDisabled(FriendDto f) =>
-      _pending.contains(f.friendUserId) || _inFlight.contains(f.friendUserId);
+  /// local hide (edge-case: server says "already member" right after tap)
+  final Set<String> _hidden = <String>{};
+
+  PlanFriendInviteState _stateFor(FriendDto f) {
+    return widget.inviteStatesByFriendUserId[f.friendUserId] ??
+        PlanFriendInviteState.none;
+  }
+
+  bool _isDisabled(FriendDto f) {
+    final s = _stateFor(f);
+
+    // Server-first: pending or cannot invite -> disabled
+    if (s.isPending || !s.canInvite) return true;
+
+    // Local guards
+    return _pending.contains(f.friendUserId) ||
+        _inFlight.contains(f.friendUserId);
+  }
+
+  bool _showSentLabel(FriendDto f) {
+    final s = _stateFor(f);
+    return s.isPending || _pending.contains(f.friendUserId);
+  }
 
   Future<void> _invite(FriendDto f) async {
     if (!mounted) return;
-    if (_isDisabled(f)) return;
+
+    final s = _stateFor(f);
+
+    // Server-first guards
+    if (s.isMember) return;
+    if (s.isPending) return;
+    if (!s.canInvite) return;
+
+    if (_inFlight.contains(f.friendUserId)) return;
 
     final publicId = f.publicId.trim();
     if (publicId.isEmpty) {
@@ -64,19 +127,49 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       if (!mounted) return;
 
       await showCenterToast(context, message: 'Приглашение отправлено');
+      if (widget.onAfterInvite != null) {
+        unawaited(widget.onAfterInvite!.call());
+      }
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString();
 
-      // rollback optimistic pending on error
-      setState(() {
-        _pending.remove(f.friendUserId);
-      });
+      // Idempotency UX: if invite already exists -> treat as success, keep pending.
+      final alreadySent = msg.contains('Приглашение уже отправлено') ||
+          (msg.toLowerCase().contains('already') &&
+              msg.toLowerCase().contains('sent'));
 
-      await showCenterToast(
-        context,
-        message: 'Ошибка отправки приглашения: $e',
-        isError: true,
-      );
+      if (alreadySent) {
+        await showCenterToast(context, message: 'Приглашение отправлено');
+        if (widget.onAfterInvite != null) {
+          unawaited(widget.onAfterInvite!.call());
+        }
+      } else {
+        // Edge-case: became member meanwhile -> hide locally
+        final alreadyMember =
+            msg.contains('уже в плане') || msg.contains('уже в план');
+        if (alreadyMember) {
+          setState(() {
+            _hidden.add(f.friendUserId);
+            _pending.remove(f.friendUserId);
+          });
+          await showCenterToast(context, message: 'Пользователь уже в плане');
+          if (widget.onAfterInvite != null) {
+            unawaited(widget.onAfterInvite!.call());
+          }
+        } else {
+          // rollback optimistic pending on error
+          setState(() {
+            _pending.remove(f.friendUserId);
+          });
+
+          await showCenterToast(
+            context,
+            message: 'Ошибка отправки приглашения: $e',
+            isError: true,
+          );
+        }
+      }
     } finally {
       if (!mounted) return;
       setState(() {
@@ -88,6 +181,16 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.78;
+
+    final visibleFriends = widget.friends.where((f) {
+      if (_hidden.contains(f.friendUserId)) return false;
+
+      // Server-first: if already member -> do not show
+      final s = _stateFor(f);
+      if (s.isMember) return false;
+
+      return true;
+    }).toList();
 
     return SafeArea(
       child: Container(
@@ -116,7 +219,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             ),
             const Divider(height: 1, thickness: 1),
             Expanded(
-              child: widget.friends.isEmpty
+              child: visibleFriends.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.all(16),
                       child: Align(
@@ -129,15 +232,15 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-                      itemCount: widget.friends.length,
+                      itemCount: visibleFriends.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (_, index) {
-                        final f = widget.friends[index];
+                        final f = visibleFriends[index];
                         final disabled = _isDisabled(f);
                         return _FriendPickCard(
                           friend: f,
                           disabled: disabled,
-                          showSentLabel: _pending.contains(f.friendUserId),
+                          showSentLabel: _showSentLabel(f),
                           onTap: () => unawaited(_invite(f)),
                         );
                       },
@@ -223,7 +326,6 @@ class _FriendPickCard extends StatelessWidget {
     final titleColor = disabled ? Colors.white38 : Colors.white;
     final subtitleColor = disabled ? Colors.white30 : Colors.white54;
 
-    // FriendDto: displayName + note
     final nick =
         friend.displayName.trim().isEmpty ? '—' : friend.displayName.trim();
     final name = 'не указано';
