@@ -43,7 +43,8 @@ class PlanFriendsModal extends StatefulWidget {
   State<PlanFriendsModal> createState() => _PlanFriendsModalState();
 }
 
-class _PlanFriendsModalState extends State<PlanFriendsModal> {
+class _PlanFriendsModalState extends State<PlanFriendsModal>
+    with WidgetsBindingObserver {
   static const Duration _kRefreshDebounce = Duration(milliseconds: 250);
 
   /// Временный флаг для диагностики auto-refresh.
@@ -75,6 +76,8 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _client = Supabase.instance.client;
     _friendsRepository = FriendsRepositoryImpl(_client);
 
@@ -96,7 +99,31 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+
+    // ✅ PUSH = будильник:
+    // после тапа по пушу приложение резюмится, а realtime мог быть отключён.
+    // Поэтому внутри ЭТОГО модала делаем:
+    // 1) restart realtime (без дубликатов)
+    // 2) re-fetch server-first invite states (с fromRealtime=true чтобы сбросить optimistic overlay).
+    if (state == AppLifecycleState.resumed) {
+      _dbg(
+          '[PlanFriendsModal][LIFECYCLE] resumed -> restart realtime + refresh');
+      _stopRealtime();
+      _startRealtime();
+      _scheduleInviteStatesRefresh(
+        notifyParent: false,
+        fromRealtime: true,
+        reason: 'app_resumed',
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
     _refreshDebounce?.cancel();
     _refreshDebounce = null;
 
@@ -132,7 +159,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
         return;
       }
 
-      // ✅ FIX: убрали лишний cast `as Map` — после is-check он и так Map.
       final record = Map<String, dynamic>.from(recDyn);
 
       if (record.isEmpty) {
@@ -333,12 +359,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
 
       setState(() {
         _inviteStatesByFriendUserId = next;
-
-        // Important: If refresh was triggered by server-first realtime event (ACCEPT/DECLINE),
-        // we want the currently opened sheet to reflect the new server snapshot immediately.
-        // PlanFriendsPickerSheet has optimistic local state, and on decline it can keep overlay
-        // until the sheet is disposed. To keep the sheet “dumb” while still aligning UX,
-        // we remount it by bumping key epoch on realtime-triggered refresh.
         if (fromRealtime) _sheetEpoch++;
       });
 
@@ -347,7 +367,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       }
     } catch (e) {
       _dbg('[PlanFriendsModal] refreshInviteStates error=$e reason=$reason');
-      // No rethrow: refresh is typically fire-and-forget (unawaited).
     } finally {
       _refreshInFlight = false;
 
@@ -361,7 +380,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
         _queuedFromRealtime = false;
         _queuedReason = null;
 
-        // Run another refresh, debounced to coalesce bursts.
         _scheduleInviteStatesRefresh(
           notifyParent: qNotify,
           fromRealtime: qFromRealtime,
