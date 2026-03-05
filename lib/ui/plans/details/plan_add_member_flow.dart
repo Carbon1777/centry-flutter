@@ -16,6 +16,9 @@ class PlanAddMemberModal extends StatelessWidget {
   final bool canAddFromFriends;
   final bool canAddById;
 
+  /// current plan id (uuid)
+  final String planId;
+
   /// server-first: create invite (returns token/payload)
   final Future<String> Function() onCreateInvite;
 
@@ -27,6 +30,7 @@ class PlanAddMemberModal extends StatelessWidget {
     required this.canInvite,
     required this.canAddFromFriends,
     required this.canAddById,
+    required this.planId,
     required this.onCreateInvite,
     required this.onAddByPublicId,
   });
@@ -81,25 +85,28 @@ class PlanAddMemberModal extends StatelessWidget {
                                   '';
 
                           // Bottom-sheet, swipe-down to close
-                          final ok = await showModalBottomSheet<bool>(
+                          var didInvite = false;
+                          await showModalBottomSheet<void>(
                             context: context,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
                             barrierColor: Colors.black.withOpacity(0.55),
                             builder: (_) => PlanFriendsModal(
                               appUserId: authUserId,
+                              planId: planId,
                               onInviteFriendByPublicId: onAddByPublicId,
+                              onInviteSent: () => didInvite = true,
                             ),
                           );
 
                           if (!context.mounted) return;
 
-                          // Если bottom-sheet вернул true -> закрываем этот диалог с true
-                          // (родитель обновит детали/список участников)
-                          if (ok == true) {
+                          // Если внутри bottom-sheet реально отправили хотя бы одно приглашение —
+                          // закрываем этот диалог с true (родитель обновит детали/участников).
+                          if (didInvite) {
                             Navigator.of(context).pop(true);
                           }
-                        },
+},
                       ),
                       const SizedBox(height: 12),
                       _ActionCard(

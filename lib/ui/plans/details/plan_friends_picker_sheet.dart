@@ -6,6 +6,7 @@ import '../../../data/friends/friend_dto.dart';
 import '../../common/center_toast.dart';
 
 /// Server-first invite state for a friend relative to a plan.
+///
 /// Values are produced by `list_plan_friend_invite_states_v1`.
 class PlanFriendInviteState {
   /// 'NONE' | 'PENDING' | 'DECLINED'
@@ -86,8 +87,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
     if (s.isPending || !s.canInvite) return true;
 
     // Local guards
-    return _pending.contains(f.friendUserId) ||
-        _inFlight.contains(f.friendUserId);
+    return _pending.contains(f.friendUserId) || _inFlight.contains(f.friendUserId);
   }
 
   bool _showSentLabel(FriendDto f) {
