@@ -60,7 +60,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
 
   List<String> _userIdCandidates() {
     final primary = widget.appUserId.trim();
-    final authId = _client.auth.currentUser?.id?.trim() ?? '';
+    final authId = (_client.auth.currentUser?.id ?? '').trim();
     final out = <String>[];
     if (primary.isNotEmpty) out.add(primary);
     if (authId.isNotEmpty && authId != primary) out.add(authId);
@@ -134,9 +134,8 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
     required String ownerUserIdPreferred,
     required String planId,
   }) async {
-    final candidates = <String>[ownerUserIdPreferred, ..._userIdCandidates()]
-        .toSet()
-        .toList();
+    final candidates =
+        <String>[ownerUserIdPreferred, ..._userIdCandidates()].toSet().toList();
 
     PostgrestException? lastAccessDenied;
 
@@ -210,7 +209,9 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
 
     final candidates = _userIdCandidates();
     final primary = widget.appUserId.trim();
-    final preferred = primary.isNotEmpty ? primary : (candidates.isNotEmpty ? candidates.first : '');
+    final preferred = primary.isNotEmpty
+        ? primary
+        : (candidates.isNotEmpty ? candidates.first : '');
     if (preferred.isEmpty) return;
 
     try {
