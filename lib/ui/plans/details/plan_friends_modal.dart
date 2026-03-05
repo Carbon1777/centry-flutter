@@ -9,25 +9,29 @@ import '../../../data/friends/friends_repository_impl.dart';
 import '../../common/center_toast.dart';
 import 'plan_friends_picker_sheet.dart';
 
-/// Wrapper for bottom-sheet:
+/// Bottom-sheet wrapper:
 /// - loads friends list (server-first)
-/// - loads invite states for this plan (server-first, via list_plan_friend_invite_states_v1)
-/// - passes everything to PlanFriendsPickerSheet which only renders UI
+/// - loads invite states for current plan (server-first)
+/// - renders PlanFriendsPickerSheet (UI-only)
 class PlanFriendsModal extends StatefulWidget {
   /// current app_user_id (uuid)
   final String appUserId;
 
-  /// current plan_id (uuid). If null/empty, invite states won't be loaded (UI falls back to optimistic only).
-  final String? planId;
+  /// current plan_id (uuid)
+  final String planId;
 
-  /// Server-first entrypoint: invite into current plan by friend's public_id
+  /// server-first entrypoint: invite into current plan by friend's public_id
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
+
+  /// optional hook: parent can mark that at least one invite was sent
+  final VoidCallback? onInviteSent;
 
   const PlanFriendsModal({
     super.key,
     required this.appUserId,
+    required this.planId,
     required this.onInviteFriendByPublicId,
-    this.planId,
+    this.onInviteSent,
   });
 
   @override
@@ -36,18 +40,15 @@ class PlanFriendsModal extends StatefulWidget {
 
 class _PlanFriendsModalState extends State<PlanFriendsModal> {
   late final FriendsRepository _friendsRepository;
-  late final SupabaseClient _client;
 
   bool _loading = true;
-
   List<FriendDto> _friends = const [];
   Map<String, PlanFriendInviteState> _inviteStatesByFriendUserId = const {};
 
   @override
   void initState() {
     super.initState();
-    _client = Supabase.instance.client;
-    _friendsRepository = FriendsRepositoryImpl(_client);
+    _friendsRepository = FriendsRepositoryImpl(Supabase.instance.client);
     unawaited(_loadAll());
   }
 
@@ -55,6 +56,8 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
     if (!mounted) return;
 
     final appUserId = widget.appUserId.trim();
+    final planId = widget.planId.trim();
+
     if (appUserId.isEmpty) {
       setState(() => _loading = false);
       await showCenterToast(
@@ -65,19 +68,26 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       return;
     }
 
+    if (planId.isEmpty) {
+      setState(() => _loading = false);
+      await showCenterToast(
+        context,
+        message: 'Не удалось определить план',
+        isError: true,
+      );
+      return;
+    }
+
     setState(() => _loading = true);
 
     try {
-      final friends = await _friendsRepository.listMyFriends(appUserId: appUserId);
-      if (!mounted) return;
+      final results = await Future.wait<dynamic>([
+        _friendsRepository.listMyFriends(appUserId: appUserId),
+        _fetchInviteStates(appUserId: appUserId, planId: planId),
+      ]);
 
-      var states = <String, PlanFriendInviteState>{};
-
-      // Load invite states only if planId is available
-      final planId = (widget.planId ?? '').trim();
-      if (planId.isNotEmpty) {
-        states = await _fetchInviteStates(appUserId: appUserId, planId: planId);
-      }
+      final friends = results[0] as List<FriendDto>;
+      final states = results[1] as Map<String, PlanFriendInviteState>;
 
       if (!mounted) return;
       setState(() {
@@ -101,7 +111,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
     required String appUserId,
     required String planId,
   }) async {
-    final response = await _client.rpc(
+    final res = await Supabase.instance.client.rpc(
       'list_plan_friend_invite_states_v1',
       params: {
         'p_owner_user_id': appUserId,
@@ -109,64 +119,55 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       },
     );
 
-    final rows = (response as List<dynamic>? ?? []);
-    final out = <String, PlanFriendInviteState>{};
+    final map = <String, PlanFriendInviteState>{};
+    if (res is List) {
+      for (final row in res) {
+        if (row is Map) {
+          final friendUserId = (row['friend_user_id'] ?? '').toString();
+          if (friendUserId.isEmpty) continue;
 
-    for (final r in rows) {
-      if (r is! Map<String, dynamic>) continue;
+          final inviteState = (row['invite_state'] ?? 'NONE').toString();
+          final canInvite = row['can_invite'] == true;
+          final isMember = row['is_member'] == true;
 
-      final friendUserId = (r['friend_user_id'] ?? '').toString();
-      if (friendUserId.isEmpty) continue;
-
-      out[friendUserId] = PlanFriendInviteState(
-        inviteState: (r['invite_state'] ?? 'NONE').toString(),
-        canInvite: _asBool(r['can_invite']),
-        isMember: _asBool(r['is_member']),
-      );
+          map[friendUserId] = PlanFriendInviteState(
+            inviteState: inviteState,
+            canInvite: canInvite,
+            isMember: isMember,
+          );
+        }
+      }
     }
-
-    return out;
+    return map;
   }
 
   Future<void> _refreshInviteStates() async {
     if (!mounted) return;
 
     final appUserId = widget.appUserId.trim();
-    final planId = (widget.planId ?? '').trim();
+    final planId = widget.planId.trim();
     if (appUserId.isEmpty || planId.isEmpty) return;
 
     try {
-      final states = await _fetchInviteStates(appUserId: appUserId, planId: planId);
+      final states =
+          await _fetchInviteStates(appUserId: appUserId, planId: planId);
       if (!mounted) return;
-      setState(() {
-        _inviteStatesByFriendUserId = states;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      // No hard error: just toast once (optional)
-      await showCenterToast(
-        context,
-        message: 'Ошибка обновления статусов: $e',
-        isError: true,
-      );
+      setState(() => _inviteStatesByFriendUserId = states);
+    } catch (_) {
+      // do not spam errors here; server truth will be refreshed on reopen anyway
     }
   }
 
-  bool _asBool(dynamic v) {
-    if (v is bool) return v;
-    if (v is num) return v != 0;
-    if (v is String) {
-      final s = v.trim().toLowerCase();
-      return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
-    }
-    return false;
+  Future<void> _afterInvite() async {
+    widget.onInviteSent?.call();
+    await _refreshInviteStates();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      final maxHeight = MediaQuery.of(context).size.height * 0.78;
+    final maxHeight = MediaQuery.of(context).size.height * 0.78;
 
+    if (_loading) {
       return SafeArea(
         child: Container(
           constraints: BoxConstraints(maxHeight: maxHeight),
@@ -189,7 +190,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       friends: _friends,
       inviteStatesByFriendUserId: _inviteStatesByFriendUserId,
       onInviteFriendByPublicId: widget.onInviteFriendByPublicId,
-      onAfterInvite: _refreshInviteStates,
+      onAfterInvite: _afterInvite,
     );
   }
 }

@@ -969,7 +969,9 @@ class _Body extends StatelessWidget {
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
-                ownerMember: details.ownerMember!,
+                
+                planId: details.plan.id,
+ownerMember: details.ownerMember!,
                 members: details.members,
                 canAddMembers: details.plan.canAddMembers,
                 isReadOnly: isArchiveReadOnly,
