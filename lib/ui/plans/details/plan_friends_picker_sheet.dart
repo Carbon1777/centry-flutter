@@ -297,6 +297,9 @@ class _FriendCard extends StatelessWidget {
     final name = 'не указано';
     final note = friend.note.trim();
 
+    final borderColor = theme.dividerColor.withOpacity(0.25);
+    final noteBg = theme.dividerColor.withOpacity(0.10);
+
     final base = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),
@@ -305,7 +308,7 @@ class _FriendCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+          border: Border.all(color: borderColor),
           color: theme.colorScheme.surface,
         ),
         child: Row(
@@ -316,7 +319,7 @@ class _FriendCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: theme.dividerColor.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+                border: Border.all(color: borderColor),
               ),
             ),
             const SizedBox(width: 12),
@@ -342,15 +345,31 @@ class _FriendCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if (note.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      note,
+
+                  // ✅ Комментарий (как в Friends): всегда показываем отдельным блоком.
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: noteBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Text(
+                      note.isEmpty ? 'Мой комментарий...' : note,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: note.isEmpty
+                            ? theme.textTheme.bodyMedium?.color?.withOpacity(0.35)
+                            : theme.textTheme.bodyMedium?.color?.withOpacity(0.78),
+                      ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
