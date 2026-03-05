@@ -44,7 +44,7 @@ class PlanMemberLeftUiRequest {
 
 /// Separate layer:
 /// - queues events
-/// - deduplicates
+/// - deduplicates (bounded + time-window, not "forever")
 /// - shows a simple in-app info modal when root UI is ready
 class PlanMemberLeftUiCoordinator {
   PlanMemberLeftUiCoordinator._();
@@ -52,8 +52,15 @@ class PlanMemberLeftUiCoordinator {
   static final PlanMemberLeftUiCoordinator instance =
       PlanMemberLeftUiCoordinator._();
 
+  // Dedup window: suppress duplicates that arrive in a burst (PUSH + INBOX),
+  // but allow the same user to leave again later and still show the modal.
+  static const Duration _kDedupWindow = Duration(seconds: 12);
+  static const int _kDedupMax = 200;
+
   final Queue<PlanMemberLeftUiRequest> _queue = Queue();
-  final LinkedHashSet<String> _dedup = LinkedHashSet();
+
+  /// key -> lastSeenAt
+  final LinkedHashMap<String, DateTime> _dedup = LinkedHashMap();
 
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _rootUiReady = false;
@@ -73,14 +80,26 @@ class PlanMemberLeftUiCoordinator {
   }
 
   void enqueue(PlanMemberLeftUiRequest request) {
-    final key = request.dedupKey();
-    if (_dedup.contains(key)) return;
+    final now = DateTime.now();
+    _pruneDedup(now);
 
-    // Keep dedup set bounded.
-    _dedup.add(key);
-    while (_dedup.length > 200) {
-      _dedup.remove(_dedup.first);
+    final key = request.dedupKey();
+    final seenAt = _dedup[key];
+
+    // ✅ Dedup only within a short time window (avoid "modal disappears forever").
+    if (seenAt != null && now.difference(seenAt) < _kDedupWindow) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanMemberLeftCoordinator] dedup drop key=$key ageMs=${now.difference(seenAt).inMilliseconds}',
+        );
+      }
+      return;
     }
+
+    // Move key to end (most recent)
+    _dedup.remove(key);
+    _dedup[key] = now;
+    _pruneDedup(now);
 
     _queue.add(request);
 
@@ -91,6 +110,24 @@ class PlanMemberLeftUiCoordinator {
     }
 
     _tryShowNext();
+  }
+
+  void _pruneDedup(DateTime now) {
+    final cutoff = now.subtract(_kDedupWindow);
+
+    // Remove stale entries
+    final toRemove = <String>[];
+    _dedup.forEach((k, t) {
+      if (t.isBefore(cutoff)) toRemove.add(k);
+    });
+    for (final k in toRemove) {
+      _dedup.remove(k);
+    }
+
+    // Keep bounded
+    while (_dedup.length > _kDedupMax) {
+      _dedup.remove(_dedup.keys.first);
+    }
   }
 
   void _scheduleRetry() {
