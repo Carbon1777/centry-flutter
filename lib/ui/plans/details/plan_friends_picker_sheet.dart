@@ -271,7 +271,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Нет кандидатов для добавления из списка друзей. Либо у вас нет друзей, либо они все уже находятсяв числе участников этого плана',
+              'Нет кандидатов для добавления из списка друзей. Либо у вас нет друзей, либо они все уже находятся в числе участников этого плана',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
