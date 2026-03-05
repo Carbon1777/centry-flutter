@@ -408,10 +408,10 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       // ✅ CANON: internal invite by public_id does NOT add member immediately.
       // We only confirm that the invite was sent. Member list will change only
       // after invitee ACCEPTs on the server.
-      await showCenterToast(context, message: 'Приглашение отправлено');
+      unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      unawaited(showCenterToast(context, message: _humanizeError(e), isError: true));
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -976,7 +976,6 @@ class _Body extends StatelessWidget {
                 canAddMembers: details.plan.canAddMembers,
                 isReadOnly: isArchiveReadOnly,
                 onRemoveMember: (memberAppUserId) async {
-                  Navigator.of(dialogContext).pop();
                   await onRemoveMember(memberAppUserId);
                 },
                 onCreateInvite: () async {
