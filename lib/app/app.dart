@@ -125,10 +125,6 @@ class _BootstrapGateState extends State<BootstrapGate>
   // Pending friend OPEN intents (Scenario B/C): resolve via INBOX once identity + shell are ready.
   final List<Map<String, dynamic>> _pendingFriendOpenIntents =
       <Map<String, dynamic>>[];
-  // Pending plan-invite OPEN intents (Scenario B/C): resolve via INBOX once identity + shell are ready.
-  final List<Map<String, dynamic>> _pendingInviteOpenIntents =
-      <Map<String, dynamic>>[];
-
   // Pending consume requests when delivery arrives before shell is ready.
   final List<String> _pendingConsumeDeliveryIds = <String>[];
   DateTime? _homeVisibleAt;
@@ -363,13 +359,14 @@ class _BootstrapGateState extends State<BootstrapGate>
                   ),
                 );
               } else {
-                await _handleInviteOpenFromLocalNotification(
-                  inviteId: inviteId,
-                  planId: planId,
-                  actionToken: null,
-                  fallbackTitle: title.trim().isEmpty ? null : title,
-                  fallbackBody: body.trim().isEmpty ? null : body,
-                  source: 'IntentBridge',
+                InviteUiCoordinator.instance.enqueue(
+                  InviteUiRequest(
+                    inviteId: inviteId,
+                    planId: planId,
+                    title: title,
+                    body: body,
+                    source: InviteUiSource.backgroundIntent,
+                  ),
                 );
               }
               return;
@@ -569,13 +566,15 @@ class _BootstrapGateState extends State<BootstrapGate>
             return;
           }
 
-          await _handleInviteOpenFromLocalNotification(
-            inviteId: inviteId,
-            planId: planId,
-            actionToken: actionToken,
-            fallbackTitle: (title ?? '').trim().isEmpty ? null : title,
-            fallbackBody: (body ?? '').trim().isEmpty ? null : body,
-            source: 'LocalNotif',
+          InviteUiCoordinator.instance.enqueue(
+            InviteUiRequest(
+              inviteId: inviteId,
+              planId: planId,
+              actionToken: actionToken,
+              title: title,
+              body: body,
+              source: InviteUiSource.backgroundIntent,
+            ),
           );
           return;
         }
@@ -923,161 +922,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
   }
 
-  
-  void _enqueueInviteOpenIntent({
-    required String inviteId,
-    required String planId,
-    String? actionToken,
-    String? title,
-    String? body,
-  }) {
-    final iid = inviteId.trim();
-    final pid = planId.trim();
-    if (iid.isEmpty || pid.isEmpty) return;
-
-    _pendingInviteOpenIntents.add(<String, dynamic>{
-      'invite_id': iid,
-      'plan_id': pid,
-      if (actionToken != null && actionToken.trim().isNotEmpty)
-        'action_token': actionToken.trim(),
-      if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
-      if (body != null && body.trim().isNotEmpty) 'body': body.trim(),
-    });
-  }
-
-  void _flushPendingInviteOpenIntentsIfAny() {
-    if (!_appShellReady) return;
-    if (_pendingInviteOpenIntents.isEmpty) return;
-
-    final intents = List<Map<String, dynamic>>.from(_pendingInviteOpenIntents);
-    _pendingInviteOpenIntents.clear();
-
-    for (final i in intents) {
-      final inviteId =
-          (i['invite_id'] ?? i['inviteId'] ?? '').toString().trim();
-      final planId = (i['plan_id'] ?? i['planId'] ?? '').toString().trim();
-      if (inviteId.isEmpty || planId.isEmpty) continue;
-
-      unawaited(
-        _handleInviteOpenFromLocalNotification(
-          inviteId: inviteId,
-          planId: planId,
-          actionToken: (i['action_token'] ?? i['actionToken'] ?? '')
-                  .toString()
-                  .trim()
-                  .isEmpty
-              ? null
-              : (i['action_token'] ?? i['actionToken'] ?? '')
-                  .toString()
-                  .trim(),
-          fallbackTitle: (i['title'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['title'] ?? '').toString().trim(),
-          fallbackBody: (i['body'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['body'] ?? '').toString().trim(),
-          source: 'pending_intent',
-        ),
-      );
-    }
-  }
-
-  Future<void> _handleInviteOpenFromLocalNotification({
-    required String inviteId,
-    required String planId,
-    String? actionToken,
-    String? fallbackTitle,
-    String? fallbackBody,
-    required String source,
-  }) async {
-    final iid = inviteId.trim();
-    final pid = planId.trim();
-    if (iid.isEmpty || pid.isEmpty) return;
-
-    // If identity/shell isn't ready yet (cold start), stash and resolve later via INBOX.
-    if (_restoring || !_appShellReady || (_userId ?? '').trim().isEmpty) {
-      _enqueueInviteOpenIntent(
-        inviteId: iid,
-        planId: pid,
-        actionToken: actionToken,
-        title: fallbackTitle,
-        body: fallbackBody,
-      );
-      if (kDebugMode) {
-        debugPrint(
-          '[InviteOpen] stashed (source=$source) inviteId=$iid planId=$pid restoring=$_restoring appShell=$_appShellReady userId=${_userId ?? ''}',
-        );
-      }
-      return;
-    }
-
-    // Canon: build modal text from INBOX (source of truth), not from PUSH/local notification.
-    final pending = await _loadPendingInviteInboxByInviteId(iid);
-
-    if (pending != null) {
-      final pendingPlanId =
-          (pending['plan_id'] ?? pending['planId'] ?? pid).toString().trim();
-      final pendingTitleRaw = (pending['title'] ?? '').toString();
-      final pendingTitle =
-          pendingTitleRaw.trim().isEmpty ? kInviteDialogDefaultTitle : pendingTitleRaw;
-      final pendingBody = (pending['body'] ?? '').toString();
-
-      final token = (pending['action_token'] ??
-              pending['actionToken'] ??
-              actionToken ??
-              '')
-          .toString()
-          .trim();
-
-      InviteUiCoordinator.instance.enqueue(
-        InviteUiRequest(
-          inviteId: iid,
-          planId: pendingPlanId.isEmpty ? pid : pendingPlanId,
-          title: pendingTitle.trim().isEmpty ? null : pendingTitle.trim(),
-          body: pendingBody.trim().isEmpty ? null : pendingBody.trim(),
-          actionToken: token.isEmpty ? null : token,
-          source: InviteUiSource.backgroundIntent,
-        ),
-      );
-
-      final deliveryId =
-          (pending['delivery_id'] ?? pending['deliveryId'] ?? '').toString();
-      _scheduleConsumeInboxDelivery(deliveryId);
-
-      if (kDebugMode) {
-        debugPrint(
-          '[InviteOpen] resolved from INBOX (source=$source) inviteId=$iid planId=${pendingPlanId.isEmpty ? pid : pendingPlanId} deliveryId=$deliveryId',
-        );
-      }
-
-      return;
-    }
-
-    // If we couldn't correlate to INBOX, do not fabricate "modal text" from PUSH;
-    // fallback is best-effort so user can still act.
-    if (kDebugMode) {
-      debugPrint(
-        '[InviteOpen] no pending INBOX found (source=$source) inviteId=$iid planId=$pid',
-      );
-    }
-
-    final t = (fallbackTitle ?? '').trim();
-    final b = (fallbackBody ?? '').trim();
-
-    InviteUiCoordinator.instance.enqueue(
-      InviteUiRequest(
-        inviteId: iid,
-        planId: pid,
-        title: t.isEmpty ? null : t,
-        body: b.isEmpty ? null : b,
-        actionToken: (actionToken ?? '').trim().isEmpty ? null : actionToken!.trim(),
-        source: InviteUiSource.backgroundIntent,
-      ),
-    );
-  }
-
-
-Map<String, dynamic> _asStringKeyedMap(Map raw) {
+  Map<String, dynamic> _asStringKeyedMap(Map raw) {
     final out = <String, dynamic>{};
     raw.forEach((k, v) {
       out[k.toString()] = v;
@@ -1154,69 +999,7 @@ Map<String, dynamic> _asStringKeyedMap(Map raw) {
     return null;
   }
 
-  
-  Future<Map<String, dynamic>?> _loadPendingInviteInboxByInviteId(
-    String inviteId,
-  ) async {
-    final appUserId = _userId;
-    final iid = inviteId.trim();
-    if (appUserId == null || appUserId.trim().isEmpty) return null;
-    if (iid.isEmpty) return null;
-
-    try {
-      final dynamic raw = await _supabase
-          .from('notification_deliveries')
-          .select('id,payload,created_at')
-          .eq('user_id', appUserId)
-          .eq('channel', 'INBOX')
-          .eq('status', 'PENDING')
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (raw is! List) return null;
-
-      for (final r in raw) {
-        if (r is! Map) continue;
-        final id = (r['id'] ?? '').toString().trim();
-        final payloadRaw = r['payload'];
-        if (id.isEmpty || payloadRaw is! Map) continue;
-
-        final payload = _asStringKeyedMap(payloadRaw);
-        final t = (payload['type'] ?? '').toString().trim();
-
-        // Invitee invite: PLAN_INTERNAL_INVITE with actionable buttons (actions list),
-        // and WITHOUT explicit owner action.
-        if (t != 'PLAN_INTERNAL_INVITE') continue;
-
-        final action = (payload['action'] ??
-                payload['owner_action'] ??
-                payload['ownerAction'] ??
-                '')
-            .toString()
-            .trim();
-        if (action.isNotEmpty) continue;
-
-        final actionsRaw = payload['actions'];
-        final isActionableInvite = actionsRaw is List && actionsRaw.isNotEmpty;
-        if (!isActionableInvite) continue;
-
-        final payloadInviteId =
-            (payload['invite_id'] ?? payload['inviteId'] ?? '')
-                .toString()
-                .trim();
-        if (payloadInviteId != iid) continue;
-
-        payload['delivery_id'] = id;
-        return payload;
-      }
-    } catch (_) {
-      // ignore
-    }
-    return null;
-  }
-
-
-Future<Map<String, dynamic>?> _loadPendingFriendInboxDelivery({
+  Future<Map<String, dynamic>?> _loadPendingFriendInboxDelivery({
     required String type,
     String? eventId,
     String? requestId,
@@ -2263,12 +2046,6 @@ if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 source: InviteUiSource.foreground,
               ),
             );
-
-            // ✅ Canon: once invite UI is enqueued (foreground), consume INBOX delivery
-            // to prevent repeated re-show of the same invite.
-            // We consume *after* enqueue (not before) to avoid losing UX.
-            consumeIfReady();
-            return;
           } catch (e) {
             if (kDebugMode) {
               debugPrint('[INBOX] handler error: $e');
@@ -2997,7 +2774,6 @@ if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
     _flushPendingConsumeInboxDeliveriesIfAny();
     _flushPendingFriendRequestsIfAny();
     _flushPendingFriendOpenIntentsIfAny();
-    _flushPendingInviteOpenIntentsIfAny();
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);

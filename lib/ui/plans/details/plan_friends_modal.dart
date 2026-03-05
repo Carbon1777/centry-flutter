@@ -10,10 +10,25 @@ import '../../../data/friends/friends_repository.dart';
 import '../../../data/friends/friends_repository_impl.dart';
 import 'plan_friends_picker_sheet.dart';
 
+/// Bottom-sheet wrapper: loads friends + server-first invite states for the current plan.
+///
+/// Канон:
+/// - Все продуктовые факты (is_member / invite_state / can_invite) — на сервере.
+/// - Клиент рендерит каноничный снапшот.
+/// - Автообновление делаем по server-first событию: delivery для owner'а,
+///   которое сервер вставляет на ACCEPT/DECLINE (notification_deliveries).
 class PlanFriendsModal extends StatefulWidget {
+  /// current user id (uuid) — каноничный user_id, используемый в планах и friends.
   final String appUserId;
+
+  /// current plan id (uuid)
   final String planId;
+
+  /// Server-first entrypoint: invite into current plan by friend's public_id.
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
+
+  /// Optional hook for parent modal/dialog:
+  /// если мы отправили хотя бы одно приглашение — можно закрыть родителя и обновить участников.
   final VoidCallback? onInviteSent;
 
   const PlanFriendsModal({
@@ -28,14 +43,12 @@ class PlanFriendsModal extends StatefulWidget {
   State<PlanFriendsModal> createState() => _PlanFriendsModalState();
 }
 
-class _PlanFriendsModalState extends State<PlanFriendsModal>
-    with WidgetsBindingObserver {
+class _PlanFriendsModalState extends State<PlanFriendsModal> {
   static const Duration _kRefreshDebounce = Duration(milliseconds: 250);
-  static const bool _kDebugRealtimeLogs = true;
 
-  // Realtime retry/backoff (NOT polling; only when channel closes/errors).
-  static const Duration _kRtRetryBase = Duration(milliseconds: 300);
-  static const Duration _kRtRetryMax = Duration(seconds: 5);
+  /// Временный флаг для диагностики auto-refresh.
+  /// В release (kDebugMode=false) логи не печатаются.
+  static const bool _kDebugRealtimeLogs = true;
 
   late final SupabaseClient _client;
   late final FriendsRepository _friendsRepository;
@@ -54,18 +67,14 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
 
   Timer? _refreshDebounce;
 
-  // Reset optimistic UI in the sheet by remounting it when server snapshot changes.
+  /// Key epoch for PlanFriendsPickerSheet.
+  /// We bump this only when refresh is triggered by server-first realtime event,
+  /// to reset optimistic UI state in the sheet (without adding “logic” into the sheet).
   int _sheetEpoch = 0;
-
-  // Realtime retry state
-  Timer? _rtRetryTimer;
-  int _rtRetryAttempt = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-
     _client = Supabase.instance.client;
     _friendsRepository = FriendsRepositoryImpl(_client);
 
@@ -77,6 +86,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
   void didUpdateWidget(covariant PlanFriendsModal oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    // Safety: if parent rebuilt modal with different plan/user — restart channel + reload snapshot.
     if (oldWidget.appUserId != widget.appUserId ||
         oldWidget.planId != widget.planId) {
       _stopRealtime();
@@ -86,23 +96,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!mounted) return;
-
-    if (state == AppLifecycleState.resumed) {
-      _dbg(
-          '[PlanFriendsModal][LIFECYCLE] resumed -> restart realtime + refresh');
-      _restartRealtimeAndRefresh(reason: 'app_resumed');
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-
-    _rtRetryTimer?.cancel();
-    _rtRetryTimer = null;
-
     _refreshDebounce?.cancel();
     _refreshDebounce = null;
 
@@ -118,65 +112,18 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     }
   }
 
-  void _restartRealtimeAndRefresh({required String reason}) {
-    _rtRetryTimer?.cancel();
-    _rtRetryTimer = null;
-    _rtRetryAttempt = 0;
-
-    _stopRealtime();
-    _startRealtime();
-
-    _scheduleInviteStatesRefresh(
-      notifyParent: false,
-      fromRealtime: true,
-      reason: reason,
-    );
-  }
-
-  Duration _computeRtBackoff(int attempt) {
-    // 300ms, 600ms, 1200ms, 2400ms, 4800ms, capped at 5s.
-    var ms = _kRtRetryBase.inMilliseconds * (1 << (attempt.clamp(0, 20)));
-    if (ms > _kRtRetryMax.inMilliseconds) ms = _kRtRetryMax.inMilliseconds;
-    return Duration(milliseconds: ms);
-  }
-
-  void _scheduleRealtimeRetry(String reason) {
-    if (!mounted) return;
-    if (_rtRetryTimer?.isActive == true) return;
-
-    final delay = _computeRtBackoff(_rtRetryAttempt);
-    _rtRetryAttempt = (_rtRetryAttempt + 1).clamp(0, 30);
-
-    _dbg(
-      '[PlanFriendsModal][RT] schedule retry in ${delay.inMilliseconds}ms reason=$reason',
-    );
-
-    _rtRetryTimer = Timer(delay, () {
-      if (!mounted) return;
-      _dbg(
-        '[PlanFriendsModal][RT] retry now reason=$reason attempt=$_rtRetryAttempt',
-      );
-      _stopRealtime();
-      _startRealtime();
-
-      // After resubscribe we also refresh server snapshot to catch missed events.
-      _scheduleInviteStatesRefresh(
-        notifyParent: false,
-        fromRealtime: true,
-        reason: 'rt_retry:$reason',
-      );
-    });
-  }
-
   void _startRealtime() {
     final userId = widget.appUserId.trim();
     final planId = widget.planId.trim();
     if (userId.isEmpty || planId.isEmpty) return;
 
+    // Note: channel name must be stable for this modal instance to avoid duplicates.
     final channelName = 'plan_friends_modal_${planId}_$userId';
     _channel = _client.channel(channelName);
 
     void onChange(dynamic payload, String changeEvent) {
+      // payload.newRecord is expected, but we keep it defensive:
+      // it can be Map, or can be missing/empty depending on realtime payload.
       final dynamic recDyn = (payload as dynamic).newRecord;
       if (recDyn is! Map) {
         _dbg(
@@ -185,13 +132,14 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
         return;
       }
 
+      // ✅ FIX: убрали лишний cast `as Map` — после is-check он и так Map.
       final record = Map<String, dynamic>.from(recDyn);
+
       if (record.isEmpty) {
         _dbg(
             '[PlanFriendsModal][RT] ignore empty newRecord event=$changeEvent');
         return;
       }
-
       _onDeliveryChanged(record, changeEvent: changeEvent);
     }
 
@@ -217,55 +165,12 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
             value: userId,
           ),
           callback: (payload) => onChange(payload, 'update'),
-        );
-
-    // ✅ Critical: handle subscribe status and retry on closed/error.
-    _channel!.subscribe((status, [err]) {
-      _dbg(
-          '[PlanFriendsModal][RT] status=$status err=$err channel=$channelName');
-
-      if (status == RealtimeSubscribeStatus.subscribed) {
-        // Reset retry counter and refresh once to catch missed deliveries.
-        _rtRetryTimer?.cancel();
-        _rtRetryTimer = null;
-        _rtRetryAttempt = 0;
-
-        _scheduleInviteStatesRefresh(
-          notifyParent: false,
-          fromRealtime: true,
-          reason: 'rt_subscribed',
-        );
-        return;
-      }
-
-      if (status == RealtimeSubscribeStatus.closed ||
-          status == RealtimeSubscribeStatus.channelError ||
-          status == RealtimeSubscribeStatus.timedOut) {
-        _scheduleRealtimeRetry('status:$status');
-      }
-    });
+        )
+        .subscribe();
 
     _dbg(
       '[PlanFriendsModal][RT] subscribe channel=$channelName userId=$userId planId=$planId',
     );
-  }
-
-  bool _isRelevantForInviteStates(String typeStr) {
-    // ✅ было: только PLAN_INTERNAL_INVITE*
-    // ✅ нужно: любые изменения состава плана тоже меняют is_member/can_invite.
-    if (typeStr.startsWith('PLAN_INTERNAL_INVITE')) return true;
-
-    // Membership change events (server-first)
-    switch (typeStr) {
-      case 'PLAN_MEMBER_LEFT':
-      case 'PLAN_MEMBER_REMOVED':
-      case 'PLAN_MEMBER_JOINED':
-      case 'PLAN_MEMBER_JOINED_BY_INVITE':
-      case 'PLAN_DELETED':
-        return true;
-    }
-
-    return false;
   }
 
   void _onDeliveryChanged(
@@ -274,42 +179,50 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
   }) {
     if (!mounted) return;
 
+    final userId = widget.appUserId.trim();
     final planId = widget.planId.trim();
-    if (planId.isEmpty) return;
+    if (userId.isEmpty || planId.isEmpty) return;
 
-    final outer = _decodePayload(record['payload']);
-    final inner =
-        _decodePayload(outer?['payload']); // payload может быть вложенным
+    final payload = _decodePayload(record['payload']);
 
-    final type = _extractType(record: record, outer: outer, inner: inner);
-    final typeStr = (type ?? 'unknown').trim();
+    // Where type can live in practice:
+    // - payload['type'] (preferred, canonical)
+    // - record['type'] (if delivery has a top-level type column)
+    // - record['event_type'] (if delivery stores event type outside of payload)
+    final rawType = _asString(payload?['type']) ??
+        _asString(record['type']) ??
+        _asString(record['event_type']) ??
+        _asString(record['eventType']);
 
-    final deliveryPlanId =
-        _extractPlanId(record: record, outer: outer, inner: inner);
+    // Plan id can live in:
+    // - record['plan_id'] (top-level column)
+    // - payload['plan_id'] / payload['planId']
+    // - nested payload['plan'] map with id
+    final deliveryPlanId = _extractPlanId(record: record, payload: payload);
 
+    final type = rawType?.trim() ?? '';
+    final isPlanInvite = type.startsWith('PLAN_INTERNAL_INVITE');
     final planMatches = deliveryPlanId != null && _eqId(deliveryPlanId, planId);
-
-    final isRelevant = _isRelevantForInviteStates(typeStr);
 
     _dbg(
       '[PlanFriendsModal][RT] event=$changeEvent '
-      'id=${_asString(record['id']) ?? 'n/a'} '
+      'deliveryId=${_asString(record['delivery_id']) ?? _asString(record['id']) ?? 'n/a'} '
       'status=${_asString(record['status']) ?? 'n/a'} '
-      'type=$typeStr '
+      'type=$type '
       'planId=${deliveryPlanId ?? 'null'} '
-      'match(relevant=$isRelevant plan=$planMatches)',
+      'match(type=$isPlanInvite plan=$planMatches)',
     );
 
-    if (!isRelevant) return;
+    if (!isPlanInvite) return;
+    if (!planMatches) return;
 
-    // Even if plan_id can't be extracted (format variations), refresh is safer than stuck UI.
-    if (planMatches || deliveryPlanId == null) {
-      _scheduleInviteStatesRefresh(
-        notifyParent: false,
-        fromRealtime: true,
-        reason: 'realtime:$changeEvent:$typeStr',
-      );
-    }
+    // This event is server-first and relevant to the currently opened plan.
+    // Refresh server snapshot. Debounced + guarded (no polling).
+    _scheduleInviteStatesRefresh(
+      notifyParent: false,
+      fromRealtime: true,
+      reason: 'realtime:$changeEvent:$type',
+    );
   }
 
   void _scheduleInviteStatesRefresh({
@@ -395,11 +308,13 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     if (!mounted) return;
 
     if (_refreshInFlight) {
+      // Avoid dropping events: remember that we need one more refresh after current finishes.
       _refreshQueued = true;
       _queuedNotifyParent = _queuedNotifyParent || notifyParent;
       _queuedFromRealtime = _queuedFromRealtime || fromRealtime;
       _queuedReason = reason;
-      _dbg('[PlanFriendsModal][RT] refresh queued reason=$reason');
+      _dbg(
+          '[PlanFriendsModal][RT] refresh queued (inFlight=true) reason=$reason');
       return;
     }
 
@@ -418,7 +333,13 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
 
       setState(() {
         _inviteStatesByFriendUserId = next;
-        if (fromRealtime) _sheetEpoch++; // reset optimistic
+
+        // Important: If refresh was triggered by server-first realtime event (ACCEPT/DECLINE),
+        // we want the currently opened sheet to reflect the new server snapshot immediately.
+        // PlanFriendsPickerSheet has optimistic local state, and on decline it can keep overlay
+        // until the sheet is disposed. To keep the sheet “dumb” while still aligning UX,
+        // we remount it by bumping key epoch on realtime-triggered refresh.
+        if (fromRealtime) _sheetEpoch++;
       });
 
       if (notifyParent) {
@@ -426,6 +347,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       }
     } catch (e) {
       _dbg('[PlanFriendsModal] refreshInviteStates error=$e reason=$reason');
+      // No rethrow: refresh is typically fire-and-forget (unawaited).
     } finally {
       _refreshInFlight = false;
 
@@ -439,6 +361,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
         _queuedFromRealtime = false;
         _queuedReason = null;
 
+        // Run another refresh, debounced to coalesce bursts.
         _scheduleInviteStatesRefresh(
           notifyParent: qNotify,
           fromRealtime: qFromRealtime,
@@ -448,75 +371,45 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     }
   }
 
-  Map<String, dynamic>? _decodePayload(dynamic raw) {
-    if (raw is Map<String, dynamic>) return raw;
-    if (raw is Map) return raw.cast<String, dynamic>();
-    if (raw is String) {
+  Map<String, dynamic>? _decodePayload(dynamic rawPayload) {
+    if (rawPayload is Map<String, dynamic>) return rawPayload;
+    if (rawPayload is Map) return rawPayload.cast<String, dynamic>();
+    if (rawPayload is String) {
       try {
-        final decoded = jsonDecode(raw);
+        final decoded = jsonDecode(rawPayload);
         if (decoded is Map<String, dynamic>) return decoded;
         if (decoded is Map) return decoded.cast<String, dynamic>();
       } catch (e) {
-        _dbg('[PlanFriendsModal][RT] jsonDecode error=$e raw="$raw"');
+        _dbg(
+            '[PlanFriendsModal][RT] payload jsonDecode error=$e raw="$rawPayload"');
       }
     }
     return null;
   }
 
-  String? _extractType({
-    required Map<String, dynamic> record,
-    required Map<String, dynamic>? outer,
-    required Map<String, dynamic>? inner,
-  }) {
-    return _asString(outer?['type']) ??
-        _asString(outer?['event_type']) ??
-        _asString(outer?['eventType']) ??
-        _asString(inner?['type']) ??
-        _asString(inner?['event_type']) ??
-        _asString(inner?['eventType']) ??
-        _asString(record['type']) ??
-        _asString(record['event_type']) ??
-        _asString(record['eventType']);
-  }
-
   String? _extractPlanId({
     required Map<String, dynamic> record,
-    required Map<String, dynamic>? outer,
-    required Map<String, dynamic>? inner,
+    required Map<String, dynamic>? payload,
   }) {
     final direct = _asString(record['plan_id']) ?? _asString(record['planId']);
     if (direct != null && direct.trim().isNotEmpty) return direct.trim();
 
-    final o = outer;
-    if (o != null) {
-      final p = _asString(o['plan_id']) ??
-          _asString(o['planId']) ??
-          _asString(o['planID']);
-      if (p != null && p.trim().isNotEmpty) return p.trim();
+    final p = payload;
+    if (p == null) return null;
 
-      final nestedPlan = o['plan'];
-      if (nestedPlan is Map) {
-        final nid = _asString(nestedPlan['id']) ??
-            _asString(nestedPlan['plan_id']) ??
-            _asString(nestedPlan['planId']);
-        if (nid != null && nid.trim().isNotEmpty) return nid.trim();
-      }
+    final fromPayload = _asString(p['plan_id']) ??
+        _asString(p['planId']) ??
+        _asString(p['planID']);
+    if (fromPayload != null && fromPayload.trim().isNotEmpty) {
+      return fromPayload.trim();
     }
 
-    final i = inner;
-    if (i != null) {
-      final p = _asString(i['plan_id']) ??
-          _asString(i['planId']) ??
-          _asString(i['planID']);
-      if (p != null && p.trim().isNotEmpty) return p.trim();
-
-      final nestedPlan = i['plan'];
-      if (nestedPlan is Map) {
-        final nid = _asString(nestedPlan['id']) ??
-            _asString(nestedPlan['plan_id']) ??
-            _asString(nestedPlan['planId']);
-        if (nid != null && nid.trim().isNotEmpty) return nid.trim();
-      }
+    final nestedPlan = p['plan'];
+    if (nestedPlan is Map) {
+      final nid = _asString(nestedPlan['id']) ??
+          _asString(nestedPlan['plan_id']) ??
+          _asString(nestedPlan['planId']);
+      if (nid != null && nid.trim().isNotEmpty) return nid.trim();
     }
 
     return null;
@@ -562,6 +455,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       friends: _friends,
       inviteStatesByFriendUserId: _inviteStatesByFriendUserId,
       onInviteFriendByPublicId: widget.onInviteFriendByPublicId,
+      // ✅ важно: PlanFriendsPickerSheet ожидает Future<void> Function()
       onAfterInvite: () async {
         _scheduleInviteStatesRefresh(
           notifyParent: true,

@@ -49,6 +49,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
 
+
   String _humanizeError(Object e) {
     return _userMessageForError(e);
   }
@@ -140,6 +141,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
+
   String _userMessageForError(Object e) {
     // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
@@ -148,9 +150,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied = code == 'P0001' ||
-          msg.contains('access denied') ||
-          details.contains('access denied');
+      final isAccessDenied =
+          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -332,8 +333,26 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   Future<void> _removeMember(String memberAppUserId) async {
     if (_details == null || _actionLoading) return;
 
-    // ✅ Confirm is handled inside PlanMembersModal (server-first UX).
-    // This method must only perform the action and refresh canonical snapshot.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Удалить участника?'),
+        content: const Text('Участник будет удалён из плана.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     setState(() => _actionLoading = true);
 
     try {
@@ -347,11 +366,10 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await _load(showSpinner: false);
 
       if (!mounted) return;
-      unawaited(showCenterToast(context, message: 'Участник удалён'));
+      await showCenterToast(context, message: 'Участник удалён');
     } catch (e) {
       if (!mounted) return;
-      unawaited(
-          showCenterToast(context, message: _humanizeError(e), isError: true));
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -390,19 +408,17 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       // ✅ CANON: internal invite by public_id does NOT add member immediately.
       // We only confirm that the invite was sent. Member list will change only
       // after invitee ACCEPTs on the server.
-      unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
+      await showCenterToast(context, message: 'Приглашение отправлено');
     } catch (e) {
       if (!mounted) return;
-      unawaited(
-          showCenterToast(context, message: _humanizeError(e), isError: true));
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
       }
     }
   }
-
-  Future<void> _editTitle() async {
+Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -949,8 +965,7 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly =
-                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
@@ -961,6 +976,7 @@ class _Body extends StatelessWidget {
                 canAddMembers: details.plan.canAddMembers,
                 isReadOnly: isArchiveReadOnly,
                 onRemoveMember: (memberAppUserId) async {
+                  Navigator.of(dialogContext).pop();
                   await onRemoveMember(memberAppUserId);
                 },
                 onCreateInvite: () async {
