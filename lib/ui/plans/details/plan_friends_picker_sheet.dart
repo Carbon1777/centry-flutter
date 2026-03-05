@@ -263,7 +263,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             const Icon(Icons.people_outline, size: 44),
             const SizedBox(height: 14),
             Text(
-              'Пока нет друзей',
+              'Нет друзей для добавления в этот план',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -271,7 +271,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Добавляй друзей через поиск по Public ID или список участников в планах',
+              'Нет кандидатов для добавления из списка друзей. Либо у вас нет друзей, либо они все уже находятсяв числе участников этого плана',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
