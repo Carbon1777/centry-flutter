@@ -17,8 +17,8 @@ Future<void> showCenterToast(
   bool isError = false,
 
   /// Central toast is a lightweight "action feedback", not a modal.
-  /// Default: ~3.4s (requested 3–4 seconds).
-  Duration duration = const Duration(milliseconds: 3400),
+  /// Default: ~3.0s (requested 3 seconds).
+  Duration duration = const Duration(milliseconds: 3000),
 }) async {
   // We must only ever pop the toast route itself, never "whatever is on top".
   BuildContext? toastRouteContext;
