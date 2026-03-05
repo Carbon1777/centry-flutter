@@ -63,6 +63,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   /// Защита от двойного тапа/гонок
   final Set<String> _friendRequestInFlight = <String>{};
 
+  /// Защита от двойного тапа удаления участника
+  final Set<String> _removeMemberInFlight = <String>{};
+
   static const Duration _kAutoRefreshInterval = Duration(seconds: 3);
   Timer? _autoRefreshTimer;
 
@@ -303,6 +306,72 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     }
   }
 
+  Future<bool> _confirmRemoveMemberDialog() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      // ✅ Критично: не используем root navigator — диалог должен жить поверх текущей модалки.
+      useRootNavigator: false,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Удалить участника?'),
+          content: const Text('Участник будет удалён из плана.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Удалить'),
+            ),
+          ],
+        );
+      },
+    );
+    return ok == true;
+  }
+
+  Future<void> _handleRemoveMemberPressed(PlanMemberDto member) async {
+    if (!mounted) return;
+    if (widget.isReadOnly) return;
+    if (!member.canRemoveMember) return;
+
+    if (_removeMemberInFlight.contains(member.appUserId)) return;
+
+    final confirmed = await _confirmRemoveMemberDialog();
+    if (!confirmed) return;
+
+    if (!mounted) return;
+
+    setState(() => _removeMemberInFlight.add(member.appUserId));
+    try {
+      await widget.onRemoveMember(member.appUserId);
+
+      if (!mounted) return;
+
+      // Обновляем каноничный снапшот.
+      if (widget.onReloadDetails != null) {
+        unawaited(_refreshOnce(showError: false, showSpinner: false));
+      } else {
+        // Если reload недоступен — локально убираем из списка (server-first всё равно на бэке).
+        setState(() {
+          _members.removeWhere((m) => m.appUserId == member.appUserId);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      unawaited(showCenterToast(
+        context,
+        message: 'Ошибка удаления участника: $e',
+        isError: true,
+      ));
+    } finally {
+      if (!mounted) return;
+      setState(() => _removeMemberInFlight.remove(member.appUserId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.92;
@@ -343,10 +412,13 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                 child: _MemberRow(
                   member: _owner,
                   isReadOnly: widget.isReadOnly,
-                  onRemoveMember: widget.onRemoveMember,
                   showAddFriend: _shouldShowAddFriend(_owner),
                   addFriendDisabled: _isAddFriendDisabled(_owner),
                   onAddFriend: () => unawaited(_handleAddFriendPressed(_owner)),
+                  removeDisabled:
+                      _removeMemberInFlight.contains(_owner.appUserId),
+                  onRemoveMemberPressed: () =>
+                      unawaited(_handleRemoveMemberPressed(_owner)),
                 ),
               ),
               const Divider(height: 1, thickness: 1),
@@ -361,10 +433,13 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                     return _MemberRow(
                       member: m,
                       isReadOnly: widget.isReadOnly,
-                      onRemoveMember: widget.onRemoveMember,
                       showAddFriend: _shouldShowAddFriend(m),
                       addFriendDisabled: _isAddFriendDisabled(m),
                       onAddFriend: () => unawaited(_handleAddFriendPressed(m)),
+                      removeDisabled:
+                          _removeMemberInFlight.contains(m.appUserId),
+                      onRemoveMemberPressed: () =>
+                          unawaited(_handleRemoveMemberPressed(m)),
                     );
                   },
                 ),
@@ -430,19 +505,22 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
 class _MemberRow extends StatelessWidget {
   final PlanMemberDto member;
   final bool isReadOnly;
-  final Future<void> Function(String memberAppUserId) onRemoveMember;
 
   final bool showAddFriend;
   final bool addFriendDisabled;
   final VoidCallback onAddFriend;
 
+  final bool removeDisabled;
+  final VoidCallback onRemoveMemberPressed;
+
   const _MemberRow({
     required this.member,
     required this.isReadOnly,
-    required this.onRemoveMember,
     required this.showAddFriend,
     required this.addFriendDisabled,
     required this.onAddFriend,
+    required this.removeDisabled,
+    required this.onRemoveMemberPressed,
   });
 
   @override
@@ -542,7 +620,7 @@ class _MemberRow extends StatelessWidget {
                     color: Colors.redAccent.shade200,
                     size: 25, // +10%
                   ),
-                  onPressed: () => onRemoveMember(member.appUserId),
+                  onPressed: removeDisabled ? null : onRemoveMemberPressed,
                 ),
               ),
             ),
