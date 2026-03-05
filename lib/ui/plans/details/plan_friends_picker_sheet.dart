@@ -39,9 +39,7 @@ class PlanFriendInviteState {
 ///   через [inviteStatesByFriendUserId].
 /// - Optimistic pending используется только для мгновенной реакции на тап, пока не пришла серверная правда.
 ///
-/// Важно:
-/// - Success toast ("Приглашение отправлено") показывается выше (в handler'е действия),
-///   чтобы не было двойных тостов и ощущений "долго висит / подвисает UI".
+/// Визуально: 1-в-1 как bottom-sheet "Список планов" (образец).
 class PlanFriendsPickerSheet extends StatefulWidget {
   final List<FriendDto> friends;
 
@@ -116,8 +114,9 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       await widget.onInviteFriendByPublicId(publicId);
       if (!mounted) return;
 
-      // ✅ Success toast НЕ здесь (во избежание двойного тоста).
-      // Экран тут должен только отрисовать optimistic overlay и попросить родителя refresh.
+      // ✅ НЕ await: чтобы не держать _invite() до конца тоста (и не “подвешивать” UI).
+      unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
+
       if (widget.onAfterInvite != null) {
         unawaited(widget.onAfterInvite!.call());
       }
@@ -132,7 +131,8 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
               msg.toLowerCase().contains('sent'));
 
       if (alreadySent) {
-        // ✅ Без success toast здесь — он должен быть выше (или вообще не нужен при alreadySent).
+        unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
+
         if (widget.onAfterInvite != null) {
           unawaited(widget.onAfterInvite!.call());
         }
@@ -353,6 +353,8 @@ class _FriendCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+
+                  // ✅ Комментарий (как в Friends): всегда показываем отдельным блоком.
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
