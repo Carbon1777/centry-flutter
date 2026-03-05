@@ -95,12 +95,10 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
 
     final publicId = f.publicId.trim();
     if (publicId.isEmpty) {
-      unawaited(
-        showCenterToast(
-          context,
-          message: 'Не найден public_id друга',
-          isError: true,
-        ),
+      await showCenterToast(
+        context,
+        message: 'Не найден public_id друга',
+        isError: true,
       );
       return;
     }
@@ -114,9 +112,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       await widget.onInviteFriendByPublicId(publicId);
       if (!mounted) return;
 
-      // ✅ НЕ await: чтобы не держать _invite() до конца тоста (и не “подвешивать” UI).
-      unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
-
+      await showCenterToast(context, message: 'Приглашение отправлено');
       if (widget.onAfterInvite != null) {
         unawaited(widget.onAfterInvite!.call());
       }
@@ -131,8 +127,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
               msg.toLowerCase().contains('sent'));
 
       if (alreadySent) {
-        unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
-
+        await showCenterToast(context, message: 'Приглашение отправлено');
         if (widget.onAfterInvite != null) {
           unawaited(widget.onAfterInvite!.call());
         }
@@ -140,12 +135,10 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
         // rollback optimistic pending on error
         setState(() => _pendingOptimistic.remove(f.friendUserId));
 
-        unawaited(
-          showCenterToast(
-            context,
-            message: 'Ошибка отправки приглашения: $e',
-            isError: true,
-          ),
+        await showCenterToast(
+          context,
+          message: 'Ошибка отправки приглашения: $e',
+          isError: true,
         );
       }
     } finally {
@@ -263,7 +256,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             const Icon(Icons.people_outline, size: 44),
             const SizedBox(height: 14),
             Text(
-              'Нет друзей для добавления в этот план',
+              'Пока нет друзей',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -271,7 +264,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Нет кандидатов для добавления из списка друзей. Либо у вас нет друзей, либо они все уже находятся в числе участников этого плана',
+              'Добавляй друзей через поиск по Public ID или список участников в планах',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -304,9 +297,6 @@ class _FriendCard extends StatelessWidget {
     final name = 'не указано';
     final note = friend.note.trim();
 
-    final borderColor = theme.dividerColor.withOpacity(0.25);
-    final noteBg = theme.dividerColor.withOpacity(0.10);
-
     final base = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),
@@ -315,7 +305,7 @@ class _FriendCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor),
+          border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
           color: theme.colorScheme.surface,
         ),
         child: Row(
@@ -326,7 +316,7 @@ class _FriendCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: theme.dividerColor.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: borderColor),
+                border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
               ),
             ),
             const SizedBox(width: 12),
@@ -348,38 +338,19 @@ class _FriendCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color:
-                          theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-
-                  // ✅ Комментарий (как в Friends): всегда показываем отдельным блоком.
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: noteBg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: borderColor),
-                    ),
-                    child: Text(
-                      note.isEmpty ? 'Мой комментарий...' : note,
+                  if (note.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      note,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: note.isEmpty
-                            ? theme.textTheme.bodyMedium?.color
-                                ?.withOpacity(0.35)
-                            : theme.textTheme.bodyMedium?.color
-                                ?.withOpacity(0.78),
-                      ),
+                      style: theme.textTheme.bodyMedium,
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -390,6 +361,7 @@ class _FriendCard extends StatelessWidget {
 
     if (!pending) return base;
 
+    // 1-в-1 как в образце (план-карточки): приглушение + overlay label по центру
     return Stack(
       children: [
         Opacity(opacity: 0.55, child: AbsorbPointer(child: base)),

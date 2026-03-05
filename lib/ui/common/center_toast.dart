@@ -15,10 +15,7 @@ Future<void> showCenterToast(
   BuildContext context, {
   required String message,
   bool isError = false,
-
-  /// Central toast is a lightweight "action feedback", not a modal.
-  /// Default: ~3.0s (requested 3 seconds).
-  Duration duration = const Duration(milliseconds: 3000),
+  Duration duration = const Duration(seconds: 2),
 }) async {
   // We must only ever pop the toast route itself, never "whatever is on top".
   BuildContext? toastRouteContext;
@@ -42,11 +39,7 @@ Future<void> showCenterToast(
 
   await showGeneralDialog<void>(
     context: context,
-
-    // ✅ Allow dismiss by tap to avoid "UI feels frozen".
-    // (This route still uses a barrier, but user can close it instantly.)
-    barrierDismissible: true,
-
+    barrierDismissible: false,
     barrierLabel: 'toast',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 140),
