@@ -292,42 +292,28 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
                 ),
               ),
               const SizedBox(height: 12),
-
-              // ✅ ШАПКА 1-в-1 как в "Список друзей": заголовок/подзаголовок + крестик
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Список планов',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Нажмите на план для добавления участника.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.85),
-                            ),
-                          ),
-                        ],
+                    Text(
+                      'Список планов',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Нажмите на план для добавления участника.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.textTheme.bodyMedium?.color
+                            ?.withOpacity(0.85),
+                      ),
                     ),
                   ],
                 ),
               ),
-
               const SizedBox(height: 12),
               const Divider(height: 1),
               Expanded(

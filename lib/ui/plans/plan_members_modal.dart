@@ -5,17 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../common/center_toast.dart';
 
-import '../../data/friends/friend_request_result_dto.dart';
-import '../../data/friends/friends_repository.dart';
-import '../../data/friends/friends_repository_impl.dart';
-import '../../data/plans/plan_details_dto.dart';
+import '../../../data/friends/friend_request_result_dto.dart';
+import '../../../data/friends/friends_repository.dart';
+import '../../../data/friends/friends_repository_impl.dart';
+import '../../../data/plans/plan_details_dto.dart';
 import 'details/plan_add_member_flow.dart';
 
 class PlanMembersModal extends StatefulWidget {
-  /// ✅ Каноничный userId (тот же, что используется для загрузки деталей плана)
-  final String appUserId;
-
-  final String planId;
   final PlanMemberDto ownerMember;
   final List<PlanMemberDto> members;
 
@@ -31,8 +27,6 @@ class PlanMembersModal extends StatefulWidget {
 
   const PlanMembersModal({
     super.key,
-    required this.appUserId,
-    required this.planId,
     required this.ownerMember,
     required this.members,
     required this.canAddMembers,
@@ -218,6 +212,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   bool _shouldShowAddFriend(PlanMemberDto m) {
     if (widget.isReadOnly) return false;
     if (m.isMe == true) return false;
+
     if (m.isFriend == true) return false;
 
     return m.canAddFriend == true ||
@@ -230,6 +225,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     if (_friendRequestInFlight.contains(m.appUserId)) return true;
 
     if (m.hasPendingFriendRequest == true) return true;
+
     if (_optimisticFriendPending.contains(m.appUserId)) return true;
 
     return false;
@@ -383,11 +379,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                                 context: context,
                                 barrierDismissible: true,
                                 builder: (_) => PlanAddMemberModal(
-                                  appUserId: widget.appUserId, // ✅ FIX
-                                  planId: widget.planId,
                                   canInvite: widget.canAddMembers,
                                   canAddById: widget.canAddMembers,
-                                  canAddFromFriends: widget.canAddMembers,
+                                  canAddFromFriends: false,
                                   onCreateInvite: widget.onCreateInvite,
                                   onAddByPublicId: widget.onAddByPublicId,
                                 ),
