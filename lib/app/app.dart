@@ -2046,6 +2046,12 @@ if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 source: InviteUiSource.foreground,
               ),
             );
+
+            // ✅ Canon: once invite UI is enqueued (foreground), consume INBOX delivery
+            // to prevent repeated re-show of the same invite.
+            // We consume *after* enqueue (not before) to avoid losing UX.
+            consumeIfReady();
+            return;
           } catch (e) {
             if (kDebugMode) {
               debugPrint('[INBOX] handler error: $e');
