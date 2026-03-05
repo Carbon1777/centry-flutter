@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'plan_add_by_id_modal.dart';
 import 'plan_friends_modal.dart';
@@ -12,6 +11,9 @@ import 'plan_invite_modal.dart';
 /// - Только рендер по server flags.
 /// - Любые действия -> callbacks (RPC снаружи)
 class PlanAddMemberModal extends StatelessWidget {
+  /// ✅ Каноничный userId для server-first RPC (тот же, что используется в планах).
+  final String appUserId;
+
   final bool canInvite;
   final bool canAddFromFriends;
   final bool canAddById;
@@ -27,6 +29,7 @@ class PlanAddMemberModal extends StatelessWidget {
 
   const PlanAddMemberModal({
     super.key,
+    required this.appUserId,
     required this.canInvite,
     required this.canAddFromFriends,
     required this.canAddById,
@@ -80,10 +83,6 @@ class PlanAddMemberModal extends StatelessWidget {
                         onTap: () async {
                           if (!canAddFromFriends) return;
 
-                          final authUserId =
-                              Supabase.instance.client.auth.currentUser?.id ??
-                                  '';
-
                           // Bottom-sheet, swipe-down to close
                           var didInvite = false;
                           await showModalBottomSheet<void>(
@@ -92,7 +91,7 @@ class PlanAddMemberModal extends StatelessWidget {
                             backgroundColor: Colors.transparent,
                             barrierColor: Colors.black.withOpacity(0.55),
                             builder: (_) => PlanFriendsModal(
-                              appUserId: authUserId,
+                              appUserId: appUserId, // ✅ FIX: каноничный userId
                               planId: planId,
                               onInviteFriendByPublicId: onAddByPublicId,
                               onInviteSent: () => didInvite = true,
@@ -106,7 +105,7 @@ class PlanAddMemberModal extends StatelessWidget {
                           if (didInvite) {
                             Navigator.of(context).pop(true);
                           }
-},
+                        },
                       ),
                       const SizedBox(height: 12),
                       _ActionCard(
