@@ -167,6 +167,14 @@ class _DateCandidateCard extends StatelessWidget {
                     'Лидер',
                     style: theme.textTheme.labelSmall,
                   ),
+                if (candidate.canDelete) ...[
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.close,
+                    size: 18,
+                    color: Colors.red,
+                  ),
+                ],
               ],
             ),
             if (candidate.isOwnerPriorityChoice) ...[
@@ -192,7 +200,6 @@ class _DateCandidateCard extends StatelessWidget {
     if (candidate.canUnvote) return 'Снять';
     if (candidate.canVote) return 'Выбрать';
     if (candidate.isAvailableForOwnerChoiceNow) return 'Выбрать';
-    if (candidate.canDelete) return 'Можно удалить';
     if (ownerChoiceModeActive && !candidate.isAvailableForOwnerChoiceNow) {
       return 'Недоступно';
     }
@@ -202,8 +209,7 @@ class _DateCandidateCard extends StatelessWidget {
   bool _isActionEnabled() {
     return candidate.canVote ||
         candidate.canUnvote ||
-        candidate.isAvailableForOwnerChoiceNow ||
-        candidate.canDelete;
+        candidate.isAvailableForOwnerChoiceNow;
   }
 }
 
