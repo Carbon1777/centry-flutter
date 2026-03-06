@@ -96,46 +96,53 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final slotWidgets = List<Widget>.generate(3, (index) {
-      if (index < snapshot.candidates.length) {
-        final candidate = snapshot.candidates[index];
-        return Expanded(
-          child: _DateCandidateCard(
-            candidate: candidate,
-            ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
-            onVote: onVote,
-            onUnvote: onUnvote,
-            onDelete: onDelete,
-            onChooseOwnerPriority: onChooseOwnerPriority,
-            actionsDisabled: actionsDisabled,
-          ),
-        );
-      }
-
-      return Expanded(
-        child: _EmptyDateSlot(
-          canAddCandidate: snapshot.canAddCandidate,
-          onTap: (!actionsDisabled && snapshot.canAddCandidate)
-              ? onAddCandidate
-              : null,
-        ),
-      );
-    });
-
-    final rowChildren = <Widget>[];
-    for (var i = 0; i < slotWidgets.length; i++) {
-      rowChildren.add(slotWidgets[i]);
-      if (i != slotWidgets.length - 1) {
-        rowChildren.add(const SizedBox(width: 8));
-      }
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: rowChildren,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 8.0;
+            final itemWidth = (constraints.maxWidth - gap * 2) / 3;
+
+            Widget buildSlot(int index) {
+              if (index < snapshot.candidates.length) {
+                final candidate = snapshot.candidates[index];
+                return SizedBox(
+                  width: itemWidth,
+                  child: _DateCandidateCard(
+                    candidate: candidate,
+                    ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+                    onVote: onVote,
+                    onUnvote: onUnvote,
+                    onDelete: onDelete,
+                    onChooseOwnerPriority: onChooseOwnerPriority,
+                    actionsDisabled: actionsDisabled,
+                  ),
+                );
+              }
+
+              return SizedBox(
+                width: itemWidth,
+                child: _EmptyDateSlot(
+                  canAddCandidate: snapshot.canAddCandidate,
+                  onTap: (!actionsDisabled && snapshot.canAddCandidate)
+                      ? onAddCandidate
+                      : null,
+                ),
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildSlot(0),
+                const SizedBox(width: gap),
+                buildSlot(1),
+                const SizedBox(width: gap),
+                buildSlot(2),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 12),
         if (snapshot.postDeadlineGraceActive)
