@@ -96,44 +96,46 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final cards = List<Widget>.generate(3, (index) {
+    final slotWidgets = List<Widget>.generate(3, (index) {
       if (index < snapshot.candidates.length) {
         final candidate = snapshot.candidates[index];
         return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
-            child: _DateCandidateCard(
-              candidate: candidate,
-              ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
-              onVote: onVote,
-              onUnvote: onUnvote,
-              onDelete: onDelete,
-              onChooseOwnerPriority: onChooseOwnerPriority,
-              actionsDisabled: actionsDisabled,
-            ),
+          child: _DateCandidateCard(
+            candidate: candidate,
+            ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+            onVote: onVote,
+            onUnvote: onUnvote,
+            onDelete: onDelete,
+            onChooseOwnerPriority: onChooseOwnerPriority,
+            actionsDisabled: actionsDisabled,
           ),
         );
       }
 
       return Expanded(
-        child: Padding(
-          padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
-          child: _EmptyDateSlot(
-            canAddCandidate: snapshot.canAddCandidate,
-            onTap: (!actionsDisabled && snapshot.canAddCandidate)
-                ? onAddCandidate
-                : null,
-          ),
+        child: _EmptyDateSlot(
+          canAddCandidate: snapshot.canAddCandidate,
+          onTap: (!actionsDisabled && snapshot.canAddCandidate)
+              ? onAddCandidate
+              : null,
         ),
       );
     });
+
+    final rowChildren = <Widget>[];
+    for (var i = 0; i < slotWidgets.length; i++) {
+      rowChildren.add(slotWidgets[i]);
+      if (i != slotWidgets.length - 1) {
+        rowChildren.add(const SizedBox(width: 8));
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: cards,
+          children: rowChildren,
         ),
         const SizedBox(height: 12),
         if (snapshot.postDeadlineGraceActive)
