@@ -7,7 +7,13 @@ class PlanDetailsDto {
   /// Owner section (закреплённый сверху), как пришло с сервера
   final PlanMemberDto? ownerMember;
 
+  /// Legacy list: оставляем для обратной совместимости со старым UI.
+  /// Если сервер уже не отдаёт `date_candidates`, наполняем из `date_voting.candidates`.
   final List<DateCandidateDto> dateCandidates;
+
+  /// Новый server-first snapshot блока голосования по датам.
+  final PlanDateVotingDto dateVoting;
+
   final List<PlaceCandidateDto> placeCandidates;
   final List<PlanChatMessageDto> chat;
 
@@ -16,22 +22,51 @@ class PlanDetailsDto {
     required this.members,
     required this.ownerMember,
     required this.dateCandidates,
+    required this.dateVoting,
     required this.placeCandidates,
     required this.chat,
   });
 
   factory PlanDetailsDto.fromJson(Map<String, dynamic> json) {
+    final plan = PlanCoreDto.fromJson(json['plan'] as Map<String, dynamic>);
+
+    final legacyDateCandidates =
+        (json['date_candidates'] as List<dynamic>? ?? [])
+            .map((e) => DateCandidateDto.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+    final rawDateVoting = json['date_voting'];
+    final dateVoting = rawDateVoting is Map<String, dynamic>
+        ? PlanDateVotingDto.fromJson(rawDateVoting)
+        : rawDateVoting is Map
+            ? PlanDateVotingDto.fromJson(
+                Map<String, dynamic>.from(rawDateVoting))
+            : PlanDateVotingDto.fromLegacy(
+                votingDeadlineAt: plan.votingDeadlineAt,
+                decidedDateAt: plan.decidedDateAt,
+                legacyCandidates: legacyDateCandidates,
+              );
+
+    final effectiveDateCandidates = legacyDateCandidates.isNotEmpty
+        ? legacyDateCandidates
+        : dateVoting.candidates
+            .map(DateCandidateDto.fromVotingCandidate)
+            .toList();
+
     return PlanDetailsDto(
-      plan: PlanCoreDto.fromJson(json['plan'] as Map<String, dynamic>),
+      plan: plan,
       members: (json['members'] as List<dynamic>? ?? [])
           .map((e) => PlanMemberDto.fromJson(e as Map<String, dynamic>))
           .toList(),
       ownerMember: (json['owner_member'] is Map<String, dynamic>)
           ? PlanMemberDto.fromJson(json['owner_member'] as Map<String, dynamic>)
-          : null,
-      dateCandidates: (json['date_candidates'] as List<dynamic>? ?? [])
-          .map((e) => DateCandidateDto.fromJson(e as Map<String, dynamic>))
-          .toList(),
+          : (json['owner_member'] is Map
+              ? PlanMemberDto.fromJson(
+                  Map<String, dynamic>.from(json['owner_member'] as Map),
+                )
+              : null),
+      dateCandidates: effectiveDateCandidates,
+      dateVoting: dateVoting,
       placeCandidates: (json['place_candidates'] as List<dynamic>? ?? [])
           .map((e) => PlaceCandidateDto.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -50,6 +85,25 @@ bool _asBool(dynamic v) {
     return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
   }
   return false;
+}
+
+int _asInt(dynamic v, {int fallback = 0}) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v) ?? fallback;
+  return fallback;
+}
+
+String _asString(dynamic v, {String fallback = ''}) {
+  if (v == null) return fallback;
+  return v.toString();
+}
+
+DateTime? _asDateTime(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  if (v is String) return DateTime.tryParse(v);
+  return null;
 }
 
 /* ===================== PLAN CORE ===================== */
@@ -112,36 +166,30 @@ class PlanCoreDto {
     required this.canLeavePlan,
   });
 
-  static DateTime? _asDate(dynamic v) {
-    if (v == null) return null;
-    if (v is String) return DateTime.tryParse(v);
-    return null;
-  }
-
   factory PlanCoreDto.fromJson(Map<String, dynamic> json) {
     return PlanCoreDto(
-      id: json['id'],
-      title: json['title'],
-      description: json['description'],
-      role: json['role'],
-      status: json['status'],
-      votingDeadlineAt: _asDate(json['voting_deadline_at']),
-      eventAt: _asDate(json['event_at']),
-      decidedPlaceId: json['decided_place_id'],
-      decidedDateAt: _asDate(json['decided_date_at']),
-      tieResolutionDeadlineAt: _asDate(json['tie_resolution_deadline_at']),
-      visibleInFeed: json['visible_in_feed'] ?? false,
-      archived: json['archived'] ?? false,
-      membersCount: json['members_count'] ?? 0,
-      canAddMembers: json['can_add_members'] ?? false,
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      canEditTitle: json['can_edit_title'] ?? false,
-      canEditDescription: json['can_edit_description'] ?? false,
-      canEditDeadline: json['can_edit_deadline'] ?? false,
-      canUpdateVisibility: json['can_update_visibility'] ?? false,
-      canDeletePlan: json['can_delete_plan'] ?? false,
-      canLeavePlan: json['can_leave_plan'] ?? false,
+      id: _asString(json['id']),
+      title: _asString(json['title']),
+      description: json['description']?.toString(),
+      role: _asString(json['role']),
+      status: _asString(json['status']),
+      votingDeadlineAt: _asDateTime(json['voting_deadline_at']),
+      eventAt: _asDateTime(json['event_at']),
+      decidedPlaceId: json['decided_place_id']?.toString(),
+      decidedDateAt: _asDateTime(json['decided_date_at']),
+      tieResolutionDeadlineAt: _asDateTime(json['tie_resolution_deadline_at']),
+      visibleInFeed: _asBool(json['visible_in_feed']),
+      archived: _asBool(json['archived']),
+      membersCount: _asInt(json['members_count']),
+      canAddMembers: _asBool(json['can_add_members']),
+      createdAt: DateTime.parse(_asString(json['created_at'])),
+      updatedAt: DateTime.parse(_asString(json['updated_at'])),
+      canEditTitle: _asBool(json['can_edit_title']),
+      canEditDescription: _asBool(json['can_edit_description']),
+      canEditDeadline: _asBool(json['can_edit_deadline']),
+      canUpdateVisibility: _asBool(json['can_update_visibility']),
+      canDeletePlan: _asBool(json['can_delete_plan']),
+      canLeavePlan: _asBool(json['can_leave_plan']),
     );
   }
 }
@@ -189,13 +237,11 @@ class PlanMemberDto {
 
   factory PlanMemberDto.fromJson(Map<String, dynamic> json) {
     return PlanMemberDto(
-      appUserId: (json['app_user_id'] ?? '').toString(),
-      nickname: (json['nickname'] ?? '').toString(),
-      publicId: (json['public_id'] ?? '').toString(),
-      role: (json['role'] ?? '').toString(),
-      joinedAt: json['joined_at'] != null
-          ? DateTime.tryParse(json['joined_at'].toString())
-          : null,
+      appUserId: _asString(json['app_user_id']),
+      nickname: _asString(json['nickname']),
+      publicId: _asString(json['public_id']),
+      role: _asString(json['role']),
+      joinedAt: _asDateTime(json['joined_at']),
       canAddFriend: _asBool(json['can_add_friend']),
       canRemoveMember: _asBool(json['can_remove_member']),
       isMe: _asBool(json['is_me']),
@@ -210,7 +256,183 @@ class PlanMemberDto {
   }
 }
 
-/* ===================== DATE CANDIDATES ===================== */
+/* ===================== DATE VOTING ===================== */
+
+class PlanDateVotingDto {
+  final DateTime? votingDeadlineAt;
+  final bool isVotingActive;
+  final bool canAddCandidate;
+  final int freeSlotsCount;
+  final int candidatesCount;
+  final bool ownerChoiceModeActive;
+  final String? finalWinnerCandidateId;
+  final bool noWinnerYet;
+  final int hoursLeftToDeadline;
+  final bool postDeadlineGraceActive;
+  final List<PlanDateVotingCandidateDto> candidates;
+
+  PlanDateVotingDto({
+    required this.votingDeadlineAt,
+    required this.isVotingActive,
+    required this.canAddCandidate,
+    required this.freeSlotsCount,
+    required this.candidatesCount,
+    required this.ownerChoiceModeActive,
+    required this.finalWinnerCandidateId,
+    required this.noWinnerYet,
+    required this.hoursLeftToDeadline,
+    required this.postDeadlineGraceActive,
+    required this.candidates,
+  });
+
+  factory PlanDateVotingDto.fromJson(Map<String, dynamic> json) {
+    return PlanDateVotingDto(
+      votingDeadlineAt: _asDateTime(json['voting_deadline_at']),
+      isVotingActive: _asBool(json['is_voting_active']),
+      canAddCandidate: _asBool(json['can_add_candidate']),
+      freeSlotsCount: _asInt(json['free_slots_count']),
+      candidatesCount: _asInt(json['candidates_count']),
+      ownerChoiceModeActive: _asBool(json['owner_choice_mode_active']),
+      finalWinnerCandidateId: json['final_winner_candidate_id']?.toString(),
+      noWinnerYet: _asBool(json['no_winner_yet']),
+      hoursLeftToDeadline: _asInt(json['hours_left_to_deadline']),
+      postDeadlineGraceActive: _asBool(json['post_deadline_grace_active']),
+      candidates: (json['candidates'] as List<dynamic>? ?? [])
+          .map(
+            (e) => PlanDateVotingCandidateDto.fromJson(
+              e as Map<String, dynamic>,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  factory PlanDateVotingDto.fromLegacy({
+    required DateTime? votingDeadlineAt,
+    required DateTime? decidedDateAt,
+    required List<DateCandidateDto> legacyCandidates,
+  }) {
+    final winnerId = decidedDateAt?.toIso8601String();
+    final mappedCandidates = legacyCandidates
+        .asMap()
+        .entries
+        .map(
+          (entry) => PlanDateVotingCandidateDto(
+            candidateId: entry.value.dateAt.toIso8601String(),
+            dateTime: entry.value.dateAt,
+            weekdayRu: '',
+            dateLabel: '',
+            timeLabel: '',
+            votesCount: entry.value.votesCount,
+            createdByUserId: '',
+            createdByCurrentUser: false,
+            isUserVotedForThis: entry.value.myVote,
+            isLeading: false,
+            isWinner:
+                decidedDateAt != null && entry.value.dateAt == decidedDateAt,
+            isDimmed: false,
+            isOwnerPriorityChoice: false,
+            isAvailableForOwnerChoiceNow: false,
+            canVote: false,
+            canUnvote: false,
+            canDelete: false,
+            positionIndex: entry.key,
+          ),
+        )
+        .toList();
+
+    return PlanDateVotingDto(
+      votingDeadlineAt: votingDeadlineAt,
+      isVotingActive: false,
+      canAddCandidate: false,
+      freeSlotsCount:
+          legacyCandidates.length >= 3 ? 0 : (3 - legacyCandidates.length),
+      candidatesCount: legacyCandidates.length,
+      ownerChoiceModeActive: false,
+      finalWinnerCandidateId: winnerId,
+      noWinnerYet: decidedDateAt == null,
+      hoursLeftToDeadline: 0,
+      postDeadlineGraceActive: false,
+      candidates: mappedCandidates,
+    );
+  }
+}
+
+class PlanDateVotingCandidateDto {
+  final String candidateId;
+  final DateTime dateTime;
+  final String weekdayRu;
+  final String dateLabel;
+  final String timeLabel;
+  final int votesCount;
+  final String createdByUserId;
+  final bool createdByCurrentUser;
+  final bool isUserVotedForThis;
+  final bool isLeading;
+  final bool isWinner;
+  final bool isDimmed;
+  final bool isOwnerPriorityChoice;
+  final bool isAvailableForOwnerChoiceNow;
+  final bool canVote;
+  final bool canUnvote;
+  final bool canDelete;
+  final int positionIndex;
+
+  PlanDateVotingCandidateDto({
+    required this.candidateId,
+    required this.dateTime,
+    required this.weekdayRu,
+    required this.dateLabel,
+    required this.timeLabel,
+    required this.votesCount,
+    required this.createdByUserId,
+    required this.createdByCurrentUser,
+    required this.isUserVotedForThis,
+    required this.isLeading,
+    required this.isWinner,
+    required this.isDimmed,
+    required this.isOwnerPriorityChoice,
+    required this.isAvailableForOwnerChoiceNow,
+    required this.canVote,
+    required this.canUnvote,
+    required this.canDelete,
+    required this.positionIndex,
+  });
+
+  factory PlanDateVotingCandidateDto.fromJson(Map<String, dynamic> json) {
+    final dateTime = _asDateTime(json['datetime']) ??
+        _asDateTime(json['date_at']) ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+
+    return PlanDateVotingCandidateDto(
+      candidateId: _asString(
+        json['candidate_id'],
+        fallback: dateTime.toIso8601String(),
+      ),
+      dateTime: dateTime,
+      weekdayRu: _asString(json['weekday_ru']),
+      dateLabel: _asString(json['date_label']),
+      timeLabel: _asString(json['time_label']),
+      votesCount: _asInt(json['votes_count']),
+      createdByUserId: _asString(json['created_by_user_id']),
+      createdByCurrentUser: _asBool(json['created_by_current_user']),
+      isUserVotedForThis: _asBool(json['is_user_voted_for_this']),
+      isLeading: _asBool(json['is_leading']),
+      isWinner: _asBool(json['is_winner']),
+      isDimmed: _asBool(json['is_dimmed']),
+      isOwnerPriorityChoice: _asBool(json['is_owner_priority_choice']),
+      isAvailableForOwnerChoiceNow: _asBool(
+        json['is_available_for_owner_choice_now'],
+      ),
+      canVote: _asBool(json['can_vote']),
+      canUnvote: _asBool(json['can_unvote']),
+      canDelete: _asBool(json['can_delete']),
+      positionIndex: _asInt(json['position_index']),
+    );
+  }
+}
+
+/* ===================== LEGACY DATE CANDIDATES ===================== */
 
 class DateCandidateDto {
   final DateTime dateAt;
@@ -225,9 +447,19 @@ class DateCandidateDto {
 
   factory DateCandidateDto.fromJson(Map<String, dynamic> json) {
     return DateCandidateDto(
-      dateAt: DateTime.parse(json['date_at']),
-      votesCount: json['votes_count'] ?? 0,
-      myVote: json['my_vote'] ?? false,
+      dateAt: DateTime.parse(_asString(json['date_at'])),
+      votesCount: _asInt(json['votes_count']),
+      myVote: _asBool(json['my_vote']),
+    );
+  }
+
+  factory DateCandidateDto.fromVotingCandidate(
+    PlanDateVotingCandidateDto candidate,
+  ) {
+    return DateCandidateDto(
+      dateAt: candidate.dateTime,
+      votesCount: candidate.votesCount,
+      myVote: candidate.isUserVotedForThis,
     );
   }
 }
@@ -247,9 +479,9 @@ class PlaceCandidateDto {
 
   factory PlaceCandidateDto.fromJson(Map<String, dynamic> json) {
     return PlaceCandidateDto(
-      placeId: json['place_id'],
-      votesCount: json['votes_count'] ?? 0,
-      myVote: json['my_vote'] ?? false,
+      placeId: _asString(json['place_id']),
+      votesCount: _asInt(json['votes_count']),
+      myVote: _asBool(json['my_vote']),
     );
   }
 }
@@ -271,10 +503,10 @@ class PlanChatMessageDto {
 
   factory PlanChatMessageDto.fromJson(Map<String, dynamic> json) {
     return PlanChatMessageDto(
-      id: json['id'],
-      authorAppUserId: json['author_app_user_id'],
-      text: json['text'],
-      createdAt: DateTime.parse(json['created_at']),
+      id: _asString(json['id']),
+      authorAppUserId: _asString(json['author_app_user_id']),
+      text: _asString(json['text']),
+      createdAt: DateTime.parse(_asString(json['created_at'])),
     );
   }
 }
