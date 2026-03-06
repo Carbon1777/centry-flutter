@@ -125,6 +125,11 @@ class _BootstrapGateState extends State<BootstrapGate>
   // Pending friend OPEN intents (Scenario B/C): resolve via INBOX once identity + shell are ready.
   final List<Map<String, dynamic>> _pendingFriendOpenIntents =
       <Map<String, dynamic>>[];
+  // Pending push OPEN intents for invites/plan events until identity + shell are ready.
+  final List<Map<String, dynamic>> _pendingNotificationOpenIntents =
+      <Map<String, dynamic>>[];
+  String? _lastHandledNotificationOpenKey;
+  DateTime? _lastHandledNotificationOpenAt;
   // Pending consume requests when delivery arrives before shell is ready.
   final List<String> _pendingConsumeDeliveryIds = <String>[];
   DateTime? _homeVisibleAt;
@@ -223,7 +228,6 @@ class _BootstrapGateState extends State<BootstrapGate>
           debugPrint('[IntentBridge] intent_data=$intentData extras=$extras');
         }
 
-        // 1) Deep links (centry://..., https://www.centry.website/plan-invite?...)
         if (intentData.isNotEmpty) {
           final uri = Uri.tryParse(intentData);
           if (uri != null) {
@@ -231,7 +235,6 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
 
-        // 2) Notification tap routing (background tap on local notification)
         final actionId = (extras['actionId'] ?? extras['action_id'] ?? '')
             .toString()
             .trim()
@@ -252,214 +255,231 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
 
+        final effectiveType = (payload['type'] ??
+                payload['kind'] ??
+                extras['type'] ??
+                extras['kind'] ??
+                '')
+            .toString()
+            .trim();
+        final planId =
+            (payload['plan_id'] ?? payload['planId'] ?? extras['plan_id'] ?? extras['planId'] ?? '')
+                .toString()
+                .trim();
+        final inviteId =
+            (payload['invite_id'] ?? payload['inviteId'] ?? extras['invite_id'] ?? extras['inviteId'] ?? '')
+                .toString()
+                .trim();
+        final title =
+            (payload['title'] ?? extras['title'] ?? '').toString().trim();
+        final body =
+            (payload['body'] ?? extras['body'] ?? '').toString().trim();
+
         if (actionId == 'OPEN') {
-          final inviteId =
-              (payload['invite_id'] ?? extras['invite_id'] ?? '').toString();
-          final planId =
-              (payload['plan_id'] ?? extras['plan_id'] ?? '').toString();
-          final title = (payload['title'] ?? '').toString();
-          final body = (payload['body'] ?? '').toString();
-
           if (inviteId.isNotEmpty && planId.isNotEmpty) {
-            // Coordinator нужен только для background-like сценария:
-            // - stale callback после resume (mounted == false)
-            // - или app shell уже поднят (background/foreground running app)
-            // Для cold start (restoring=true, appShell=false) НЕ перехватываем здесь,
-            // чтобы остался baseline-путь launchFromNotif -> local invite flow
-            // с показом модалки после прохождения Home -> Feed.
-            final kindStr = (payload['kind'] ?? '').toString();
-            final hasOwnerAction =
-                (payload['action'] ?? '').toString().isNotEmpty;
-            final isOwnerResult = kindStr == 'OWNER_RESULT' || hasOwnerAction;
-
-            // Route owner-result via coordinator even on cold start.
-            final shouldRouteViaCoordinator =
-                isOwnerResult || !mounted || (_appShellReady && !_restoring);
-
-            if (kDebugMode) {
-              debugPrint(
-                '[IntentBridge] invite OPEN inviteId=$inviteId planId=$planId '
-                'mounted=$mounted restoring=$_restoring appShell=$_appShellReady '
-                'viaCoordinator=$shouldRouteViaCoordinator isOwnerResult=$isOwnerResult',
-              );
-            }
-
-            if (shouldRouteViaCoordinator) {
-              final kind = (payload['kind'] ?? extras['kind'] ?? '')
+            await _handleInviteOpenFromNotificationTap(
+              inviteId: inviteId,
+              planId: planId,
+              actionToken: (payload['action_token'] ??
+                      payload['actionToken'] ??
+                      extras['action_token'] ??
+                      extras['actionToken'] ??
+                      '')
                   .toString()
-                  .trim()
-                  .toUpperCase();
-              final actionValue =
-                  (payload['action'] ?? '').toString().trim().toUpperCase();
+                  .trim(),
+              kindHint: (payload['kind'] ?? extras['kind'] ?? '')
+                  .toString()
+                  .trim(),
+              actionHint: (payload['action'] ?? extras['action'] ?? '')
+                  .toString()
+                  .trim(),
+              title: title,
+              body: body,
+              openSource: 'intent_bridge',
+            );
+            return;
+          }
 
-              final isOwnerResult = kind == 'OWNER_RESULT' ||
-                  ((actionValue == 'ACCEPT' || actionValue == 'DECLINE'));
-
-              if (isOwnerResult) {
-                // Canon: on tap "Посмотреть" we must build UI from PENDING INBOX (source of truth),
-                // then ACK/consume after enqueue/show to prevent late PUSH duplicates.
-                final pending =
-                    await _loadPendingOwnerInviteResultInboxByInviteId(
-                        inviteId);
-                if (pending != null) {
-                  final pendingAction = (pending['action'] ??
-                          pending['owner_action'] ??
-                          pending['ownerAction'] ??
-                          '')
-                      .toString()
-                      .trim()
-                      .toUpperCase();
-
-                  final effectiveAction =
-                      (pendingAction == 'ACCEPT' || pendingAction == 'DECLINE')
-                          ? pendingAction
-                          : (actionValue == 'ACCEPT' ? 'ACCEPT' : 'DECLINE');
-
-                  final pendingPlanId =
-                      (pending['plan_id'] ?? pending['planId'] ?? planId)
-                          .toString();
-                  final pendingTitleRaw = (pending['title'] ?? '').toString();
-                  final pendingTitle = pendingTitleRaw.trim().isEmpty
-                      ? (effectiveAction == 'ACCEPT'
-                          ? 'Приглашение принято'
-                          : 'Приглашение отклонено')
-                      : pendingTitleRaw;
-                  final pendingBody = (pending['body'] ?? body).toString();
-
-                  InviteUiCoordinator.instance.enqueueOwnerResult(
-                    OwnerResultUiRequest(
-                      inviteId: inviteId,
-                      planId: pendingPlanId,
-                      action: effectiveAction,
-                      title: pendingTitle,
-                      body: pendingBody,
-                      source: InviteUiSource.backgroundIntent,
-                    ),
-                  );
-
-                  final deliveryId =
-                      (pending['delivery_id'] ?? pending['deliveryId'] ?? '')
-                          .toString();
-                  _scheduleConsumeInboxDelivery(deliveryId);
-                  return;
-                }
-
-                final ownerTitle = actionValue == 'ACCEPT'
-                    ? 'Приглашение принято'
-                    : 'Приглашение отклонено';
-
-                InviteUiCoordinator.instance.enqueueOwnerResult(
-                  OwnerResultUiRequest(
-                    inviteId: inviteId,
-                    planId: planId,
-                    action: actionValue.isEmpty ? 'DECLINE' : actionValue,
-                    title: ownerTitle,
-                    body: body,
-                    source: InviteUiSource.backgroundIntent,
-                  ),
-                );
-              } else {
-                InviteUiCoordinator.instance.enqueue(
-                  InviteUiRequest(
-                    inviteId: inviteId,
-                    planId: planId,
-                    title: title,
-                    body: body,
-                    source: InviteUiSource.backgroundIntent,
-                  ),
-                );
-              }
+          if (effectiveType == 'PLAN_MEMBER_LEFT') {
+            final leftUserId = (payload['left_user_id'] ??
+                    payload['leftUserId'] ??
+                    payload['member_user_id'] ??
+                    payload['memberUserId'] ??
+                    extras['left_user_id'] ??
+                    extras['leftUserId'] ??
+                    extras['member_user_id'] ??
+                    extras['memberUserId'] ??
+                    '')
+                .toString()
+                .trim();
+            if (planId.isNotEmpty && leftUserId.isNotEmpty) {
+              await _handlePlanMemberLeftOpenFromNotificationTap(
+                planId: planId,
+                leftUserId: leftUserId,
+                leftNickname: (payload['left_nickname'] ??
+                        payload['leftNickname'] ??
+                        payload['member_nickname'] ??
+                        payload['memberNickname'] ??
+                        extras['left_nickname'] ??
+                        extras['leftNickname'] ??
+                        extras['member_nickname'] ??
+                        extras['memberNickname'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                planTitle: (payload['plan_title'] ??
+                        payload['planTitle'] ??
+                        extras['plan_title'] ??
+                        extras['planTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventId: (payload['event_id'] ??
+                        payload['eventId'] ??
+                        extras['event_id'] ??
+                        extras['eventId'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                title: title,
+                body: body,
+                openSource: 'intent_bridge',
+              );
               return;
             }
           }
-        }
 
-        final type = (extras['type'] ??
-                extras['kind'] ??
-                payload['type'] ??
-                payload['kind'] ??
-                '')
-            .toString();
-        final planId =
-            (extras['plan_id'] ?? payload['plan_id'] ?? payload['planId'] ?? '')
-                .toString();
-        if (type == 'PLAN_INTERNAL_INVITE' && planId.isNotEmpty) {
-          // Canon: tap on invite body does nothing (no ACCEPT/DECLINE, no nav).
-          return;
-        }
-
-// PLAN_MEMBER_REMOVED: show in-app info modal using server-provided payload/extras.
-        if (type == 'PLAN_MEMBER_REMOVED') {
-          // payload from extras['payload'] OR flattened extras keys (FCM sometimes flattens).
-          final payloadType = (payload['type'] ??
-                  payload['kind'] ??
-                  extras['type'] ??
-                  extras['kind'] ??
-                  '')
-              .toString()
-              .trim();
-          if (payloadType == 'PLAN_MEMBER_REMOVED') {
-            final removedPlanId = (payload['plan_id'] ??
-                    payload['planId'] ??
-                    extras['plan_id'] ??
-                    extras['planId'] ??
-                    '')
-                .toString();
+          if (effectiveType == 'PLAN_MEMBER_REMOVED') {
             final removedUserId = (payload['removed_user_id'] ??
                     payload['removedUserId'] ??
                     extras['removed_user_id'] ??
                     extras['removedUserId'] ??
                     '')
-                .toString();
+                .toString()
+                .trim();
             final ownerUserId = (payload['owner_user_id'] ??
                     payload['ownerUserId'] ??
                     extras['owner_user_id'] ??
                     extras['ownerUserId'] ??
                     '')
-                .toString();
-
-            if (removedPlanId.isNotEmpty &&
+                .toString()
+                .trim();
+            if (planId.isNotEmpty &&
                 removedUserId.isNotEmpty &&
                 ownerUserId.isNotEmpty) {
-              final ownerNickname = (payload['owner_nickname'] ??
-                      payload['ownerNickname'] ??
-                      extras['owner_nickname'] ??
-                      extras['ownerNickname'] ??
-                      '')
-                  .toString()
-                  .trim();
-              final planTitle = (payload['plan_title'] ??
-                      payload['planTitle'] ??
-                      extras['plan_title'] ??
-                      extras['planTitle'] ??
-                      '')
-                  .toString()
-                  .trim();
-              final title =
-                  (payload['title'] ?? extras['title'] ?? '').toString().trim();
-              final body =
-                  (payload['body'] ?? extras['body'] ?? '').toString().trim();
-
-              PlanMemberRemovedUiCoordinator.instance.enqueue(
-                PlanMemberRemovedUiRequest(
-                  planId: removedPlanId,
-                  removedUserId: removedUserId,
-                  ownerUserId: ownerUserId,
-                  ownerNickname: ownerNickname.isEmpty ? null : ownerNickname,
-                  planTitle: planTitle.isEmpty ? null : planTitle,
-                  title: title.isEmpty ? null : title,
-                  body: body.isEmpty ? null : body,
-                  source: PlanMemberRemovedUiSource.backgroundIntent,
-                ),
+              await _handlePlanMemberRemovedOpenFromNotificationTap(
+                planId: planId,
+                removedUserId: removedUserId,
+                ownerUserId: ownerUserId,
+                ownerNickname: (payload['owner_nickname'] ??
+                        payload['ownerNickname'] ??
+                        extras['owner_nickname'] ??
+                        extras['ownerNickname'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                planTitle: (payload['plan_title'] ??
+                        payload['planTitle'] ??
+                        extras['plan_title'] ??
+                        extras['planTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventId: (payload['event_id'] ??
+                        payload['eventId'] ??
+                        extras['event_id'] ??
+                        extras['eventId'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                title: title,
+                body: body,
+                openSource: 'intent_bridge',
               );
-              final deliveryId = (payload['delivery_id'] ??
-                      payload['deliveryId'] ??
-                      extras['delivery_id'] ??
-                      extras['deliveryId'] ??
-                      '')
-                  .toString();
-              _scheduleConsumeInboxDelivery(deliveryId);
+              return;
+            }
+          }
 
+          if (effectiveType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
+            final joinedUserId = (payload['joined_user_id'] ??
+                    payload['joinedUserId'] ??
+                    extras['joined_user_id'] ??
+                    extras['joinedUserId'] ??
+                    '')
+                .toString()
+                .trim();
+            if (planId.isNotEmpty && joinedUserId.isNotEmpty) {
+              await _handlePlanMemberJoinedByInviteOpenFromNotificationTap(
+                planId: planId,
+                joinedUserId: joinedUserId,
+                joinedNickname: (payload['joined_nickname'] ??
+                        payload['joinedNickname'] ??
+                        extras['joined_nickname'] ??
+                        extras['joinedNickname'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                planTitle: (payload['plan_title'] ??
+                        payload['planTitle'] ??
+                        extras['plan_title'] ??
+                        extras['planTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventId: (payload['event_id'] ??
+                        payload['eventId'] ??
+                        extras['event_id'] ??
+                        extras['eventId'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                title: title,
+                body: body,
+                openSource: 'intent_bridge',
+              );
+              return;
+            }
+          }
+
+          if (effectiveType == 'PLAN_DELETED') {
+            final ownerUserId = (payload['owner_app_user_id'] ??
+                    payload['owner_user_id'] ??
+                    payload['ownerUserId'] ??
+                    extras['owner_app_user_id'] ??
+                    extras['owner_user_id'] ??
+                    extras['ownerUserId'] ??
+                    '')
+                .toString()
+                .trim();
+            if (planId.isNotEmpty && ownerUserId.isNotEmpty) {
+              await _handlePlanDeletedOpenFromNotificationTap(
+                planId: planId,
+                ownerUserId: ownerUserId,
+                ownerNickname: (payload['owner_nickname'] ??
+                        payload['ownerNickname'] ??
+                        extras['owner_nickname'] ??
+                        extras['ownerNickname'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                planTitle: (payload['plan_title'] ??
+                        payload['planTitle'] ??
+                        extras['plan_title'] ??
+                        extras['planTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventId: (payload['event_id'] ??
+                        payload['eventId'] ??
+                        extras['event_id'] ??
+                        extras['eventId'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                title: title,
+                body: body,
+                openSource: 'intent_bridge',
+              );
               return;
             }
           }
@@ -484,102 +504,18 @@ class _BootstrapGateState extends State<BootstrapGate>
       }) async {
         final normalized = action.trim().toUpperCase();
 
-        // ✅ Canon: system push only opens app. Product actions happen in in-app modal.
         if (normalized == 'OPEN') {
-          final t = (title ?? '').trim().toLowerCase();
-          final b = (body ?? '').trim().toLowerCase();
-
-          // Backward-compatible heuristic:
-          // owner-result local notification payload previously arrived here as OPEN without explicit kind/action.
-          final looksLikeOwnerResult = t.contains('приглашение принято') ||
-              t.contains('приглашение отклонено') ||
-              b.contains('принял приглашение') ||
-              b.contains('отклонил приглашение') ||
-              b.contains('приглашение принято') ||
-              b.contains('приглашение отклонено');
-
-          if (looksLikeOwnerResult) {
-            final pending =
-                await _loadPendingOwnerInviteResultInboxByInviteId(inviteId);
-            if (pending != null) {
-              final pType = (pending['type'] ?? '').toString().trim();
-              final pendingAction = (pending['action'] ??
-                      pending['owner_action'] ??
-                      pending['ownerAction'] ??
-                      '')
-                  .toString()
-                  .trim()
-                  .toUpperCase();
-
-              final actionValue =
-                  (pendingAction == 'ACCEPT' || pendingAction == 'DECLINE')
-                      ? pendingAction
-                      : (pType == 'PLAN_INTERNAL_INVITE_ACCEPTED'
-                          ? 'ACCEPT'
-                          : 'DECLINE');
-
-              final pendingPlanId =
-                  (pending['plan_id'] ?? pending['planId'] ?? planId)
-                      .toString();
-              final pendingTitleRaw = (pending['title'] ?? '').toString();
-              final pendingTitle = pendingTitleRaw.trim().isEmpty
-                  ? (actionValue == 'ACCEPT'
-                      ? 'Приглашение принято'
-                      : 'Приглашение отклонено')
-                  : pendingTitleRaw;
-              final pendingBody = (pending['body'] ?? body ?? '').toString();
-
-              InviteUiCoordinator.instance.enqueueOwnerResult(
-                OwnerResultUiRequest(
-                  inviteId: inviteId,
-                  planId: pendingPlanId,
-                  action: actionValue,
-                  title: pendingTitle,
-                  body: pendingBody,
-                  source: InviteUiSource.backgroundIntent,
-                ),
-              );
-
-              final deliveryId =
-                  (pending['delivery_id'] ?? pending['deliveryId'] ?? '')
-                      .toString();
-              _scheduleConsumeInboxDelivery(deliveryId);
-              return;
-            }
-
-            final actionValue = (t.contains('принято') || b.contains('принял'))
-                ? 'ACCEPT'
-                : 'DECLINE';
-
-            InviteUiCoordinator.instance.enqueueOwnerResult(
-              OwnerResultUiRequest(
-                inviteId: inviteId,
-                planId: planId,
-                action: actionValue,
-                title: actionValue == 'ACCEPT'
-                    ? 'Приглашение принято'
-                    : 'Приглашение отклонено',
-                body: body,
-                source: InviteUiSource.backgroundIntent,
-              ),
-            );
-            return;
-          }
-
-          InviteUiCoordinator.instance.enqueue(
-            InviteUiRequest(
-              inviteId: inviteId,
-              planId: planId,
-              actionToken: actionToken,
-              title: title,
-              body: body,
-              source: InviteUiSource.backgroundIntent,
-            ),
+          await _handleInviteOpenFromNotificationTap(
+            inviteId: inviteId,
+            planId: planId,
+            actionToken: (actionToken ?? '').trim(),
+            title: (title ?? '').trim(),
+            body: (body ?? '').trim(),
+            openSource: 'local_notification',
           );
           return;
         }
 
-        // Ignore legacy/unknown actions from old notifications.
         if (kDebugMode) {
           debugPrint('[InviteModal] ignore local notif action=$normalized');
         }
@@ -591,8 +527,6 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        // Scenario B/C: local notification OPEN -> resolve pending INBOX and show canonical UI.
-        // If identity/shell isn't ready yet (cold start), stash intent and flush later.
         if (_restoring || !_appShellReady || (_userId ?? '').trim().isEmpty) {
           _enqueueFriendOpenIntent(
             type: type,
@@ -620,23 +554,14 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        PlanMemberLeftUiCoordinator.instance.enqueue(
-          PlanMemberLeftUiRequest(
-            planId: planId,
-            leftUserId: leftUserId,
-            leftNickname: (leftNickname ?? '').trim().isEmpty
-                ? null
-                : (leftNickname ?? '').trim(),
-            planTitle: (planTitle ?? '').trim().isEmpty
-                ? null
-                : (planTitle ?? '').trim(),
-            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
-            body: ((body ?? '').trim().isEmpty ||
-                    (body ?? '').trim() == 'Один из участников покинул план.')
-                ? null
-                : (body ?? '').trim(),
-            source: PlanMemberLeftUiSource.backgroundIntent,
-          ),
+        await _handlePlanMemberLeftOpenFromNotificationTap(
+          planId: planId,
+          leftUserId: leftUserId,
+          leftNickname: (leftNickname ?? '').trim(),
+          planTitle: (planTitle ?? '').trim(),
+          title: (title ?? '').trim(),
+          body: (body ?? '').trim(),
+          openSource: 'local_notification',
         );
       },
       onPlanMemberJoinedByInviteOpen: ({
@@ -647,20 +572,14 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
-          PlanMemberJoinedByInviteUiRequest(
-            planId: planId,
-            joinedUserId: joinedUserId,
-            joinedNickname: (joinedNickname ?? '').trim().isEmpty
-                ? null
-                : (joinedNickname ?? '').trim(),
-            planTitle: (planTitle ?? '').trim().isEmpty
-                ? null
-                : (planTitle ?? '').trim(),
-            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
-            body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
-            source: PlanMemberJoinedByInviteUiSource.backgroundIntent,
-          ),
+        await _handlePlanMemberJoinedByInviteOpenFromNotificationTap(
+          planId: planId,
+          joinedUserId: joinedUserId,
+          joinedNickname: (joinedNickname ?? '').trim(),
+          planTitle: (planTitle ?? '').trim(),
+          title: (title ?? '').trim(),
+          body: (body ?? '').trim(),
+          openSource: 'local_notification',
         );
       },
       onPlanMemberRemovedOpen: ({
@@ -672,21 +591,15 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        PlanMemberRemovedUiCoordinator.instance.enqueue(
-          PlanMemberRemovedUiRequest(
-            planId: planId,
-            removedUserId: removedUserId,
-            ownerUserId: ownerUserId,
-            ownerNickname: (ownerNickname ?? '').trim().isEmpty
-                ? null
-                : (ownerNickname ?? '').trim(),
-            planTitle: (planTitle ?? '').trim().isEmpty
-                ? null
-                : (planTitle ?? '').trim(),
-            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
-            body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
-            source: PlanMemberRemovedUiSource.backgroundIntent,
-          ),
+        await _handlePlanMemberRemovedOpenFromNotificationTap(
+          planId: planId,
+          removedUserId: removedUserId,
+          ownerUserId: ownerUserId,
+          ownerNickname: (ownerNickname ?? '').trim(),
+          planTitle: (planTitle ?? '').trim(),
+          title: (title ?? '').trim(),
+          body: (body ?? '').trim(),
+          openSource: 'local_notification',
         );
       },
       onPlanDeletedOpen: ({
@@ -698,22 +611,17 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        // ✅ Canon: B/C open should show the same modal; we reuse existing queue pattern.
-        PlanDeletedUiCoordinator.instance.enqueue(
-          PlanDeletedUiRequest(
-            planId: planId,
-            ownerUserId: ownerUserId,
-            ownerNickname: (ownerNickname ?? '').trim().isEmpty
-                ? null
-                : (ownerNickname ?? '').trim(),
-            planTitle: (planTitle ?? '').trim().isEmpty ? null : (planTitle ?? '').trim(),
-            title: (title ?? '').trim().isEmpty ? null : (title ?? '').trim(),
-            body: (body ?? '').trim().isEmpty ? null : (body ?? '').trim(),
-            source: PlanDeletedUiSource.backgroundIntent,
-          ),
+        await _handlePlanDeletedOpenFromNotificationTap(
+          planId: planId,
+          ownerUserId: ownerUserId,
+          ownerNickname: (ownerNickname ?? '').trim(),
+          planTitle: (planTitle ?? '').trim(),
+          eventId: (eventId ?? '').trim(),
+          title: (title ?? '').trim(),
+          body: (body ?? '').trim(),
+          openSource: 'local_notification',
         );
       },
-
     );
   }
 
@@ -737,54 +645,1164 @@ class _BootstrapGateState extends State<BootstrapGate>
       // Friend requests: keep same canon as invites (data-only push -> local tray + in-app modal)
       await PushNotifications.showFriendRequest(m);
 
-      // In-app modal is canonical. Queue it and show only after welcome/home phase.
-      _queueInternalInviteDialogFromRemoteMessage(m);
-
+      // In-app modal for invites/plan events must come from canonical INBOX realtime,
+      // not from raw FCM payload. Friends keep their existing path.
       _queueFriendRequestDialogFromRemoteMessage(m);
-
-      // ✅ Separate layer: in-app info modal when a member leaves a plan.
-      _queuePlanMemberLeftDialogFromRemoteMessage(m);
     });
   }
 
-  void _queueInternalInviteDialogFromRemoteMessage(RemoteMessage m) {
-    if (!PushNotifications.isInternalInvite(m)) return;
+  bool _canResolveNotificationOpenFromInbox() {
+    return !_restoring &&
+        _appShellReady &&
+        (_userId ?? '').trim().isNotEmpty;
+  }
 
-    final inviteId = (m.data['invite_id'] ?? '').toString();
-    final planId = (m.data['plan_id'] ?? '').toString();
-    final actionToken = (m.data['action_token'] ?? '').toString();
+  void _enqueueNotificationOpenIntent(Map<String, dynamic> intent) {
+    _pendingNotificationOpenIntents.add(intent);
+  }
 
-    final inviterNickname = (m.data['inviter_nickname'] ??
-            m.data['inviterNickname'] ??
-            m.data['sender_nickname'] ??
-            m.data['senderNickname'] ??
-            m.data['from_nickname'] ??
-            m.data['fromNickname'] ??
-            '')
+  void _flushPendingNotificationOpenIntentsIfAny() {
+    if (!_appShellReady) return;
+    if ((_userId ?? '').trim().isEmpty) return;
+    if (_pendingNotificationOpenIntents.isEmpty) return;
+
+    final intents =
+        List<Map<String, dynamic>>.from(_pendingNotificationOpenIntents);
+    _pendingNotificationOpenIntents.clear();
+    for (final intent in intents) {
+      unawaited(_handlePendingNotificationOpenIntent(intent));
+    }
+  }
+
+  Future<void> _handlePendingNotificationOpenIntent(
+      Map<String, dynamic> intent) async {
+    final type = (intent['type'] ?? '').toString().trim();
+    if (type == 'PLAN_INTERNAL_INVITE') {
+      final inviteId = (intent['invite_id'] ?? '').toString().trim();
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      if (inviteId.isEmpty || planId.isEmpty) return;
+      await _handleInviteOpenFromNotificationTap(
+        inviteId: inviteId,
+        planId: planId,
+        actionToken: (intent['action_token'] ?? '').toString().trim(),
+        kindHint: (intent['kind_hint'] ?? '').toString().trim(),
+        actionHint: (intent['action_hint'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+      return;
+    }
+
+    if (type == 'PLAN_MEMBER_LEFT') {
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      final leftUserId = (intent['left_user_id'] ?? '').toString().trim();
+      if (planId.isEmpty || leftUserId.isEmpty) return;
+      await _handlePlanMemberLeftOpenFromNotificationTap(
+        planId: planId,
+        leftUserId: leftUserId,
+        leftNickname: (intent['left_nickname'] ?? '').toString().trim(),
+        planTitle: (intent['plan_title'] ?? '').toString().trim(),
+        eventId: (intent['event_id'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+      return;
+    }
+
+    if (type == 'PLAN_MEMBER_REMOVED') {
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      final removedUserId =
+          (intent['removed_user_id'] ?? '').toString().trim();
+      final ownerUserId = (intent['owner_user_id'] ?? '').toString().trim();
+      if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) {
+        return;
+      }
+      await _handlePlanMemberRemovedOpenFromNotificationTap(
+        planId: planId,
+        removedUserId: removedUserId,
+        ownerUserId: ownerUserId,
+        ownerNickname: (intent['owner_nickname'] ?? '').toString().trim(),
+        planTitle: (intent['plan_title'] ?? '').toString().trim(),
+        eventId: (intent['event_id'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+      return;
+    }
+
+    if (type == 'PLAN_MEMBER_JOINED_BY_INVITE') {
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      final joinedUserId =
+          (intent['joined_user_id'] ?? '').toString().trim();
+      if (planId.isEmpty || joinedUserId.isEmpty) return;
+      await _handlePlanMemberJoinedByInviteOpenFromNotificationTap(
+        planId: planId,
+        joinedUserId: joinedUserId,
+        joinedNickname: (intent['joined_nickname'] ?? '').toString().trim(),
+        planTitle: (intent['plan_title'] ?? '').toString().trim(),
+        eventId: (intent['event_id'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+      return;
+    }
+
+    if (type == 'PLAN_DELETED') {
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      final ownerUserId =
+          (intent['owner_user_id'] ?? '').toString().trim();
+      if (planId.isEmpty || ownerUserId.isEmpty) return;
+      await _handlePlanDeletedOpenFromNotificationTap(
+        planId: planId,
+        ownerUserId: ownerUserId,
+        ownerNickname: (intent['owner_nickname'] ?? '').toString().trim(),
+        planTitle: (intent['plan_title'] ?? '').toString().trim(),
+        eventId: (intent['event_id'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+    }
+  }
+
+  String _buildNotificationOpenDedupKey(Map<String, dynamic> data) {
+    final type = (data['type'] ?? '').toString().trim();
+    final eventId = (data['event_id'] ?? '').toString().trim();
+    if (type.isNotEmpty && eventId.isNotEmpty) {
+      return '$type:event:$eventId';
+    }
+
+    final inviteId = (data['invite_id'] ?? '').toString().trim();
+    final planId = (data['plan_id'] ?? '').toString().trim();
+    final removedUserId = (data['removed_user_id'] ?? '').toString().trim();
+    final ownerUserId = (data['owner_user_id'] ?? '').toString().trim();
+    final leftUserId = (data['left_user_id'] ?? '').toString().trim();
+    final joinedUserId = (data['joined_user_id'] ?? '').toString().trim();
+
+    if (type == 'PLAN_INTERNAL_INVITE' && inviteId.isNotEmpty) {
+      return '$type:invite:$inviteId';
+    }
+    if (type == 'PLAN_MEMBER_LEFT' && planId.isNotEmpty && leftUserId.isNotEmpty) {
+      return '$type:$planId:$leftUserId';
+    }
+    if (type == 'PLAN_MEMBER_REMOVED' &&
+        planId.isNotEmpty &&
+        removedUserId.isNotEmpty &&
+        ownerUserId.isNotEmpty) {
+      return '$type:$planId:$removedUserId:$ownerUserId';
+    }
+    if (type == 'PLAN_MEMBER_JOINED_BY_INVITE' &&
+        planId.isNotEmpty &&
+        joinedUserId.isNotEmpty) {
+      return '$type:$planId:$joinedUserId';
+    }
+    if (type == 'PLAN_DELETED' && planId.isNotEmpty && ownerUserId.isNotEmpty) {
+      return '$type:$planId:$ownerUserId';
+    }
+    return '';
+  }
+
+  bool _shouldSkipDuplicateNotificationOpen(String key) {
+    final normalized = key.trim();
+    if (normalized.isEmpty) return false;
+
+    final now = DateTime.now();
+    final prevKey = _lastHandledNotificationOpenKey;
+    final prevAt = _lastHandledNotificationOpenAt;
+    if (prevKey == normalized &&
+        prevAt != null &&
+        now.difference(prevAt).inSeconds < 3) {
+      if (kDebugMode) {
+        debugPrint('[OPEN] skip duplicate key=$normalized');
+      }
+      return true;
+    }
+
+    _lastHandledNotificationOpenKey = normalized;
+    _lastHandledNotificationOpenAt = now;
+    return false;
+  }
+
+  void _scheduleConsumeInboxDeliveryIfPending(Map<String, dynamic> payload) {
+    final status = (payload['delivery_status'] ?? payload['status'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    if (status != 'PENDING') {
+      return;
+    }
+
+    final deliveryId =
+        (payload['delivery_id'] ?? payload['deliveryId'] ?? '').toString();
+    _scheduleConsumeInboxDelivery(deliveryId);
+  }
+
+  void _logResolvedInboxOpen({
+    required String label,
+    required Map<String, dynamic>? payload,
+  }) {
+    if (!kDebugMode) return;
+
+    if (payload == null) {
+      debugPrint('[OPEN] $label inbox_resolve result=not_found');
+      return;
+    }
+
+    final title = (payload['title'] ?? '').toString();
+    final body = (payload['body'] ?? '').toString();
+    final actionsRaw = payload['actions'];
+    final actionsLen = actionsRaw is List ? actionsRaw.length : 0;
+    debugPrint(
+      '[OPEN] $label inbox_resolve delivery_id=${payload['delivery_id']} '
+      'status=${payload['delivery_status']} type=${payload['type']} '
+      'title=$title body=$body actions_len=$actionsLen',
+    );
+  }
+
+  Map<String, dynamic>? _extractPayloadMap(dynamic payloadRaw) {
+    if (payloadRaw is Map) {
+      return _asStringKeyedMap(payloadRaw);
+    }
+    if (payloadRaw is String && payloadRaw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payloadRaw);
+        if (decoded is Map) {
+          return _asStringKeyedMap(decoded);
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _normalizeInboxDeliveryRow(Map raw) {
+    final id = (raw['id'] ?? raw['delivery_id'] ?? '').toString().trim();
+    final status = (raw['status'] ?? '').toString().trim().toUpperCase();
+    if (id.isEmpty || (status != 'PENDING' && status != 'CONSUMED')) {
+      return null;
+    }
+
+    final payload = _extractPayloadMap(raw['payload']);
+    if (payload == null) return null;
+
+    payload['delivery_id'] = id;
+    payload['delivery_status'] = status;
+
+    final eventId = (raw['event_id'] ?? payload['event_id'] ?? payload['eventId'] ?? '')
         .toString()
         .trim();
-    final planTitle =
-        (m.data['plan_title'] ?? m.data['planTitle'] ?? m.data['title'] ?? '')
+    if (eventId.isNotEmpty) {
+      payload['event_id'] = eventId;
+    }
+    return payload;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadRecentInboxDeliveryRows({
+    String? eventId,
+    int limit = 80,
+  }) async {
+    final appUserId = _userId;
+    if (appUserId == null || appUserId.trim().isEmpty) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    dynamic raw;
+    if ((eventId ?? '').trim().isNotEmpty) {
+      raw = await _supabase
+          .from('notification_deliveries')
+          .select('id,event_id,status,payload,created_at')
+          .eq('user_id', appUserId)
+          .eq('channel', 'INBOX')
+          .eq('event_id', eventId!.trim())
+          .order('created_at', ascending: false)
+          .limit(limit);
+    } else {
+      raw = await _supabase
+          .from('notification_deliveries')
+          .select('id,event_id,status,payload,created_at')
+          .eq('user_id', appUserId)
+          .eq('channel', 'INBOX')
+          .order('created_at', ascending: false)
+          .limit(limit);
+    }
+
+    if (raw is! List) return const <Map<String, dynamic>>[];
+
+    final items = <Map<String, dynamic>>[];
+    for (final row in raw) {
+      if (row is! Map) continue;
+      final normalized = _normalizeInboxDeliveryRow(row);
+      if (normalized != null) {
+        items.add(normalized);
+      }
+    }
+    return items;
+  }
+
+  bool _isOwnerResultPayload(Map<String, dynamic> payload) {
+    final type = (payload['type'] ?? '').toString().trim();
+    final action = (payload['action'] ??
+            payload['owner_action'] ??
+            payload['ownerAction'] ??
+            '')
+        .toString()
+        .trim()
+        .toUpperCase();
+
+    return (type == 'PLAN_INTERNAL_INVITE' &&
+            (action == 'ACCEPT' || action == 'DECLINE')) ||
+        type == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+        type == 'PLAN_INTERNAL_INVITE_DECLINED';
+  }
+
+  bool _isInviteeInvitePayload(Map<String, dynamic> payload) {
+    if (_isOwnerResultPayload(payload)) {
+      return false;
+    }
+
+    final type = (payload['type'] ?? '').toString().trim();
+    final inviteId =
+        (payload['invite_id'] ?? payload['inviteId'] ?? '').toString().trim();
+    final planId =
+        (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+    final actionsRaw = payload['actions'];
+    final hasActions = actionsRaw is List && actionsRaw.isNotEmpty;
+
+    return type == 'PLAN_INTERNAL_INVITE' ||
+        (inviteId.isNotEmpty && planId.isNotEmpty && hasActions);
+  }
+
+  Future<Map<String, dynamic>?> _resolveInviteOpenInboxDelivery({
+    required String inviteId,
+    String? planId,
+  }) async {
+    final iid = inviteId.trim();
+    if (iid.isEmpty) return null;
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final payloadInviteId =
+            (payload['invite_id'] ?? payload['inviteId'] ?? '')
+                .toString()
+                .trim();
+        if (payloadInviteId != iid) continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        final requestedPlanId = (planId ?? '').trim();
+        if (requestedPlanId.isNotEmpty &&
+            payloadPlanId.isNotEmpty &&
+            payloadPlanId != requestedPlanId) {
+          continue;
+        }
+
+        if ((_isOwnerResultPayload(payload) || _isInviteeInvitePayload(payload))) {
+          if ((payload['action'] == null ||
+                  payload['action'].toString().trim().isEmpty) &&
+              ((payload['type'] ?? '').toString().trim() ==
+                      'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+                  (payload['type'] ?? '').toString().trim() ==
+                      'PLAN_INTERNAL_INVITE_DECLINED')) {
+            payload['action'] =
+                (payload['type'] ?? '').toString().trim() ==
+                        'PLAN_INTERNAL_INVITE_ACCEPTED'
+                    ? 'ACCEPT'
+                    : 'DECLINE';
+          }
+          return payload;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _loadInboxDeliveryByEventId({
+    required String eventId,
+    String? expectedType,
+  }) async {
+    final eid = eventId.trim();
+    if (eid.isEmpty) return null;
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(eventId: eid, limit: 5);
+      for (final payload in rows) {
+        final type = (payload['type'] ?? '').toString().trim();
+        if ((expectedType ?? '').trim().isNotEmpty && type != expectedType) {
+          continue;
+        }
+        return payload;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _loadPlanMemberLeftInboxDelivery({
+    required String planId,
+    required String leftUserId,
+    String? eventId,
+  }) async {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      final resolved = await _loadInboxDeliveryByEventId(
+        eventId: eid,
+        expectedType: 'PLAN_MEMBER_LEFT',
+      );
+      if (resolved != null) return resolved;
+    }
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final type = (payload['type'] ?? '').toString().trim();
+        if (type != 'PLAN_MEMBER_LEFT') continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        final payloadLeftUserId = (payload['left_user_id'] ??
+                payload['leftUserId'] ??
+                payload['member_user_id'] ??
+                payload['memberUserId'] ??
+                '')
             .toString()
             .trim();
+        if (payloadPlanId == planId.trim() &&
+            payloadLeftUserId == leftUserId.trim()) {
+          return payload;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
 
-    final title = kInviteDialogDefaultTitle;
-    final body = (inviterNickname.isNotEmpty && planTitle.isNotEmpty)
-        ? '$inviterNickname пригласил вас в план $planTitle'
-        : (m.data['body'] ?? '').toString();
+  Future<Map<String, dynamic>?> _loadPlanMemberRemovedInboxDelivery({
+    required String planId,
+    required String removedUserId,
+    required String ownerUserId,
+    String? eventId,
+  }) async {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      final resolved = await _loadInboxDeliveryByEventId(
+        eventId: eid,
+        expectedType: 'PLAN_MEMBER_REMOVED',
+      );
+      if (resolved != null) return resolved;
+    }
 
-    if (inviteId.isEmpty || planId.isEmpty) return;
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final type = (payload['type'] ?? '').toString().trim();
+        if (type != 'PLAN_MEMBER_REMOVED') continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        final payloadRemovedUserId =
+            (payload['removed_user_id'] ?? payload['removedUserId'] ?? '')
+                .toString()
+                .trim();
+        final payloadOwnerUserId =
+            (payload['owner_user_id'] ?? payload['ownerUserId'] ?? '')
+                .toString()
+                .trim();
+        if (payloadPlanId == planId.trim() &&
+            payloadRemovedUserId == removedUserId.trim() &&
+            payloadOwnerUserId == ownerUserId.trim()) {
+          return payload;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _loadPlanMemberJoinedByInviteInboxDelivery({
+    required String planId,
+    required String joinedUserId,
+    String? eventId,
+  }) async {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      final resolved = await _loadInboxDeliveryByEventId(
+        eventId: eid,
+        expectedType: 'PLAN_MEMBER_JOINED_BY_INVITE',
+      );
+      if (resolved != null) return resolved;
+    }
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final type = (payload['type'] ?? '').toString().trim();
+        if (type != 'PLAN_MEMBER_JOINED_BY_INVITE') continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        final payloadJoinedUserId =
+            (payload['joined_user_id'] ?? payload['joinedUserId'] ?? '')
+                .toString()
+                .trim();
+        if (payloadPlanId == planId.trim() &&
+            payloadJoinedUserId == joinedUserId.trim()) {
+          return payload;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _loadPlanDeletedInboxDelivery({
+    required String planId,
+    required String ownerUserId,
+    String? eventId,
+  }) async {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      final resolved = await _loadInboxDeliveryByEventId(
+        eventId: eid,
+        expectedType: 'PLAN_DELETED',
+      );
+      if (resolved != null) return resolved;
+    }
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final type = (payload['type'] ?? '').toString().trim();
+        if (type != 'PLAN_DELETED') continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        final payloadOwnerUserId = (payload['owner_app_user_id'] ??
+                payload['owner_user_id'] ??
+                payload['ownerUserId'] ??
+                '')
+            .toString()
+            .trim();
+        if (payloadPlanId == planId.trim() &&
+            payloadOwnerUserId == ownerUserId.trim()) {
+          return payload;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<void> _handleInviteOpenFromNotificationTap({
+    required String inviteId,
+    required String planId,
+    String? actionToken,
+    String? kindHint,
+    String? actionHint,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedInviteId = inviteId.trim();
+    final trimmedPlanId = planId.trim();
+    if (trimmedInviteId.isEmpty || trimmedPlanId.isEmpty) return;
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': 'PLAN_INTERNAL_INVITE',
+        'invite_id': trimmedInviteId,
+        'plan_id': trimmedPlanId,
+        if ((actionToken ?? '').trim().isNotEmpty)
+          'action_token': (actionToken ?? '').trim(),
+        if ((kindHint ?? '').trim().isNotEmpty)
+          'kind_hint': (kindHint ?? '').trim(),
+        if ((actionHint ?? '').trim().isNotEmpty)
+          'action_hint': (actionHint ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': 'PLAN_INTERNAL_INVITE',
+      'invite_id': trimmedInviteId,
+      'plan_id': trimmedPlanId,
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _resolveInviteOpenInboxDelivery(
+      inviteId: trimmedInviteId,
+      planId: trimmedPlanId,
+    );
+    _logResolvedInboxOpen(
+      label: 'invite open invite_id=$trimmedInviteId plan_id=$trimmedPlanId source=$openSource',
+      payload: resolved,
+    );
+
+    if (resolved != null) {
+      final resolvedPlanId =
+          (resolved['plan_id'] ?? resolved['planId'] ?? trimmedPlanId)
+              .toString();
+      if (_isOwnerResultPayload(resolved)) {
+        final resolvedAction = (resolved['action'] ??
+                resolved['owner_action'] ??
+                resolved['ownerAction'] ??
+                '')
+            .toString()
+            .trim()
+            .toUpperCase();
+        final effectiveAction =
+            resolvedAction == 'ACCEPT' || resolvedAction == 'DECLINE'
+                ? resolvedAction
+                : (((resolved['type'] ?? '').toString().trim() ==
+                        'PLAN_INTERNAL_INVITE_ACCEPTED')
+                    ? 'ACCEPT'
+                    : 'DECLINE');
+        final resolvedTitleRaw = (resolved['title'] ?? '').toString();
+        final resolvedTitle = resolvedTitleRaw.trim().isEmpty
+            ? (effectiveAction == 'ACCEPT'
+                ? 'Приглашение принято'
+                : 'Приглашение отклонено')
+            : resolvedTitleRaw;
+        final resolvedBody = (resolved['body'] ?? body ?? '').toString();
+
+        InviteUiCoordinator.instance.enqueueOwnerResult(
+          OwnerResultUiRequest(
+            inviteId: trimmedInviteId,
+            planId: resolvedPlanId,
+            action: effectiveAction,
+            title: resolvedTitle,
+            body: resolvedBody,
+            source: InviteUiSource.backgroundIntent,
+          ),
+        );
+        _scheduleConsumeInboxDeliveryIfPending(resolved);
+        return;
+      }
+
+      final resolvedTitleRaw = (resolved['title'] ?? '').toString();
+      final resolvedBody = (resolved['body'] ?? body ?? '').toString();
+      final resolvedActionToken = (resolved['action_token'] ??
+              resolved['actionToken'] ??
+              actionToken ??
+              '')
+          .toString()
+          .trim();
+
+      InviteUiCoordinator.instance.enqueue(
+        InviteUiRequest(
+          inviteId: trimmedInviteId,
+          planId: resolvedPlanId,
+          actionToken:
+              resolvedActionToken.isEmpty ? null : resolvedActionToken,
+          title: resolvedTitleRaw.trim().isEmpty
+              ? kInviteDialogDefaultTitle
+              : resolvedTitleRaw,
+          body: resolvedBody,
+          source: InviteUiSource.backgroundIntent,
+        ),
+      );
+      _scheduleConsumeInboxDeliveryIfPending(resolved);
+      return;
+    }
+
+    final normalizedTitle = (title ?? '').trim();
+    final normalizedBody = (body ?? '').trim();
+    final normalizedKindHint = (kindHint ?? '').trim().toUpperCase();
+    final normalizedActionHint = (actionHint ?? '').trim().toUpperCase();
+    final looksLikeOwnerResult = normalizedKindHint == 'OWNER_RESULT' ||
+        normalizedActionHint == 'ACCEPT' ||
+        normalizedActionHint == 'DECLINE' ||
+        normalizedTitle.toLowerCase().contains('приглашение принято') ||
+        normalizedTitle.toLowerCase().contains('приглашение отклонено') ||
+        normalizedBody.toLowerCase().contains('принял приглашение') ||
+        normalizedBody.toLowerCase().contains('отклонил приглашение') ||
+        normalizedBody.toLowerCase().contains('приглашение принято') ||
+        normalizedBody.toLowerCase().contains('приглашение отклонено');
+
+    if (looksLikeOwnerResult) {
+      final fallbackAction = normalizedActionHint == 'ACCEPT' ||
+              normalizedTitle.toLowerCase().contains('принято') ||
+              normalizedBody.toLowerCase().contains('принял')
+          ? 'ACCEPT'
+          : 'DECLINE';
+      InviteUiCoordinator.instance.enqueueOwnerResult(
+        OwnerResultUiRequest(
+          inviteId: trimmedInviteId,
+          planId: trimmedPlanId,
+          action: fallbackAction,
+          title: normalizedTitle.isEmpty
+              ? (fallbackAction == 'ACCEPT'
+                  ? 'Приглашение принято'
+                  : 'Приглашение отклонено')
+              : normalizedTitle,
+          body: normalizedBody,
+          source: InviteUiSource.backgroundIntent,
+        ),
+      );
+      return;
+    }
 
     InviteUiCoordinator.instance.enqueue(
       InviteUiRequest(
-        inviteId: inviteId,
-        planId: planId,
-        actionToken: actionToken.isEmpty ? null : actionToken,
-        title: title,
-        body: body,
-        source: InviteUiSource.foreground,
+        inviteId: trimmedInviteId,
+        planId: trimmedPlanId,
+        actionToken: (actionToken ?? '').trim().isEmpty
+            ? null
+            : (actionToken ?? '').trim(),
+        title: normalizedTitle.isEmpty ? kInviteDialogDefaultTitle : normalizedTitle,
+        body: normalizedBody,
+        source: InviteUiSource.backgroundIntent,
       ),
     );
+  }
+
+  Future<void> _handlePlanMemberLeftOpenFromNotificationTap({
+    required String planId,
+    required String leftUserId,
+    String? leftNickname,
+    String? planTitle,
+    String? eventId,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedPlanId = planId.trim();
+    final trimmedLeftUserId = leftUserId.trim();
+    if (trimmedPlanId.isEmpty || trimmedLeftUserId.isEmpty) return;
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': 'PLAN_MEMBER_LEFT',
+        'plan_id': trimmedPlanId,
+        'left_user_id': trimmedLeftUserId,
+        if ((leftNickname ?? '').trim().isNotEmpty)
+          'left_nickname': (leftNickname ?? '').trim(),
+        if ((planTitle ?? '').trim().isNotEmpty)
+          'plan_title': (planTitle ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': 'PLAN_MEMBER_LEFT',
+      'event_id': (eventId ?? '').trim(),
+      'plan_id': trimmedPlanId,
+      'left_user_id': trimmedLeftUserId,
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _loadPlanMemberLeftInboxDelivery(
+      planId: trimmedPlanId,
+      leftUserId: trimmedLeftUserId,
+      eventId: eventId,
+    );
+    _logResolvedInboxOpen(
+      label: 'plan_member_left plan_id=$trimmedPlanId left_user_id=$trimmedLeftUserId source=$openSource',
+      payload: resolved,
+    );
+
+    final effective = resolved ?? <String, dynamic>{
+      'plan_id': trimmedPlanId,
+      'left_user_id': trimmedLeftUserId,
+      if ((leftNickname ?? '').trim().isNotEmpty)
+        'left_nickname': (leftNickname ?? '').trim(),
+      if ((planTitle ?? '').trim().isNotEmpty)
+        'plan_title': (planTitle ?? '').trim(),
+      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+    };
+
+    final cleanLeftNickname =
+        (effective['left_nickname'] ?? effective['leftNickname'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['left_nickname'] ?? effective['leftNickname'] ?? '')
+                .toString()
+                .trim();
+    final cleanPlanTitle =
+        (effective['plan_title'] ?? effective['planTitle'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '').toString().trim();
+    final cleanTitle = (effective['title'] ?? '').toString().trim().isEmpty
+        ? null
+        : (effective['title'] ?? '').toString().trim();
+    final effectiveBody = (effective['body'] ?? '').toString().trim();
+
+    PlanMemberLeftUiCoordinator.instance.enqueue(
+      PlanMemberLeftUiRequest(
+        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
+            .toString(),
+        leftUserId: (effective['left_user_id'] ??
+                effective['leftUserId'] ??
+                trimmedLeftUserId)
+            .toString(),
+        leftNickname: cleanLeftNickname,
+        planTitle: cleanPlanTitle,
+        title: cleanTitle,
+        body: (effectiveBody.isEmpty ||
+                effectiveBody == 'Один из участников покинул план.')
+            ? null
+            : effectiveBody,
+        source: PlanMemberLeftUiSource.backgroundIntent,
+      ),
+    );
+
+    if (resolved != null) {
+      _scheduleConsumeInboxDeliveryIfPending(resolved);
+    }
+  }
+
+  Future<void> _handlePlanMemberRemovedOpenFromNotificationTap({
+    required String planId,
+    required String removedUserId,
+    required String ownerUserId,
+    String? ownerNickname,
+    String? planTitle,
+    String? eventId,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedPlanId = planId.trim();
+    final trimmedRemovedUserId = removedUserId.trim();
+    final trimmedOwnerUserId = ownerUserId.trim();
+    if (trimmedPlanId.isEmpty ||
+        trimmedRemovedUserId.isEmpty ||
+        trimmedOwnerUserId.isEmpty) {
+      return;
+    }
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': 'PLAN_MEMBER_REMOVED',
+        'plan_id': trimmedPlanId,
+        'removed_user_id': trimmedRemovedUserId,
+        'owner_user_id': trimmedOwnerUserId,
+        if ((ownerNickname ?? '').trim().isNotEmpty)
+          'owner_nickname': (ownerNickname ?? '').trim(),
+        if ((planTitle ?? '').trim().isNotEmpty)
+          'plan_title': (planTitle ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': 'PLAN_MEMBER_REMOVED',
+      'event_id': (eventId ?? '').trim(),
+      'plan_id': trimmedPlanId,
+      'removed_user_id': trimmedRemovedUserId,
+      'owner_user_id': trimmedOwnerUserId,
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _loadPlanMemberRemovedInboxDelivery(
+      planId: trimmedPlanId,
+      removedUserId: trimmedRemovedUserId,
+      ownerUserId: trimmedOwnerUserId,
+      eventId: eventId,
+    );
+    _logResolvedInboxOpen(
+      label: 'plan_member_removed plan_id=$trimmedPlanId removed_user_id=$trimmedRemovedUserId owner_user_id=$trimmedOwnerUserId source=$openSource',
+      payload: resolved,
+    );
+
+    final effective = resolved ?? <String, dynamic>{
+      'plan_id': trimmedPlanId,
+      'removed_user_id': trimmedRemovedUserId,
+      'owner_user_id': trimmedOwnerUserId,
+      if ((ownerNickname ?? '').trim().isNotEmpty)
+        'owner_nickname': (ownerNickname ?? '').trim(),
+      if ((planTitle ?? '').trim().isNotEmpty)
+        'plan_title': (planTitle ?? '').trim(),
+      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+    };
+
+    PlanMemberRemovedUiCoordinator.instance.enqueue(
+      PlanMemberRemovedUiRequest(
+        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
+            .toString(),
+        removedUserId: (effective['removed_user_id'] ??
+                effective['removedUserId'] ??
+                trimmedRemovedUserId)
+            .toString(),
+        ownerUserId: (effective['owner_user_id'] ??
+                effective['ownerUserId'] ??
+                trimmedOwnerUserId)
+            .toString(),
+        ownerNickname: (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+                .toString()
+                .trim(),
+        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim(),
+        title: (effective['title'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['title'] ?? '').toString().trim(),
+        body: (effective['body'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['body'] ?? '').toString().trim(),
+        source: PlanMemberRemovedUiSource.backgroundIntent,
+      ),
+    );
+
+    if (resolved != null) {
+      _scheduleConsumeInboxDeliveryIfPending(resolved);
+    }
+  }
+
+  Future<void> _handlePlanMemberJoinedByInviteOpenFromNotificationTap({
+    required String planId,
+    required String joinedUserId,
+    String? joinedNickname,
+    String? planTitle,
+    String? eventId,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedPlanId = planId.trim();
+    final trimmedJoinedUserId = joinedUserId.trim();
+    if (trimmedPlanId.isEmpty || trimmedJoinedUserId.isEmpty) return;
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': 'PLAN_MEMBER_JOINED_BY_INVITE',
+        'plan_id': trimmedPlanId,
+        'joined_user_id': trimmedJoinedUserId,
+        if ((joinedNickname ?? '').trim().isNotEmpty)
+          'joined_nickname': (joinedNickname ?? '').trim(),
+        if ((planTitle ?? '').trim().isNotEmpty)
+          'plan_title': (planTitle ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': 'PLAN_MEMBER_JOINED_BY_INVITE',
+      'event_id': (eventId ?? '').trim(),
+      'plan_id': trimmedPlanId,
+      'joined_user_id': trimmedJoinedUserId,
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _loadPlanMemberJoinedByInviteInboxDelivery(
+      planId: trimmedPlanId,
+      joinedUserId: trimmedJoinedUserId,
+      eventId: eventId,
+    );
+    _logResolvedInboxOpen(
+      label: 'plan_member_joined_by_invite plan_id=$trimmedPlanId joined_user_id=$trimmedJoinedUserId source=$openSource',
+      payload: resolved,
+    );
+
+    final effective = resolved ?? <String, dynamic>{
+      'plan_id': trimmedPlanId,
+      'joined_user_id': trimmedJoinedUserId,
+      if ((joinedNickname ?? '').trim().isNotEmpty)
+        'joined_nickname': (joinedNickname ?? '').trim(),
+      if ((planTitle ?? '').trim().isNotEmpty)
+        'plan_title': (planTitle ?? '').trim(),
+      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+    };
+
+    PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
+      PlanMemberJoinedByInviteUiRequest(
+        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
+            .toString(),
+        joinedUserId: (effective['joined_user_id'] ??
+                effective['joinedUserId'] ??
+                trimmedJoinedUserId)
+            .toString(),
+        joinedNickname: (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
+                .toString()
+                .trim(),
+        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim(),
+        title: (effective['title'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['title'] ?? '').toString().trim(),
+        body: (effective['body'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['body'] ?? '').toString().trim(),
+        source: PlanMemberJoinedByInviteUiSource.backgroundIntent,
+      ),
+    );
+
+    if (resolved != null) {
+      _scheduleConsumeInboxDeliveryIfPending(resolved);
+    }
+  }
+
+  Future<void> _handlePlanDeletedOpenFromNotificationTap({
+    required String planId,
+    required String ownerUserId,
+    String? ownerNickname,
+    String? planTitle,
+    String? eventId,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedPlanId = planId.trim();
+    final trimmedOwnerUserId = ownerUserId.trim();
+    if (trimmedPlanId.isEmpty || trimmedOwnerUserId.isEmpty) return;
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': 'PLAN_DELETED',
+        'plan_id': trimmedPlanId,
+        'owner_user_id': trimmedOwnerUserId,
+        if ((ownerNickname ?? '').trim().isNotEmpty)
+          'owner_nickname': (ownerNickname ?? '').trim(),
+        if ((planTitle ?? '').trim().isNotEmpty)
+          'plan_title': (planTitle ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': 'PLAN_DELETED',
+      'event_id': (eventId ?? '').trim(),
+      'plan_id': trimmedPlanId,
+      'owner_user_id': trimmedOwnerUserId,
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _loadPlanDeletedInboxDelivery(
+      planId: trimmedPlanId,
+      ownerUserId: trimmedOwnerUserId,
+      eventId: eventId,
+    );
+    _logResolvedInboxOpen(
+      label: 'plan_deleted plan_id=$trimmedPlanId owner_user_id=$trimmedOwnerUserId source=$openSource',
+      payload: resolved,
+    );
+
+    final effective = resolved ?? <String, dynamic>{
+      'plan_id': trimmedPlanId,
+      'owner_app_user_id': trimmedOwnerUserId,
+      if ((ownerNickname ?? '').trim().isNotEmpty)
+        'owner_nickname': (ownerNickname ?? '').trim(),
+      if ((planTitle ?? '').trim().isNotEmpty)
+        'plan_title': (planTitle ?? '').trim(),
+      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+    };
+
+    PlanDeletedUiCoordinator.instance.enqueue(
+      PlanDeletedUiRequest(
+        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
+            .toString(),
+        ownerUserId: (effective['owner_app_user_id'] ??
+                effective['owner_user_id'] ??
+                effective['ownerUserId'] ??
+                trimmedOwnerUserId)
+            .toString(),
+        ownerNickname: (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+                .toString()
+                .trim(),
+        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim(),
+        title: (effective['title'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['title'] ?? '').toString().trim(),
+        body: (effective['body'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['body'] ?? '').toString().trim(),
+        source: PlanDeletedUiSource.backgroundIntent,
+      ),
+    );
+
+    if (resolved != null) {
+      _scheduleConsumeInboxDeliveryIfPending(resolved);
+    }
   }
 
   void _queueFriendRequestDialogFromRemoteMessage(RemoteMessage m) {
@@ -808,52 +1826,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     };
 
     _enqueueFriendRequestUi(payloadMap);
-  }
-
-  void _queuePlanMemberLeftDialogFromRemoteMessage(RemoteMessage m) {
-    if (!PushNotifications.isPlanMemberLeft(m)) return;
-
-    final planId = (m.data['plan_id'] ?? '').toString();
-    final leftUserId =
-        (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
-    final leftNickname =
-        (m.data['left_nickname'] ?? m.data['member_nickname'] ?? '').toString();
-    final planTitle =
-        (m.data['plan_title'] ?? m.data['planTitle'] ?? '').toString();
-
-    if (planId.isEmpty || leftUserId.isEmpty) return;
-
-    final title = (m.data['title'] ?? m.notification?.title ?? '').toString();
-    final body = (m.data['body'] ?? m.notification?.body ?? '').toString();
-
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanMemberLeft] enqueue from foreground push planId=$planId leftUserId=$leftUserId',
-      );
-    }
-
-    final cleanLeftNickname =
-        leftNickname.trim().isEmpty ? null : leftNickname.trim();
-    final cleanPlanTitle = planTitle.trim().isEmpty ? null : planTitle.trim();
-    final cleanTitle = title.trim().isEmpty ? null : title.trim();
-
-    final bodyTrim = body.trim();
-    final cleanBody =
-        (bodyTrim.isEmpty || bodyTrim == 'Один из участников покинул план.')
-            ? null
-            : bodyTrim;
-
-    PlanMemberLeftUiCoordinator.instance.enqueue(
-      PlanMemberLeftUiRequest(
-        planId: planId,
-        leftUserId: leftUserId,
-        leftNickname: cleanLeftNickname,
-        planTitle: cleanPlanTitle,
-        title: cleanTitle,
-        body: cleanBody,
-        source: PlanMemberLeftUiSource.foreground,
-      ),
-    );
   }
 
   void _enqueueFriendRequestUi(Map<String, dynamic> payload) {
@@ -930,83 +1902,11 @@ class _BootstrapGateState extends State<BootstrapGate>
     return out;
   }
 
-  Future<Map<String, dynamic>?> _loadPendingOwnerInviteResultInboxByInviteId(
-    String inviteId,
-  ) async {
-    final appUserId = _userId;
-    final iid = inviteId.trim();
-    if (appUserId == null || appUserId.trim().isEmpty) return null;
-    if (iid.isEmpty) return null;
-
-    try {
-      final dynamic raw = await _supabase
-          .from('notification_deliveries')
-          .select('id,payload,created_at')
-          .eq('user_id', appUserId)
-          .eq('channel', 'INBOX')
-          .eq('status', 'PENDING')
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (raw is! List) return null;
-
-      for (final r in raw) {
-        if (r is! Map) continue;
-        final id = (r['id'] ?? '').toString().trim();
-        final payloadRaw = r['payload'];
-        if (id.isEmpty || payloadRaw is! Map) continue;
-
-        final payload = _asStringKeyedMap(payloadRaw);
-        final t = (payload['type'] ?? '').toString().trim();
-        final action = (payload['action'] ??
-                payload['owner_action'] ??
-                payload['ownerAction'] ??
-                '')
-            .toString()
-            .trim()
-            .toUpperCase();
-
-        final isOwnerResult = (t == 'PLAN_INTERNAL_INVITE' &&
-                (action == 'ACCEPT' || action == 'DECLINE')) ||
-            t == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
-            t == 'PLAN_INTERNAL_INVITE_DECLINED';
-
-        if (!isOwnerResult) {
-          continue;
-        }
-
-        // Backward compatibility: older payloads used separate types without explicit action.
-        if ((payload['action'] == null ||
-                payload['action'].toString().trim().isEmpty) &&
-            (t == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
-                t == 'PLAN_INTERNAL_INVITE_DECLINED')) {
-          payload['action'] =
-              t == 'PLAN_INTERNAL_INVITE_ACCEPTED' ? 'ACCEPT' : 'DECLINE';
-        }
-
-        final payloadInviteId =
-            (payload['invite_id'] ?? payload['inviteId'] ?? '')
-                .toString()
-                .trim();
-        if (payloadInviteId != iid) continue;
-
-        payload['delivery_id'] = id;
-        return payload;
-      }
-    } catch (_) {
-      // ignore
-    }
-    return null;
-  }
-
   Future<Map<String, dynamic>?> _loadPendingFriendInboxDelivery({
     required String type,
     String? eventId,
     String? requestId,
   }) async {
-    final appUserId = _userId;
-    if (appUserId == null || appUserId.trim().isEmpty) return null;
-
     final t = type.trim();
     if (t.isEmpty || !t.startsWith('FRIEND_')) return null;
 
@@ -1014,68 +1914,29 @@ class _BootstrapGateState extends State<BootstrapGate>
     final rid = (requestId ?? '').trim();
 
     try {
-      // Best correlation: event_id is stable (notification_deliveries.event_id).
       if (eid.isNotEmpty) {
-        final dynamic raw = await _supabase
-            .from('notification_deliveries')
-            .select('id,event_id,payload,created_at')
-            .eq('user_id', appUserId)
-            .eq('channel', 'INBOX')
-            .eq('status', 'PENDING')
-            .eq('event_id', eid)
-            .order('created_at', ascending: false)
-            .limit(1);
-
-        if (raw is List && raw.isNotEmpty) {
-          final r = raw.first;
-          if (r is Map) {
-            final id = (r['id'] ?? '').toString().trim();
-            final payloadRaw = r['payload'];
-            if (id.isNotEmpty && payloadRaw is Map) {
-              final payload = _asStringKeyedMap(payloadRaw);
-              final payloadType = (payload['type'] ?? '').toString().trim();
-              if (payloadType == t) {
-                payload['delivery_id'] = id;
-                payload['event_id'] = (r['event_id'] ?? eid).toString();
-                return payload;
-              }
-            }
-          }
+        final resolved = await _loadInboxDeliveryByEventId(
+          eventId: eid,
+          expectedType: t,
+        );
+        if (resolved != null) {
+          return resolved;
         }
       }
 
-      // Fallback: scan recent pending INBOX deliveries by type (+ request_id if provided).
-      final dynamic raw = await _supabase
-          .from('notification_deliveries')
-          .select('id,event_id,payload,created_at')
-          .eq('user_id', appUserId)
-          .eq('channel', 'INBOX')
-          .eq('status', 'PENDING')
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (raw is! List) return null;
-
-      for (final r in raw) {
-        if (r is! Map) continue;
-        final id = (r['id'] ?? '').toString().trim();
-        final payloadRaw = r['payload'];
-        if (id.isEmpty || payloadRaw is! Map) continue;
-
-        final payload = _asStringKeyedMap(payloadRaw);
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
         final payloadType = (payload['type'] ?? '').toString().trim();
         if (payloadType != t) continue;
 
         if (rid.isNotEmpty) {
-          final pr = (payload['request_id'] ?? payload['requestId'] ?? '')
-              .toString()
-              .trim();
-          if (pr != rid) continue;
+          final payloadRequestId =
+              (payload['request_id'] ?? payload['requestId'] ?? '')
+                  .toString()
+                  .trim();
+          if (payloadRequestId != rid) continue;
         }
 
-        payload['delivery_id'] = id;
-        final rowEventId = (r['event_id'] ?? '').toString().trim();
-        if (rowEventId.isNotEmpty) payload['event_id'] = rowEventId;
         return payload;
       }
     } catch (_) {
@@ -1108,7 +1969,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     // If we couldn't correlate, do NOT consume anything.
     if (kDebugMode) {
       debugPrint(
-        '[Friends] open-from-local-notif: no pending INBOX found type=$type eventId=$eventId requestId=$requestId',
+        '[Friends] open-from-local-notif: no INBOX found type=$type eventId=$eventId requestId=$requestId',
       );
     }
 
@@ -1148,6 +2009,14 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   Future<void> _consumeInboxDeliveryIfPossibleFromPayload(
       Map<String, dynamic> payload) async {
+    final status = (payload['delivery_status'] ?? payload['status'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    if (status.isNotEmpty && status != 'PENDING') {
+      return;
+    }
+
     final deliveryId =
         (payload['delivery_id'] ?? payload['deliveryId'] ?? payload['id'] ?? '')
             .toString()
@@ -2774,6 +3643,7 @@ if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
     _flushPendingConsumeInboxDeliveriesIfAny();
     _flushPendingFriendRequestsIfAny();
     _flushPendingFriendOpenIntentsIfAny();
+    _flushPendingNotificationOpenIntentsIfAny();
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);

@@ -15,6 +15,10 @@ class PlanMemberLeftUiRequest {
   final String planId;
   final String leftUserId;
 
+  /// Canonical event correlation key from INBOX / push.
+  /// If present, dedup must prefer this over text-based heuristics.
+  final String? eventId;
+
   /// Optional server-provided fields for better UX text.
   final String? leftNickname;
   final String? planTitle;
@@ -29,6 +33,7 @@ class PlanMemberLeftUiRequest {
     required this.planId,
     required this.leftUserId,
     required this.source,
+    this.eventId,
     this.leftNickname,
     this.planTitle,
     this.title,
@@ -36,6 +41,11 @@ class PlanMemberLeftUiRequest {
   });
 
   String dedupKey() {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      return 'event:$eid';
+    }
+
     return '$planId|$leftUserId|'
         '${(title ?? '').trim()}|${(body ?? '').trim()}|'
         '${(leftNickname ?? '').trim()}|${(planTitle ?? '').trim()}';
@@ -74,7 +84,14 @@ class PlanMemberLeftUiCoordinator {
 
   void enqueue(PlanMemberLeftUiRequest request) {
     final key = request.dedupKey();
-    if (_dedup.contains(key)) return;
+    if (_dedup.contains(key)) {
+      if (kDebugMode) {
+        debugPrint(
+          '[PlanMemberLeftCoordinator] skip duplicate key=$key planId=${request.planId} leftUserId=${request.leftUserId} eventId=${request.eventId}',
+        );
+      }
+      return;
+    }
 
     // Keep dedup set bounded.
     _dedup.add(key);
@@ -86,7 +103,7 @@ class PlanMemberLeftUiCoordinator {
 
     if (kDebugMode) {
       debugPrint(
-        '[PlanMemberLeftCoordinator] enqueue planId=${request.planId} leftUserId=${request.leftUserId} source=${request.source} queue=${_queue.length}',
+        '[PlanMemberLeftCoordinator] enqueue planId=${request.planId} leftUserId=${request.leftUserId} eventId=${request.eventId} source=${request.source} queue=${_queue.length}',
       );
     }
 
@@ -126,7 +143,7 @@ class PlanMemberLeftUiCoordinator {
 
     if (kDebugMode) {
       debugPrint(
-        '[PlanMemberLeftCoordinator] show requested planId=${next.planId} leftUserId=${next.leftUserId} source=${next.source}',
+        '[PlanMemberLeftCoordinator] show requested planId=${next.planId} leftUserId=${next.leftUserId} eventId=${next.eventId} source=${next.source}',
       );
     }
 

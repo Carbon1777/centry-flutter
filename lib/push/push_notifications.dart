@@ -106,16 +106,6 @@ class PushNotifications {
     return null;
   }
 
-  static String _extractEventId(Map<String, dynamic> data) {
-    return (data['event_id'] ?? data['eventId'] ?? '').toString().trim();
-  }
-
-  static String _extractPushDeliveryId(Map<String, dynamic> data) {
-    return (data['push_delivery_id'] ?? data['pushDeliveryId'] ?? '')
-        .toString()
-        .trim();
-  }
-
   /// Ensures the given nickname is always rendered in «…» quotes inside title/body.
   ///
   /// Goal: consistent UX even if server body sometimes includes raw nick without quotes.
@@ -327,20 +317,20 @@ class PushNotifications {
       final planId = (map['plan_id'] ?? '').toString();
       final notifTitle = (map['title'] ?? '').toString().trim();
       final notifBody = (map['body'] ?? '').toString().trim();
-      final eventId = _extractEventId(map);
-      final pushDeliveryId = _extractPushDeliveryId(map);
 
       if (kind == 'PLAN_DELETED') {
         final ownerUserId =
             (map['owner_app_user_id'] ?? map['owner_user_id'] ?? '').toString();
         final ownerNickname = (map['owner_nickname'] ?? '').toString().trim();
         final planTitle = (map['plan_title'] ?? '').toString().trim();
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
 
         if (planId.isEmpty || ownerUserId.isEmpty) return;
 
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open PLAN_DELETED plan_id=$planId owner_user_id=$ownerUserId event_id=$eventId push_delivery_id=$pushDeliveryId',
+            '[PushNotifications] open PLAN_DELETED plan_id=$planId owner_user_id=$ownerUserId event_id=$eventId',
           );
         }
 
@@ -370,7 +360,7 @@ class PushNotifications {
         if (planId.isEmpty || leftUserId.isEmpty) return;
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId event_id=$eventId push_delivery_id=$pushDeliveryId',
+            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId',
           );
         }
         final cb = onPlanMemberLeftOpen;
@@ -398,7 +388,7 @@ class PushNotifications {
 
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_REMOVED plan_id=$planId removed_user_id=$removedUserId owner_user_id=$ownerUserId event_id=$eventId push_delivery_id=$pushDeliveryId',
+            '[PushNotifications] open PLAN_MEMBER_REMOVED plan_id=$planId removed_user_id=$removedUserId owner_user_id=$ownerUserId',
           );
         }
 
@@ -425,7 +415,7 @@ class PushNotifications {
 
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_JOINED_BY_INVITE plan_id=$planId joined_user_id=$joinedUserId event_id=$eventId push_delivery_id=$pushDeliveryId',
+            '[PushNotifications] open PLAN_MEMBER_JOINED_BY_INVITE plan_id=$planId joined_user_id=$joinedUserId',
           );
         }
 
@@ -448,13 +438,14 @@ class PushNotifications {
         final cb = onFriendOpen;
         if (cb == null) return;
 
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
         final requestId =
             (map['request_id'] ?? map['requestId'] ?? '').toString().trim();
 
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId push_delivery_id=$pushDeliveryId',
-          );
+              '[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId');
         }
 
         await cb(
@@ -469,13 +460,11 @@ class PushNotifications {
 
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
-      final internalInviteMode =
-          (map['internal_invite_mode'] ?? kind).toString().trim();
       if (inviteId.isEmpty || planId.isEmpty) return;
 
       if (kDebugMode) {
         debugPrint(
-          '[PushNotifications] open invite_id=$inviteId plan_id=$planId mode=$internalInviteMode event_id=$eventId push_delivery_id=$pushDeliveryId',
+          '[PushNotifications] open invite_id=$inviteId plan_id=$planId',
         );
       }
 
@@ -540,9 +529,12 @@ class PushNotifications {
     final t = (m.data['type'] ?? '').toString();
     if (t == 'PLAN_MEMBER_LEFT') return true;
 
+    // Important: do not fallback to generic member_user_id here.
+    // PLAN_MEMBER_REMOVED payloads can also contain member-style ids,
+    // which would incorrectly route the same FCM into LEFT and create
+    // a second local notification with the wrong modal path.
     final planId = (m.data['plan_id'] ?? '').toString();
-    final leftUserId =
-        (m.data['left_user_id'] ?? m.data['member_user_id'] ?? '').toString();
+    final leftUserId = (m.data['left_user_id'] ?? '').toString();
     return planId.isNotEmpty && leftUserId.isNotEmpty;
   }
 
@@ -568,14 +560,16 @@ class PushNotifications {
   }
 
   static bool isPlanDeleted(RemoteMessage m) {
-    final t = (m.data['type'] ?? '').toString();
+    final t = (m.data['type'] ?? '').toString().trim();
     if (t == 'PLAN_DELETED') return true;
 
-    final planId = (m.data['plan_id'] ?? '').toString();
-    final ownerUserId =
-        (m.data['owner_app_user_id'] ?? m.data['owner_user_id'] ?? '')
-            .toString();
-    return planId.isNotEmpty && ownerUserId.isNotEmpty;
+    // Important: do not fallback to generic owner_user_id here.
+    // PLAN_MEMBER_REMOVED payloads also carry owner_user_id + plan_id,
+    // which would incorrectly route the same FCM into PLAN_DELETED and
+    // create a second local notification with the wrong modal path.
+    final planId = (m.data['plan_id'] ?? '').toString().trim();
+    final ownerAppUserId = (m.data['owner_app_user_id'] ?? '').toString().trim();
+    return planId.isNotEmpty && ownerAppUserId.isNotEmpty;
   }
 
   static bool isFriendRequestReceived(RemoteMessage m) {
@@ -617,10 +611,6 @@ class PushNotifications {
     final ownerAction =
         (m.data['action'] ?? '').toString().trim().toUpperCase();
     final isOwnerResult = ownerAction == 'ACCEPT' || ownerAction == 'DECLINE';
-    final internalInviteMode =
-        isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE';
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
 
     final title = isOwnerResult
         ? (ownerAction == 'ACCEPT'
@@ -639,32 +629,24 @@ class PushNotifications {
     final normalizedTitle = _normalizeTextWithNicknameQuotes(title, nickname);
     final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
 
-    // Payload is routing/correlation-only.
-    // Canonical modal text must later be resolved from INBOX in app layer.
+    // Payload is consumed by app routing. Keep it explicit.
     final payload = jsonEncode({
-      ...m.data,
-      'type': 'PLAN_INTERNAL_INVITE',
-      'kind': internalInviteMode,
-      'internal_invite_mode': internalInviteMode,
       'invite_id': inviteId,
       'plan_id': planId,
-      if (eventId.isNotEmpty) 'event_id': eventId,
-      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
-      if (isOwnerResult) 'action': ownerAction,
       'title': normalizedTitle,
       'body': normalizedBody,
+      'kind': isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE',
+      if (isOwnerResult) 'action': ownerAction,
     });
 
     // Avoid overwriting invite notification with owner-result for the same invite id.
-    final idSeed = eventId.isNotEmpty
-        ? 'invite:$internalInviteMode:$eventId'
-        : (isOwnerResult ? '$inviteId:$ownerAction' : inviteId);
+    final idSeed = isOwnerResult ? '$inviteId:$ownerAction' : inviteId;
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
     if (kDebugMode) {
       debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) inviteId=$inviteId kind=$internalInviteMode eventId=$eventId pushDeliveryId=$pushDeliveryId',
+        '[PushNotifications] local.cancel($id) then show($id) inviteId=$inviteId kind=${isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE'}',
       );
     }
 
@@ -742,8 +724,12 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     // ✅ Correlation keys (server adds these in data-only push)
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
 
     final payload = jsonEncode({
       'kind': t,
@@ -789,9 +775,8 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode) {
+    if (kDebugMode)
       debugPrint('[PushNotifications] local.show done id=$id kind=$t');
-    }
   }
 
   static Future<void> showFriendRemoved(RemoteMessage m) async {
@@ -819,8 +804,12 @@ class PushNotifications {
     final normalizedBody = _normalizeTextWithNicknameQuotes(body, nickname);
 
     // ✅ Correlation keys (server adds these in data-only push)
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
 
     final idSeed = eventId.isNotEmpty
         ? 'friend:FRIEND_REMOVED:$eventId'
@@ -870,9 +859,8 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode) {
+    if (kDebugMode)
       debugPrint('[PushNotifications] local.show done id=$id kind=$t');
-    }
   }
 
   static Future<void> showPlanDeleted(RemoteMessage m) async {
@@ -897,8 +885,6 @@ class PushNotifications {
     final ownerNickname = (m.data['owner_nickname'] ?? '').toString().trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -927,6 +913,14 @@ class PushNotifications {
     final normalizedBody =
         _normalizeTextWithNicknameQuotes(computedBody, nickname);
 
+    // ✅ Correlation keys (server may add these in data-only push)
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
     final msgId = (m.messageId ?? '').toString();
     final idSeed = eventId.isNotEmpty
         ? 'plan_deleted:$planId:$eventId'
@@ -952,7 +946,7 @@ class PushNotifications {
     await _local.cancel(id);
     if (kDebugMode) {
       debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_DELETED planId=$planId ownerUserId=$ownerUserId eventId=$eventId pushDeliveryId=$pushDeliveryId',
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_DELETED planId=$planId ownerUserId=$ownerUserId eventId=$eventId',
       );
     }
 
@@ -1014,8 +1008,6 @@ class PushNotifications {
             .trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -1035,37 +1027,28 @@ class PushNotifications {
             return 'Откройте приложение, чтобы посмотреть.';
           })();
 
-    final normalizedTitle =
-        _normalizeTextWithNicknameQuotes(title, leftNickname);
     final normalizedBody =
         _normalizeTextWithNicknameQuotes(computedBody, leftNickname);
 
     final payload = jsonEncode({
-      ...m.data,
       'kind': 'PLAN_MEMBER_LEFT',
-      'type': 'PLAN_MEMBER_LEFT',
       'plan_id': planId,
       'left_user_id': leftUserId,
       if (leftNickname.isNotEmpty) 'left_nickname': leftNickname,
-      if (planTitle.isNotEmpty) 'plan_title': planTitle,
-      if (eventId.isNotEmpty) 'event_id': eventId,
-      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
-      'title': normalizedTitle,
+      'title': title,
       'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = eventId.isNotEmpty
-        ? 'left:$planId:$eventId'
-        : (msgId.isNotEmpty
-            ? 'left:$planId:$leftUserId:$msgId'
-            : 'left:$planId:$leftUserId');
+    final idSeed = msgId.isNotEmpty
+        ? 'left:$planId:$leftUserId:$msgId'
+        : 'left:$planId:$leftUserId';
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
     if (kDebugMode) {
       debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_LEFT planId=$planId leftUserId=$leftUserId eventId=$eventId pushDeliveryId=$pushDeliveryId',
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_LEFT planId=$planId leftUserId=$leftUserId',
       );
     }
 
@@ -1098,13 +1081,7 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(
-      id,
-      normalizedTitle,
-      normalizedBody,
-      details,
-      payload: payload,
-    );
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
@@ -1132,8 +1109,6 @@ class PushNotifications {
             .trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -1156,38 +1131,30 @@ class PushNotifications {
             return 'Откройте приложение, чтобы посмотреть.';
           })();
 
-    final normalizedTitle =
-        _normalizeTextWithNicknameQuotes(title, ownerNickname);
     final normalizedBody =
         _normalizeTextWithNicknameQuotes(computedBody, ownerNickname);
 
     final payload = jsonEncode({
-      ...m.data,
       'kind': 'PLAN_MEMBER_REMOVED',
-      'type': 'PLAN_MEMBER_REMOVED',
       'plan_id': planId,
       'removed_user_id': removedUserId,
       'owner_user_id': ownerUserId,
       if (ownerNickname.isNotEmpty) 'owner_nickname': ownerNickname,
       if (planTitle.isNotEmpty) 'plan_title': planTitle,
-      if (eventId.isNotEmpty) 'event_id': eventId,
-      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
-      'title': normalizedTitle,
+      'title': title,
       'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = eventId.isNotEmpty
-        ? 'removed:$planId:$eventId'
-        : (msgId.isNotEmpty
-            ? 'removed:$planId:$removedUserId:$msgId'
-            : 'removed:$planId:$removedUserId');
+    final idSeed = msgId.isNotEmpty
+        ? 'removed:$planId:$removedUserId:$msgId'
+        : 'removed:$planId:$removedUserId';
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
     if (kDebugMode) {
       debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_REMOVED planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId eventId=$eventId pushDeliveryId=$pushDeliveryId',
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_REMOVED planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId',
       );
     }
 
@@ -1220,13 +1187,7 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(
-      id,
-      normalizedTitle,
-      normalizedBody,
-      details,
-      payload: payload,
-    );
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
@@ -1251,8 +1212,6 @@ class PushNotifications {
     final joinedNickname = (m.data['joined_nickname'] ?? '').toString().trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
-    final eventId = _extractEventId(m.data);
-    final pushDeliveryId = _extractPushDeliveryId(m.data);
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -1275,37 +1234,29 @@ class PushNotifications {
             return 'Откройте приложение, чтобы посмотреть.';
           })();
 
-    final normalizedTitle =
-        _normalizeTextWithNicknameQuotes(title, joinedNickname);
     final normalizedBody =
         _normalizeTextWithNicknameQuotes(computedBody, joinedNickname);
 
     final payload = jsonEncode({
-      ...m.data,
       'kind': 'PLAN_MEMBER_JOINED_BY_INVITE',
-      'type': 'PLAN_MEMBER_JOINED_BY_INVITE',
       'plan_id': planId,
       'joined_user_id': joinedUserId,
       if (joinedNickname.isNotEmpty) 'joined_nickname': joinedNickname,
       if (planTitle.isNotEmpty) 'plan_title': planTitle,
-      if (eventId.isNotEmpty) 'event_id': eventId,
-      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
-      'title': normalizedTitle,
+      'title': title,
       'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = eventId.isNotEmpty
-        ? 'joined_by_invite:$planId:$eventId'
-        : (msgId.isNotEmpty
-            ? 'joined_by_invite:$planId:$joinedUserId:$msgId'
-            : 'joined_by_invite:$planId:$joinedUserId');
+    final idSeed = msgId.isNotEmpty
+        ? 'joined_by_invite:$planId:$joinedUserId:$msgId'
+        : 'joined_by_invite:$planId:$joinedUserId';
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
     if (kDebugMode) {
       debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_JOINED_BY_INVITE planId=$planId joinedUserId=$joinedUserId eventId=$eventId pushDeliveryId=$pushDeliveryId',
+        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_JOINED_BY_INVITE planId=$planId joinedUserId=$joinedUserId',
       );
     }
 
@@ -1338,13 +1289,7 @@ class PushNotifications {
 
     const details = NotificationDetails(android: android, iOS: ios);
 
-    await _local.show(
-      id,
-      normalizedTitle,
-      normalizedBody,
-      details,
-      payload: payload,
-    );
+    await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 }
