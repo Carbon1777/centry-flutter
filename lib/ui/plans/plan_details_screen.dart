@@ -599,6 +599,41 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
+  Future<void> _addPlanDateCandidate() async {
+    if (_details == null || _actionLoading) return;
+
+    final plan = _details!.plan;
+    final picked = await _pickDateTime();
+
+    if (picked == null) return;
+
+    setState(() => _actionLoading = true);
+
+    try {
+      await widget.repository.addPlanDate(
+        appUserId: widget.appUserId,
+        planId: plan.id,
+        dateAt: picked,
+      );
+
+      await _load(showSpinner: false);
+
+      if (!mounted) return;
+      await showCenterToast(context, message: 'Дата добавлена');
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
   Future<DateTime?> _pickDateTime({DateTime? initial}) async {
     final now = DateTime.now();
     final initialDate = (initial ?? now.add(const Duration(days: 1)));
@@ -805,9 +840,11 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   canEditTitle: canEditTitle,
                   canEditDescription: canEditDescription,
                   canEditDeadline: canEditDeadline,
+                  actionsDisabled: _actionLoading || _visibilityLoading,
                   onEditTitle: _editTitle,
                   onEditDescription: _editDescription,
                   onEditDeadline: _editVotingDeadline,
+                  onAddDateCandidate: _addPlanDateCandidate,
                   onRemoveMember: _removeMemberDirect,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
@@ -826,9 +863,11 @@ class _Body extends StatelessWidget {
   final bool canEditTitle;
   final bool canEditDescription;
   final bool canEditDeadline;
+  final bool actionsDisabled;
   final VoidCallback onEditTitle;
   final VoidCallback onEditDescription;
   final VoidCallback onEditDeadline;
+  final Future<void> Function() onAddDateCandidate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
   final Future<String> Function() onCreateInvite;
@@ -845,9 +884,11 @@ class _Body extends StatelessWidget {
     required this.canEditTitle,
     required this.canEditDescription,
     required this.canEditDeadline,
+    required this.actionsDisabled,
     required this.onEditTitle,
     required this.onEditDescription,
     required this.onEditDeadline,
+    required this.onAddDateCandidate,
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
@@ -1035,6 +1076,8 @@ class _Body extends StatelessWidget {
         PlanDatesBlock(
           items: details.dateCandidates,
           dateVoting: details.dateVoting,
+          onAddCandidate: onAddDateCandidate,
+          actionsDisabled: actionsDisabled,
         ),
         const SizedBox(height: 10),
         const Divider(height: 1, thickness: 1),
