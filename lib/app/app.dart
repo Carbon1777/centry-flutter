@@ -551,6 +551,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         required String leftUserId,
         String? leftNickname,
         String? planTitle,
+        String? eventId,
         String? title,
         String? body,
       }) async {
@@ -559,6 +560,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           leftUserId: leftUserId,
           leftNickname: (leftNickname ?? '').trim(),
           planTitle: (planTitle ?? '').trim(),
+          eventId: (eventId ?? '').trim(),
           title: (title ?? '').trim(),
           body: (body ?? '').trim(),
           openSource: 'local_notification',
@@ -1471,6 +1473,14 @@ class _BootstrapGateState extends State<BootstrapGate>
                 effective['leftUserId'] ??
                 trimmedLeftUserId)
             .toString(),
+        eventId: (effective['event_id'] ?? effective['eventId'] ?? eventId ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['event_id'] ?? effective['eventId'] ?? eventId ?? '')
+                .toString()
+                .trim(),
         leftNickname: cleanLeftNickname,
         planTitle: cleanPlanTitle,
         title: cleanTitle,
@@ -2601,6 +2611,22 @@ class _BootstrapGateState extends State<BootstrapGate>
                 PlanMemberLeftUiRequest(
                   planId: planId,
                   leftUserId: leftUserId,
+                  eventId: (payloadMap['event_id'] ??
+                              payloadMap['eventId'] ??
+                              newRow['event_id'] ??
+                              newRow['eventId'] ??
+                              '')
+                          .toString()
+                          .trim()
+                          .isEmpty
+                      ? null
+                      : (payloadMap['event_id'] ??
+                              payloadMap['eventId'] ??
+                              newRow['event_id'] ??
+                              newRow['eventId'] ??
+                              '')
+                          .toString()
+                          .trim(),
                   leftNickname: cleanLeftNickname,
                   planTitle: cleanPlanTitle,
                   title: cleanTitle,
