@@ -38,8 +38,8 @@ class PlanFriendInviteState {
 /// - Server-first: реальная истина (PENDING/DECLINED/is_member/can_invite) приходит с сервера
 ///   через [inviteStatesByFriendUserId].
 /// - Optimistic pending используется только для мгновенной реакции на тап, пока не пришла серверная правда.
-///
-/// Визуально: 1-в-1 как bottom-sheet "Список планов" (образец).
+/// - Этот файл НЕ показывает success-тосты и НЕ делает продуктовых решений.
+///   Success/toast — ответственность верхнего action-handler (screen/modal), который вызывает RPC.
 class PlanFriendsPickerSheet extends StatefulWidget {
   final List<FriendDto> friends;
 
@@ -95,6 +95,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
 
     final publicId = f.publicId.trim();
     if (publicId.isEmpty) {
+      // Локальная ошибка данных списка — верхний handler не узнает, мы не зовем RPC.
       unawaited(
         showCenterToast(
           context,
@@ -111,43 +112,21 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
     });
 
     try {
+      // Важно: успех/ошибку/тосты решает верхний action-handler.
       await widget.onInviteFriendByPublicId(publicId);
       if (!mounted) return;
-
-      // ✅ НЕ await: чтобы не держать _invite() до конца тоста (и не “подвешивать” UI).
-      unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
 
       if (widget.onAfterInvite != null) {
         unawaited(widget.onAfterInvite!.call());
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
 
-      final msg = e.toString();
+      // rollback optimistic pending on error
+      setState(() => _pendingOptimistic.remove(f.friendUserId));
 
-      // Идемпотентность UX: "уже отправлено" = считаем успехом и оставляем pending.
-      final alreadySent = msg.contains('Приглашение уже отправлено') ||
-          (msg.toLowerCase().contains('already') &&
-              msg.toLowerCase().contains('sent'));
-
-      if (alreadySent) {
-        unawaited(showCenterToast(context, message: 'Приглашение отправлено'));
-
-        if (widget.onAfterInvite != null) {
-          unawaited(widget.onAfterInvite!.call());
-        }
-      } else {
-        // rollback optimistic pending on error
-        setState(() => _pendingOptimistic.remove(f.friendUserId));
-
-        unawaited(
-          showCenterToast(
-            context,
-            message: 'Ошибка отправки приглашения: $e',
-            isError: true,
-          ),
-        );
-      }
+      // Ошибка/тост — ответственность верхнего handler (который вызывает RPC).
+      // Здесь не показываем, чтобы не было двойных тостов.
     } finally {
       if (!mounted) return;
       setState(() => _inFlight.remove(f.friendUserId));
@@ -353,8 +332,6 @@ class _FriendCard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-
-                  // ✅ Комментарий (как в Friends): всегда показываем отдельным блоком.
                   const SizedBox(height: 10),
                   Container(
                     width: double.infinity,
