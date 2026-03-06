@@ -330,28 +330,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
-  Future<void> _removeMember(String memberAppUserId) async {
+  Future<void> _removeMemberDirect(String memberAppUserId) async {
     if (_details == null || _actionLoading) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Удалить участника?'),
-        content: const Text('Участник будет удалён из плана.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
 
     setState(() => _actionLoading = true);
 
@@ -370,6 +350,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     } catch (e) {
       if (!mounted) return;
       await showCenterToast(context, message: _humanizeError(e), isError: true);
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -796,7 +777,7 @@ Future<void> _editTitle() async {
                   onEditTitle: _editTitle,
                   onEditDescription: _editDescription,
                   onEditDeadline: _editVotingDeadline,
-                  onRemoveMember: _removeMember,
+                  onRemoveMember: _removeMemberDirect,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
                   onReloadDetails: _reloadDetails, // ✅ key line
@@ -976,7 +957,6 @@ class _Body extends StatelessWidget {
                 canAddMembers: details.plan.canAddMembers,
                 isReadOnly: isArchiveReadOnly,
                 onRemoveMember: (memberAppUserId) async {
-                  Navigator.of(dialogContext).pop();
                   await onRemoveMember(memberAppUserId);
                 },
                 onCreateInvite: () async {

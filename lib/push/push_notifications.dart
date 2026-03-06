@@ -241,6 +241,7 @@ class PushNotifications {
     Future<void> Function({
       required String planId,
       required String leftUserId,
+      String? eventId,
       String? leftNickname,
       String? planTitle,
       String? title,
@@ -352,6 +353,8 @@ class PushNotifications {
       if (kind == 'PLAN_MEMBER_LEFT') {
         final leftUserId =
             (map['left_user_id'] ?? map['member_user_id'] ?? '').toString();
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
         final leftNickname =
             (map['left_nickname'] ?? map['member_nickname'] ?? '')
                 .toString()
@@ -360,7 +363,7 @@ class PushNotifications {
         if (planId.isEmpty || leftUserId.isEmpty) return;
         if (kDebugMode) {
           debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId',
+            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId event_id=$eventId',
           );
         }
         final cb = onPlanMemberLeftOpen;
@@ -368,6 +371,7 @@ class PushNotifications {
         await cb(
           planId: planId,
           leftUserId: leftUserId,
+          eventId: eventId.isEmpty ? null : eventId,
           leftNickname: leftNickname.isEmpty ? null : leftNickname,
           planTitle: planTitle.isEmpty ? null : planTitle,
           title: notifTitle.isEmpty ? null : notifTitle,
@@ -1008,6 +1012,12 @@ class PushNotifications {
             .trim();
     final planTitle =
         (m.data['plan_title'] ?? m.data['plan_name'] ?? '').toString().trim();
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
 
     // Canon: title/body should come from server; fallbacks are only for safety.
     final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
@@ -1031,18 +1041,25 @@ class PushNotifications {
         _normalizeTextWithNicknameQuotes(computedBody, leftNickname);
 
     final payload = jsonEncode({
+      ...m.data,
       'kind': 'PLAN_MEMBER_LEFT',
+      'type': 'PLAN_MEMBER_LEFT',
       'plan_id': planId,
       'left_user_id': leftUserId,
       if (leftNickname.isNotEmpty) 'left_nickname': leftNickname,
+      if (planTitle.isNotEmpty) 'plan_title': planTitle,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
       'title': title,
       'body': normalizedBody,
     });
 
     final msgId = (m.messageId ?? '').toString();
-    final idSeed = msgId.isNotEmpty
-        ? 'left:$planId:$leftUserId:$msgId'
-        : 'left:$planId:$leftUserId';
+    final idSeed = eventId.isNotEmpty
+        ? 'left:$planId:$eventId'
+        : (msgId.isNotEmpty
+            ? 'left:$planId:$leftUserId:$msgId'
+            : 'left:$planId:$leftUserId');
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);

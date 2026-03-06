@@ -16,7 +16,7 @@ import 'plan_friends_picker_sheet.dart';
 /// - Все продуктовые факты (is_member / invite_state / can_invite) — на сервере.
 /// - Клиент рендерит каноничный снапшот.
 /// - Автообновление делаем по server-first событию: delivery для owner'а,
-///   которое сервер вставляет на ACCEPT/DECLINE (notification_deliveries).
+///   которое сервер вставляет на ACCEPT/DECLINE / membership events (notification_deliveries).
 class PlanFriendsModal extends StatefulWidget {
   /// current user id (uuid) — каноничный user_id, используемый в планах и friends.
   final String appUserId;
@@ -43,7 +43,8 @@ class PlanFriendsModal extends StatefulWidget {
   State<PlanFriendsModal> createState() => _PlanFriendsModalState();
 }
 
-class _PlanFriendsModalState extends State<PlanFriendsModal> {
+class _PlanFriendsModalState extends State<PlanFriendsModal>
+    with WidgetsBindingObserver {
   static const Duration _kRefreshDebounce = Duration(milliseconds: 250);
 
   /// Временный флаг для диагностики auto-refresh.
@@ -68,13 +69,15 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
   Timer? _refreshDebounce;
 
   /// Key epoch for PlanFriendsPickerSheet.
-  /// We bump this only when refresh is triggered by server-first realtime event,
+  /// We bump this when refresh is triggered by server-first event or app resume,
   /// to reset optimistic UI state in the sheet (without adding “logic” into the sheet).
   int _sheetEpoch = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _client = Supabase.instance.client;
     _friendsRepository = FriendsRepositoryImpl(_client);
 
@@ -96,7 +99,22 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) return;
+    if (state != AppLifecycleState.resumed) return;
+
+    _dbg('[PlanFriendsModal] lifecycle resumed -> refresh current plan snapshot');
+    _scheduleInviteStatesRefresh(
+      notifyParent: false,
+      fromRealtime: true,
+      reason: 'app_resumed',
+    );
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
     _refreshDebounce?.cancel();
     _refreshDebounce = null;
 
@@ -132,7 +150,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
         return;
       }
 
-      // ✅ FIX: убрали лишний cast `as Map` — после is-check он и так Map.
       final record = Map<String, dynamic>.from(recDyn);
 
       if (record.isEmpty) {
@@ -201,7 +218,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
     final deliveryPlanId = _extractPlanId(record: record, payload: payload);
 
     final type = rawType?.trim() ?? '';
-    final isPlanInvite = type.startsWith('PLAN_INTERNAL_INVITE');
+    final isRelevantPlanEvent = _isRelevantPlanFriendsRefreshType(type);
     final planMatches = deliveryPlanId != null && _eqId(deliveryPlanId, planId);
 
     _dbg(
@@ -210,10 +227,10 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       'status=${_asString(record['status']) ?? 'n/a'} '
       'type=$type '
       'planId=${deliveryPlanId ?? 'null'} '
-      'match(type=$isPlanInvite plan=$planMatches)',
+      'match(relevant=$isRelevantPlanEvent plan=$planMatches)',
     );
 
-    if (!isPlanInvite) return;
+    if (!isRelevantPlanEvent) return;
     if (!planMatches) return;
 
     // This event is server-first and relevant to the currently opened plan.
@@ -223,6 +240,16 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       fromRealtime: true,
       reason: 'realtime:$changeEvent:$type',
     );
+  }
+
+  bool _isRelevantPlanFriendsRefreshType(String type) {
+    if (type.isEmpty) return false;
+
+    return type.startsWith('PLAN_INTERNAL_INVITE') ||
+        type == 'PLAN_MEMBER_LEFT' ||
+        type == 'PLAN_MEMBER_REMOVED' ||
+        type == 'PLAN_MEMBER_JOINED_BY_INVITE' ||
+        type == 'PLAN_DELETED';
   }
 
   void _scheduleInviteStatesRefresh({
@@ -334,11 +361,11 @@ class _PlanFriendsModalState extends State<PlanFriendsModal> {
       setState(() {
         _inviteStatesByFriendUserId = next;
 
-        // Important: If refresh was triggered by server-first realtime event (ACCEPT/DECLINE),
+        // Important: If refresh was triggered by server-first event or app resume,
         // we want the currently opened sheet to reflect the new server snapshot immediately.
-        // PlanFriendsPickerSheet has optimistic local state, and on decline it can keep overlay
-        // until the sheet is disposed. To keep the sheet “dumb” while still aligning UX,
-        // we remount it by bumping key epoch on realtime-triggered refresh.
+        // PlanFriendsPickerSheet has optimistic local state, and on decline/leave/remove it can keep
+        // stale local overlay until the sheet is disposed. To keep the sheet “dumb” while still
+        // aligning UX, we remount it by bumping key epoch on these refreshes.
         if (fromRealtime) _sheetEpoch++;
       });
 
