@@ -11,9 +11,15 @@ import 'plan_invite_modal.dart';
 /// - Только рендер по server flags.
 /// - Любые действия -> callbacks (RPC снаружи)
 class PlanAddMemberModal extends StatelessWidget {
+  /// ✅ Каноничный userId для server-first RPC (тот же, что используется в планах).
+  final String appUserId;
+
   final bool canInvite;
   final bool canAddFromFriends;
   final bool canAddById;
+
+  /// current plan id (uuid)
+  final String planId;
 
   /// server-first: create invite (returns token/payload)
   final Future<String> Function() onCreateInvite;
@@ -23,9 +29,11 @@ class PlanAddMemberModal extends StatelessWidget {
 
   const PlanAddMemberModal({
     super.key,
+    required this.appUserId,
     required this.canInvite,
     required this.canAddFromFriends,
     required this.canAddById,
+    required this.planId,
     required this.onCreateInvite,
     required this.onAddByPublicId,
   });
@@ -71,14 +79,32 @@ class PlanAddMemberModal extends StatelessWidget {
                       const SizedBox(height: 12),
                       _ActionCard(
                         title: 'Добавить из списка друзей',
-                        enabled: true,
-                        subtitle: null,
+                        enabled: canAddFromFriends,
                         onTap: () async {
-                          await showDialog<void>(
+                          if (!canAddFromFriends) return;
+
+                          // Bottom-sheet, swipe-down to close
+                          var didInvite = false;
+                          await showModalBottomSheet<void>(
                             context: context,
-                            barrierDismissible: true,
-                            builder: (_) => const PlanFriendsModal(),
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            barrierColor: Colors.black.withOpacity(0.55),
+                            builder: (_) => PlanFriendsModal(
+                              appUserId: appUserId, // ✅ FIX: каноничный userId
+                              planId: planId,
+                              onInviteFriendByPublicId: onAddByPublicId,
+                              onInviteSent: () => didInvite = true,
+                            ),
                           );
+
+                          if (!context.mounted) return;
+
+                          // Если внутри bottom-sheet реально отправили хотя бы одно приглашение —
+                          // закрываем этот диалог с true (родитель обновит детали/участников).
+                          if (didInvite) {
+                            Navigator.of(context).pop(true);
+                          }
                         },
                       ),
                       const SizedBox(height: 12),
@@ -151,7 +177,6 @@ class _Header extends StatelessWidget {
 
 class _ActionCard extends StatelessWidget {
   final String title;
-  final String? subtitle;
   final bool enabled;
   final VoidCallback onTap;
 
@@ -159,7 +184,6 @@ class _ActionCard extends StatelessWidget {
     required this.title,
     required this.enabled,
     required this.onTap,
-    this.subtitle,
   });
 
   @override
@@ -184,28 +208,13 @@ class _ActionCard extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: titleColor,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.white54,
-                        ),
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: titleColor,
+                  ),
                 ),
               ),
               Icon(Icons.chevron_right, color: chevronColor),
