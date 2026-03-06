@@ -11,17 +11,41 @@ class PlanDatesBlock extends StatelessWidget {
   /// Новый server-first snapshot блока дат.
   final PlanDateVotingDto? dateVoting;
 
+  /// Callbacks для нового server-first режима.
+  final Future<void> Function(DateTime dateAt)? onVote;
+  final Future<void> Function(DateTime dateAt)? onUnvote;
+  final Future<void> Function(DateTime dateAt)? onDelete;
+  final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final Future<void> Function()? onAddCandidate;
+
+  /// Внешний флаг загрузки, чтобы гасить повторные нажатия.
+  final bool actionsDisabled;
+
   const PlanDatesBlock({
     super.key,
     this.items = const [],
     this.dateVoting,
+    this.onVote,
+    this.onUnvote,
+    this.onDelete,
+    this.onChooseOwnerPriority,
+    this.onAddCandidate,
+    this.actionsDisabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final snapshot = dateVoting;
     if (snapshot != null) {
-      return _ServerFirstPlanDatesBlock(snapshot: snapshot);
+      return _ServerFirstPlanDatesBlock(
+        snapshot: snapshot,
+        onVote: onVote,
+        onUnvote: onUnvote,
+        onDelete: onDelete,
+        onChooseOwnerPriority: onChooseOwnerPriority,
+        onAddCandidate: onAddCandidate,
+        actionsDisabled: actionsDisabled,
+      );
     }
 
     if (items.isEmpty) {
@@ -51,14 +75,27 @@ class PlanDatesBlock extends StatelessWidget {
 
 class _ServerFirstPlanDatesBlock extends StatelessWidget {
   final PlanDateVotingDto snapshot;
+  final Future<void> Function(DateTime dateAt)? onVote;
+  final Future<void> Function(DateTime dateAt)? onUnvote;
+  final Future<void> Function(DateTime dateAt)? onDelete;
+  final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final Future<void> Function()? onAddCandidate;
+  final bool actionsDisabled;
 
   const _ServerFirstPlanDatesBlock({
     required this.snapshot,
+    required this.onVote,
+    required this.onUnvote,
+    required this.onDelete,
+    required this.onChooseOwnerPriority,
+    required this.onAddCandidate,
+    required this.actionsDisabled,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     final cards = List<Widget>.generate(3, (index) {
       if (index < snapshot.candidates.length) {
         final candidate = snapshot.candidates[index];
@@ -68,6 +105,11 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
             child: _DateCandidateCard(
               candidate: candidate,
               ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+              onVote: onVote,
+              onUnvote: onUnvote,
+              onDelete: onDelete,
+              onChooseOwnerPriority: onChooseOwnerPriority,
+              actionsDisabled: actionsDisabled,
             ),
           ),
         );
@@ -76,7 +118,12 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
       return Expanded(
         child: Padding(
           padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
-          child: _EmptyDateSlot(canAddCandidate: snapshot.canAddCandidate),
+          child: _EmptyDateSlot(
+            canAddCandidate: snapshot.canAddCandidate,
+            onTap: (!actionsDisabled && snapshot.canAddCandidate)
+                ? onAddCandidate
+                : null,
+          ),
         ),
       );
     });
@@ -84,7 +131,10 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: cards),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: cards,
+        ),
         const SizedBox(height: 12),
         if (snapshot.postDeadlineGraceActive)
           Text(
@@ -114,10 +164,20 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
 class _DateCandidateCard extends StatelessWidget {
   final PlanDateVotingCandidateDto candidate;
   final bool ownerChoiceModeActive;
+  final Future<void> Function(DateTime dateAt)? onVote;
+  final Future<void> Function(DateTime dateAt)? onUnvote;
+  final Future<void> Function(DateTime dateAt)? onDelete;
+  final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final bool actionsDisabled;
 
   const _DateCandidateCard({
     required this.candidate,
     required this.ownerChoiceModeActive,
+    required this.onVote,
+    required this.onUnvote,
+    required this.onDelete,
+    required this.onChooseOwnerPriority,
+    required this.actionsDisabled,
   });
 
   @override
@@ -139,6 +199,10 @@ class _DateCandidateCard extends StatelessWidget {
     }
 
     final opacity = candidate.isDimmed ? 0.55 : 1.0;
+    final canDeleteTap =
+        candidate.canDelete && !actionsDisabled && onDelete != null;
+    final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
+    final actionEnabled = actionTap != null;
 
     return Opacity(
       opacity: opacity,
@@ -169,10 +233,21 @@ class _DateCandidateCard extends StatelessWidget {
                   ),
                 if (candidate.canDelete) ...[
                   const SizedBox(width: 6),
-                  Icon(
-                    Icons.close,
-                    size: 18,
-                    color: Colors.red,
+                  InkWell(
+                    onTap: canDeleteTap
+                        ? () => onDelete!(candidate.dateTime)
+                        : null,
+                    borderRadius: BorderRadius.circular(999),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: canDeleteTap
+                            ? Colors.red
+                            : Colors.red.withOpacity(0.45),
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -187,12 +262,28 @@ class _DateCandidateCard extends StatelessWidget {
             const SizedBox(height: 10),
             _ActionChip(
               label: _buildActionLabel(),
-              enabled: _isActionEnabled(),
+              enabled: actionEnabled,
+              onTap: actionTap,
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> Function()? _resolvePrimaryAction() {
+    if (candidate.isWinner) return null;
+    if (candidate.canUnvote && onUnvote != null) {
+      return () => onUnvote!(candidate.dateTime);
+    }
+    if (candidate.canVote && onVote != null) {
+      return () => onVote!(candidate.dateTime);
+    }
+    if (candidate.isAvailableForOwnerChoiceNow &&
+        onChooseOwnerPriority != null) {
+      return () => onChooseOwnerPriority!(candidate.dateTime);
+    }
+    return null;
   }
 
   String _buildActionLabel() {
@@ -204,12 +295,6 @@ class _DateCandidateCard extends StatelessWidget {
       return 'Недоступно';
     }
     return 'Недоступно';
-  }
-
-  bool _isActionEnabled() {
-    return candidate.canVote ||
-        candidate.canUnvote ||
-        candidate.isAvailableForOwnerChoiceNow;
   }
 }
 
@@ -270,41 +355,47 @@ class _CalendarTile extends StatelessWidget {
 
 class _EmptyDateSlot extends StatelessWidget {
   final bool canAddCandidate;
+  final Future<void> Function()? onTap;
 
   const _EmptyDateSlot({
     required this.canAddCandidate,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Opacity(
-      opacity: canAddCandidate ? 1 : 0.6,
-      child: Container(
-        height: 170,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.dividerColor),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.add_circle_outline,
-              size: 28,
-              color: canAddCandidate
-                  ? theme.colorScheme.primary
-                  : theme.disabledColor,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Добавить дату мероприятия для голосования',
-              style: theme.textTheme.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
+    return InkWell(
+      onTap: onTap == null ? null : () => onTap!(),
+      borderRadius: BorderRadius.circular(14),
+      child: Opacity(
+        opacity: canAddCandidate ? 1 : 0.6,
+        child: Container(
+          height: 170,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(color: theme.dividerColor),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_circle_outline,
+                size: 28,
+                color: canAddCandidate
+                    ? theme.colorScheme.primary
+                    : theme.disabledColor,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Добавить дату мероприятия для голосования',
+                style: theme.textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -314,30 +405,36 @@ class _EmptyDateSlot extends StatelessWidget {
 class _ActionChip extends StatelessWidget {
   final String label;
   final bool enabled;
+  final Future<void> Function()? onTap;
 
   const _ActionChip({
     required this.label,
     required this.enabled,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999),
-        color: enabled
-            ? theme.colorScheme.primary.withValues(alpha: 0.12)
-            : theme.disabledColor.withValues(alpha: 0.12),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: enabled ? theme.colorScheme.primary : theme.disabledColor,
+    return InkWell(
+      onTap: (!enabled || onTap == null) ? null : () => onTap!(),
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: enabled
+              ? theme.colorScheme.primary.withValues(alpha: 0.12)
+              : theme.disabledColor.withValues(alpha: 0.12),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: enabled ? theme.colorScheme.primary : theme.disabledColor,
+          ),
         ),
       ),
     );
