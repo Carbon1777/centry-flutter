@@ -372,8 +372,8 @@ class _EmptyDateSlot extends StatelessWidget {
       child: Opacity(
         opacity: canAddCandidate ? 1 : 0.6,
         child: Container(
-          height: 170,
-          padding: const EdgeInsets.all(12),
+          height: 120,
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             border: Border.all(color: theme.dividerColor),
             borderRadius: BorderRadius.circular(14),
@@ -383,14 +383,14 @@ class _EmptyDateSlot extends StatelessWidget {
             children: [
               Icon(
                 Icons.add_circle_outline,
-                size: 28,
+                size: 26,
                 color: canAddCandidate
                     ? theme.colorScheme.primary
                     : theme.disabledColor,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
-                'Добавить дату мероприятия для голосования',
+                'Добавить дату',
                 style: theme.textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
