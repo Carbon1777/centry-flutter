@@ -63,7 +63,8 @@ class PlansRepositoryImpl implements PlansRepository {
     print('RPC get_plan_details_v1 members raw: $members');
     // ignore: avoid_print
     print(
-        'RPC get_plan_details_v1 members count: ${members is List ? members.length : 'not-a-list'}');
+      'RPC get_plan_details_v1 members count: ${members is List ? members.length : 'not-a-list'}',
+    );
 
     return PlanDetailsDto.fromJson(response as Map<String, dynamic>);
   }
@@ -196,6 +197,36 @@ class PlansRepositoryImpl implements PlansRepository {
     );
   }
 
+  @override
+  Future<void> unvotePlanDate({
+    required String appUserId,
+    required String planId,
+  }) async {
+    await _client.rpc(
+      'unvote_plan_date_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+      },
+    );
+  }
+
+  @override
+  Future<void> choosePlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
+    required DateTime dateAt,
+  }) async {
+    await _client.rpc(
+      'choose_plan_date_owner_priority_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_date_at': dateAt.toUtc().toIso8601String(),
+      },
+    );
+  }
+
   /* ===================== ADD ===================== */
 
   @override
@@ -222,6 +253,22 @@ class PlansRepositoryImpl implements PlansRepository {
   }) async {
     await _client.rpc(
       'add_plan_date_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_date_at': dateAt.toUtc().toIso8601String(),
+      },
+    );
+  }
+
+  @override
+  Future<void> deletePlanDate({
+    required String appUserId,
+    required String planId,
+    required DateTime dateAt,
+  }) async {
+    await _client.rpc(
+      'delete_plan_date_v1',
       params: {
         'p_app_user_id': appUserId,
         'p_plan_id': planId,
