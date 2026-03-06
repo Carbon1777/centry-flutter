@@ -49,7 +49,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
 
-
   String _humanizeError(Object e) {
     return _userMessageForError(e);
   }
@@ -141,7 +140,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
-
   String _userMessageForError(Object e) {
     // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
@@ -150,8 +148,9 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied =
-          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
+      final isAccessDenied = code == 'P0001' ||
+          msg.contains('access denied') ||
+          details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -235,11 +234,18 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         visible: newValue,
       );
 
-      await showCenterToast(context, message: newValue ? 'Видим' : 'Не видим');
+      await showCenterToast(
+        context,
+        message: newValue ? 'Видим' : 'Не видим',
+      );
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() => _visibilityLoading = false);
@@ -322,7 +328,11 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -349,7 +359,11 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await showCenterToast(context, message: 'Участник удалён');
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
       rethrow;
     } finally {
       if (mounted) {
@@ -392,14 +406,19 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await showCenterToast(context, message: 'Приглашение отправлено');
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
       }
     }
   }
-Future<void> _editTitle() async {
+
+  Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -449,7 +468,11 @@ Future<void> _editTitle() async {
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     }
   }
 
@@ -540,7 +563,11 @@ Future<void> _editTitle() async {
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     }
   }
 
@@ -564,7 +591,11 @@ Future<void> _editTitle() async {
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(context, message: _humanizeError(e), isError: true);
+      await showCenterToast(
+        context,
+        message: _humanizeError(e),
+        isError: true,
+      );
     }
   }
 
@@ -946,7 +977,8 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly =
+                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
@@ -1000,7 +1032,10 @@ class _Body extends StatelessWidget {
         const Divider(height: 1, thickness: 1),
         const _SectionTitle('Голосование по датам'),
         const SizedBox(height: 6),
-        PlanDatesBlock(items: details.dateCandidates),
+        PlanDatesBlock(
+          items: details.dateCandidates,
+          dateVoting: details.dateVoting,
+        ),
         const SizedBox(height: 10),
         const Divider(height: 1, thickness: 1),
         const _SectionTitle('Голосование по местам'),
@@ -1123,7 +1158,10 @@ class _ErrorState extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 10),
-            ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
+            ElevatedButton(
+              onPressed: onRetry,
+              child: const Text('Повторить'),
+            ),
           ],
         ),
       ),
