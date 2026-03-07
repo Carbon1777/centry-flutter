@@ -201,7 +201,7 @@ class _DateCandidateCard extends StatelessWidget {
         candidate.canDelete && !actionsDisabled && onDelete != null;
     final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
     final actionEnabled = actionTap != null;
-    final shouldShowActionChip = candidate.isWinner || actionEnabled;
+    final shouldShowActionChip = actionEnabled;
 
     const overlayLeftInset = 6.0;
     const overlayRightInset = 0.0;
@@ -242,34 +242,41 @@ class _DateCandidateCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (candidate.canDelete)
-                  Positioned(
-                    top: overlayTop,
-                    right: overlayRightInset,
-                    child: SizedBox(
-                      width: overlayBoxSize,
-                      height: overlayBoxSize,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: InkWell(
-                          onTap: canDeleteTap
-                              ? () => onDelete!(candidate.dateTime)
+                Positioned(
+                  top: overlayTop,
+                  right: overlayRightInset,
+                  child: SizedBox(
+                    width: overlayBoxSize,
+                    height: overlayBoxSize,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: candidate.isWinner
+                          ? Icon(
+                              Icons.emoji_events_outlined,
+                              size: 28,
+                              color: Colors.amber,
+                            )
+                          : candidate.canDelete
+                              ? InkWell(
+                                  onTap: canDeleteTap
+                                      ? () => onDelete!(candidate.dateTime)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(1),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 32,
+                                      color: canDeleteTap
+                                          ? Colors.redAccent
+                                          : Colors.redAccent.withOpacity(0.45),
+                                    ),
+                                  ),
+                                )
                               : null,
-                          borderRadius: BorderRadius.circular(999),
-                          child: Padding(
-                            padding: const EdgeInsets.all(1),
-                            child: Icon(
-                              Icons.close,
-                              size: 32,
-                              color: canDeleteTap
-                                  ? Colors.redAccent
-                                  : Colors.redAccent.withOpacity(0.45),
-                            ),
-                          ),
-                        ),
-                      ),
                     ),
                   ),
+                ),
               ],
             ),
             if (candidate.isOwnerPriorityChoice) ...[
@@ -309,7 +316,6 @@ class _DateCandidateCard extends StatelessWidget {
   }
 
   String _buildActionLabel() {
-    if (candidate.isWinner) return 'Победитель';
     if (candidate.canUnvote) return 'Снять';
     if (candidate.canVote) return 'Выбрать';
     if (candidate.isAvailableForOwnerChoiceNow) return 'Выбрать';
