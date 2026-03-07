@@ -220,33 +220,47 @@ class _DateCandidateCard extends StatelessWidget {
                 _CalendarTile(candidate: candidate),
                 Positioned(
                   top: 4,
-                  left: 6,
-                  child: Text(
-                    '${candidate.votesCount}',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
+                  left: 4,
+                  child: SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: Text(
+                        '${candidate.votesCount}',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
                     ),
                   ),
                 ),
                 if (candidate.canDelete)
                   Positioned(
                     top: 4,
-                    right: 6,
-                    child: InkWell(
-                      onTap: canDeleteTap
-                          ? () => onDelete!(candidate.dateTime)
-                          : null,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Padding(
-                        padding: const EdgeInsets.all(2),
-                        child: Icon(
-                          Icons.close,
-                          size: 34,
-                          color: canDeleteTap
-                              ? Colors.redAccent
-                              : Colors.redAccent.withOpacity(0.45),
+                    right: 4,
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Align(
+                        alignment: Alignment.topRight,
+                        child: InkWell(
+                          onTap: canDeleteTap
+                              ? () => onDelete!(candidate.dateTime)
+                              : null,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Padding(
+                            padding: const EdgeInsets.all(1),
+                            child: Icon(
+                              Icons.close,
+                              size: 32,
+                              color: canDeleteTap
+                                  ? Colors.redAccent
+                                  : Colors.redAccent.withOpacity(0.45),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -319,7 +333,7 @@ class _CalendarTile extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
@@ -331,12 +345,12 @@ class _CalendarTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelSmall?.copyWith(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           SizedBox(
             width: double.infinity,
             child: FittedBox(
@@ -345,20 +359,20 @@ class _CalendarTile extends StatelessWidget {
                 dateLabel,
                 maxLines: 1,
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 17,
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             timeLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
