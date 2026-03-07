@@ -1,5 +1,3 @@
-// FIXED VERSION WITH OVERLAY BADGE (NO LAYOUT SHIFT)
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -44,17 +42,14 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   PlanDetailsDto? _details;
   String? _error;
 
-  // ===== Live refresh (server-first snapshot) =====
   static const Duration _liveRefreshInterval = Duration(seconds: 10);
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
-
 
   String _humanizeError(Object e) {
     return _userMessageForError(e);
   }
 
-  // Server-driven permission flags (client is dumb). No local fallbacks.
   bool _canEditTitle(dynamic plan) {
     try {
       return plan.canEditTitle == true;
@@ -109,8 +104,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     WidgetsBinding.instance.addObserver(this);
 
     _load(showSpinner: true);
-
-    // ✅ server-first live refresh: periodically refetch canonical snapshot
     _startLiveRefresh();
   }
 
@@ -123,7 +116,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // ✅ On resume, refresh snapshot (server remains source of truth)
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshSilentlyIfPossible());
     }
@@ -141,17 +133,15 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
-
   String _userMessageForError(Object e) {
-    // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
-      // PostgrestException fields are not consistently typed across versions; normalize to strings.
       final code = (e.code ?? '').toString().toUpperCase();
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied =
-          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
+      final isAccessDenied = code == 'P0001' ||
+          msg.contains('access denied') ||
+          details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -165,11 +155,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
   Future<void> _refreshSilentlyIfPossible() async {
     if (!mounted) return;
-
-    // Don't spam server while heavy actions are running.
     if (_loading || _actionLoading || _visibilityLoading) return;
-
-    // Avoid overlapping requests.
     if (_liveRefreshInFlight) return;
 
     _liveRefreshInFlight = true;
@@ -211,7 +197,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
-  /// ✅ Server-first canonical reload callback for child modals (members list, etc.)
   Future<PlanDetailsDto> _reloadDetails() async {
     return await widget.repository.getPlanDetails(
       appUserId: widget.appUserId,
@@ -386,9 +371,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       );
 
       if (!mounted) return;
-      // ✅ CANON: internal invite by public_id does NOT add member immediately.
-      // We only confirm that the invite was sent. Member list will change only
-      // after invitee ACCEPTs on the server.
       await showCenterToast(context, message: 'Приглашение отправлено');
     } catch (e) {
       if (!mounted) return;
@@ -399,7 +381,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       }
     }
   }
-Future<void> _editTitle() async {
+
+  Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -915,7 +898,7 @@ Future<void> _editTitle() async {
                   onRemoveMember: _removeMemberDirect,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
-                  onReloadDetails: _reloadDetails, // ✅ key line
+                  onReloadDetails: _reloadDetails,
                 ),
     );
   }
@@ -943,8 +926,6 @@ class _Body extends StatelessWidget {
 
   final Future<String> Function() onCreateInvite;
   final Future<void> Function(String publicId) onAddByPublicId;
-
-  /// ✅ server-first: provides canonical snapshot for live modal updates
   final Future<PlanDetailsDto> Function() onReloadDetails;
 
   const _Body({
@@ -986,9 +967,17 @@ class _Body extends StatelessWidget {
     }
   }
 
-  Color _deadlineColor(DateTime? deadline) {
+  Color _deadlineColor(DateTime? deadline, String status) {
     if (deadline == null) return Colors.grey.shade400;
-    final hours = deadline.difference(DateTime.now()).inHours;
+
+    final now = DateTime.now();
+    final isPastOrNow = !deadline.isAfter(now);
+
+    if ((status == 'VOTING_FINISHED' || status == 'CLOSED') && isPastOrNow) {
+      return Colors.grey.shade400;
+    }
+
+    final hours = deadline.difference(now).inHours;
 
     if (hours >= 120) return const Color(0xFF22C55E);
     if (hours >= 72) return const Color(0xFFFACC15);
@@ -1075,7 +1064,7 @@ class _Body extends StatelessWidget {
           _KeyValueLine(
             label: 'Дедлайн голосования',
             value: formatPlanDateTime(plan.votingDeadlineAt),
-            valueColor: _deadlineColor(plan.votingDeadlineAt),
+            valueColor: _deadlineColor(plan.votingDeadlineAt, plan.status),
             trailing: canEditDeadline
                 ? _EditPencilButton(
                     onPressed: onEditDeadline,
@@ -1084,7 +1073,7 @@ class _Body extends StatelessWidget {
                 : null,
           ),
         if (plan.eventAt != null)
-          _KeyValueLine(
+          _HighlightedEventLine(
             label: 'Событие',
             value: formatPlanDateTime(plan.eventAt),
           ),
@@ -1093,7 +1082,8 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly =
+                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
@@ -1112,7 +1102,7 @@ class _Body extends StatelessWidget {
                 onAddByPublicId: (publicId) async {
                   await onAddByPublicId(publicId);
                 },
-                onReloadDetails: onReloadDetails, // ✅ live modal updates
+                onReloadDetails: onReloadDetails,
               ),
             );
           },
@@ -1241,6 +1231,49 @@ class _KeyValueLine extends StatelessWidget {
                 child: trailing,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HighlightedEventLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _HighlightedEventLine({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final valueStyle = Theme.of(context).textTheme.bodySmall;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.green, width: 2),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: valueStyle,
+            ),
+          ),
         ],
       ),
     );
