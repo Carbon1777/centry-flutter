@@ -680,6 +680,26 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
+  Future<void> _clearPlanDateOwnerPriority() async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.clearPlanDateOwnerPriority(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
   Future<DateTime?> _pickDateTime({DateTime? initial}) async {
     final now = DateTime.now();
     final initialDate = (initial ?? now.add(const Duration(days: 1)));
@@ -895,6 +915,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onUnvoteDate: _unvotePlanDate,
                   onDeleteDate: _deletePlanDate,
                   onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
+                  onClearOwnerPriorityDate: _clearPlanDateOwnerPriority,
                   onRemoveMember: _removeMemberDirect,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
@@ -922,6 +943,7 @@ class _Body extends StatelessWidget {
   final Future<void> Function(DateTime dateAt) onUnvoteDate;
   final Future<void> Function(DateTime dateAt) onDeleteDate;
   final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
+  final Future<void> Function() onClearOwnerPriorityDate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
   final Future<String> Function() onCreateInvite;
@@ -945,6 +967,7 @@ class _Body extends StatelessWidget {
     required this.onUnvoteDate,
     required this.onDeleteDate,
     required this.onChooseOwnerPriorityDate,
+    required this.onClearOwnerPriorityDate,
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
@@ -1145,6 +1168,7 @@ class _Body extends StatelessWidget {
           onUnvote: onUnvoteDate,
           onDelete: onDeleteDate,
           onChooseOwnerPriority: onChooseOwnerPriorityDate,
+          onClearOwnerPriority: onClearOwnerPriorityDate,
           actionsDisabled: actionsDisabled,
         ),
         const SizedBox(height: 10),
