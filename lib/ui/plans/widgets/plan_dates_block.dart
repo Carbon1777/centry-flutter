@@ -89,6 +89,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,6 +107,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
                   child: _DateCandidateCard(
                     candidate: candidate,
                     ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+                    isFinalizedWithWinner: isFinalizedWithWinner,
                     onVote: onVote,
                     onUnvote: onUnvote,
                     onDelete: onDelete,
@@ -162,6 +164,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
 class _DateCandidateCard extends StatelessWidget {
   final PlanDateVotingCandidateDto candidate;
   final bool ownerChoiceModeActive;
+  final bool isFinalizedWithWinner;
   final Future<void> Function(DateTime dateAt)? onVote;
   final Future<void> Function(DateTime dateAt)? onUnvote;
   final Future<void> Function(DateTime dateAt)? onDelete;
@@ -171,6 +174,7 @@ class _DateCandidateCard extends StatelessWidget {
   const _DateCandidateCard({
     required this.candidate,
     required this.ownerChoiceModeActive,
+    required this.isFinalizedWithWinner,
     required this.onVote,
     required this.onUnvote,
     required this.onDelete,
@@ -188,10 +192,11 @@ class _DateCandidateCard extends StatelessWidget {
     if (candidate.isWinner) {
       borderColor = Colors.green;
       borderWidth = 2;
-    } else if (candidate.isAvailableForOwnerChoiceNow) {
+    } else if (!isFinalizedWithWinner &&
+        candidate.isAvailableForOwnerChoiceNow) {
       borderColor = Colors.red;
       borderWidth = 2;
-    } else if (candidate.isUserVotedForThis) {
+    } else if (!isFinalizedWithWinner && candidate.isUserVotedForThis) {
       borderColor = theme.colorScheme.primary;
       borderWidth = 2;
     }
@@ -251,7 +256,7 @@ class _DateCandidateCard extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: candidate.isWinner
-                          ? Icon(
+                          ? const Icon(
                               Icons.emoji_events_outlined,
                               size: 28,
                               color: Colors.amber,
