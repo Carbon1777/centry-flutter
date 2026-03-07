@@ -42,12 +42,9 @@ class PlansRepositoryImpl implements PlansRepository {
     required String appUserId,
     required String planId,
   }) async {
-    // 1) Диагностика: кто реально выполняет RPC (JWT/role/sub)
     final ctx = await _client.rpc('debug_rpc_context_v1');
-    // ignore: avoid_print
     print('RPC CTX: $ctx');
 
-    // 2) Основной вызов
     final response = await _client.rpc(
       'get_plan_details_v1',
       params: {
@@ -56,12 +53,9 @@ class PlansRepositoryImpl implements PlansRepository {
       },
     );
 
-    // 3) Диагностика: что реально пришло с сервера
     final members =
         (response is Map<String, dynamic>) ? response['members'] : null;
-    // ignore: avoid_print
     print('RPC get_plan_details_v1 members raw: $members');
-    // ignore: avoid_print
     print(
       'RPC get_plan_details_v1 members count: ${members is List ? members.length : 'not-a-list'}',
     );
@@ -211,22 +205,6 @@ class PlansRepositoryImpl implements PlansRepository {
     );
   }
 
-  @override
-  Future<void> choosePlanDateOwnerPriority({
-    required String appUserId,
-    required String planId,
-    required DateTime dateAt,
-  }) async {
-    await _client.rpc(
-      'choose_plan_date_owner_priority_v1',
-      params: {
-        'p_app_user_id': appUserId,
-        'p_plan_id': planId,
-        'p_date_at': dateAt.toUtc().toIso8601String(),
-      },
-    );
-  }
-
   /* ===================== ADD ===================== */
 
   @override
@@ -277,6 +255,36 @@ class PlansRepositoryImpl implements PlansRepository {
     );
   }
 
+  @override
+  Future<void> choosePlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
+    required DateTime dateAt,
+  }) async {
+    await _client.rpc(
+      'choose_plan_date_owner_priority_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_date_at': dateAt.toUtc().toIso8601String(),
+      },
+    );
+  }
+
+  @override
+  Future<void> clearPlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
+  }) async {
+    await _client.rpc(
+      'clear_plan_date_owner_priority_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+      },
+    );
+  }
+
   /* ===================== MEMBERS ===================== */
 
   @override
@@ -315,7 +323,6 @@ class PlansRepositoryImpl implements PlansRepository {
     required String planId,
     required String publicId,
   }) async {
-    // ✅ CANON: internal invite by public_id (do NOT add member immediately)
     await _client.rpc(
       'create_plan_internal_invite_by_public_id_v1',
       params: {
@@ -343,8 +350,6 @@ class PlansRepositoryImpl implements PlansRepository {
   /* ===================== INVITES ===================== */
 
   String _pickInviteShareText(dynamic response) {
-    // Канон: create_plan_invite_v2 -> json
-    // Ожидаемые поля: share_text / share_url / token
     if (response is Map) {
       final map = Map<String, dynamic>.from(response);
       final shareText = (map['share_text'] ?? '').toString().trim();
@@ -359,12 +364,10 @@ class PlansRepositoryImpl implements PlansRepository {
       return map.toString();
     }
 
-    // На всякий случай: если сервер вернул строку
     if (response is String) {
       return response.trim();
     }
 
-    // Любой другой тип
     return response?.toString() ?? '';
   }
 
@@ -402,7 +405,6 @@ class PlansRepositoryImpl implements PlansRepository {
       },
     );
 
-    // Сервер возвращает uuid (plan_id). Supabase может вернуть String/Uuid-like.
     return response.toString();
   }
 }
