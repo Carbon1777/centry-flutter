@@ -218,12 +218,12 @@ class _DateCandidateCard extends StatelessWidget {
               children: [
                 _CalendarTile(candidate: candidate),
                 Positioned(
-                  top: 6,
-                  left: 10,
+                  top: 4,
+                  left: 6,
                   child: Text(
                     '${candidate.votesCount}',
                     style: theme.textTheme.headlineMedium?.copyWith(
-                      fontSize: 28,
+                      fontSize: 30,
                       fontWeight: FontWeight.w900,
                       height: 1,
                     ),
@@ -231,8 +231,8 @@ class _DateCandidateCard extends StatelessWidget {
                 ),
                 if (candidate.canDelete)
                   Positioned(
-                    top: 6,
-                    right: 6,
+                    top: -4,
+                    right: -4,
                     child: InkWell(
                       onTap: canDeleteTap
                           ? () => onDelete!(candidate.dateTime)
@@ -242,10 +242,10 @@ class _DateCandidateCard extends StatelessWidget {
                         padding: const EdgeInsets.all(2),
                         child: Icon(
                           Icons.close,
-                          size: 30,
+                          size: 34,
                           color: canDeleteTap
-                              ? Colors.red
-                              : Colors.red.withOpacity(0.45),
+                              ? Colors.redAccent
+                              : Colors.redAccent.withOpacity(0.45),
                         ),
                       ),
                     ),
