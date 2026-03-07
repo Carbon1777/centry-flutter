@@ -4,21 +4,15 @@ import '../../../data/plans/plan_details_dto.dart';
 import 'plan_formatters.dart';
 
 class PlanDatesBlock extends StatelessWidget {
-  /// Legacy contract: оставляем, чтобы не сломать текущий экран,
-  /// пока `plan_details_screen.dart` ещё не переведён на `dateVoting`.
   final List<DateCandidateDto> items;
-
-  /// Новый server-first snapshot блока дат.
   final PlanDateVotingDto? dateVoting;
 
-  /// Callbacks для нового server-first режима.
   final Future<void> Function(DateTime dateAt)? onVote;
   final Future<void> Function(DateTime dateAt)? onUnvote;
   final Future<void> Function(DateTime dateAt)? onDelete;
   final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
   final Future<void> Function()? onAddCandidate;
 
-  /// Внешний флаг загрузки, чтобы гасить повторные нажатия.
   final bool actionsDisabled;
 
   const PlanDatesBlock({
@@ -220,16 +214,18 @@ class _DateCandidateCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Stack(
+              clipBehavior: Clip.none,
               children: [
                 _CalendarTile(candidate: candidate),
                 Positioned(
-                  top: 8,
+                  top: 6,
                   left: 10,
                   child: Text(
                     '${candidate.votesCount}',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
                     ),
                   ),
                 ),
@@ -246,7 +242,7 @@ class _DateCandidateCard extends StatelessWidget {
                         padding: const EdgeInsets.all(2),
                         child: Icon(
                           Icons.close,
-                          size: 24,
+                          size: 30,
                           color: canDeleteTap
                               ? Colors.red
                               : Colors.red.withOpacity(0.45),
@@ -325,7 +321,7 @@ class _CalendarTile extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(6, 28, 6, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
