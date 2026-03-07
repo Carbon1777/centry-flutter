@@ -216,7 +216,7 @@ class _DateCandidateCard extends StatelessWidget {
     return Opacity(
       opacity: opacity,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
         decoration: BoxDecoration(
           border: Border.all(color: borderColor, width: borderWidth),
           borderRadius: BorderRadius.circular(14),
@@ -224,24 +224,16 @@ class _DateCandidateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _CalendarTile(candidate: candidate),
-            const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.how_to_vote_outlined, size: 16),
-                const SizedBox(width: 6),
                 Text(
                   '${candidate.votesCount}',
-                  style: theme.textTheme.bodyMedium,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const Spacer(),
-                if (candidate.isLeading && !candidate.isWinner)
-                  Text(
-                    'Лидер',
-                    style: theme.textTheme.labelSmall,
-                  ),
-                if (candidate.canDelete) ...[
-                  const SizedBox(width: 6),
+                if (candidate.canDelete)
                   InkWell(
                     onTap: canDeleteTap
                         ? () => onDelete!(candidate.dateTime)
@@ -258,17 +250,18 @@ class _DateCandidateCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ],
               ],
             ),
+            const SizedBox(height: 6),
+            _CalendarTile(candidate: candidate),
             if (candidate.isOwnerPriorityChoice) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Выбор создателя',
                 style: theme.textTheme.labelMedium,
               ),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _ActionChip(
               label: _buildActionLabel(),
               enabled: actionEnabled,
