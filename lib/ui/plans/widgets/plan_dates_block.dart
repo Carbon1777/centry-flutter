@@ -185,6 +185,8 @@ class _DateCandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isOwnerPriorityCandidate =
+        !isFinalizedWithWinner && candidate.isAvailableForOwnerChoiceNow;
 
     Color borderColor = theme.dividerColor;
     double borderWidth = 1;
@@ -192,9 +194,8 @@ class _DateCandidateCard extends StatelessWidget {
     if (candidate.isWinner) {
       borderColor = Colors.green;
       borderWidth = 2;
-    } else if (!isFinalizedWithWinner &&
-        candidate.isAvailableForOwnerChoiceNow) {
-      borderColor = Colors.red;
+    } else if (isOwnerPriorityCandidate) {
+      borderColor = Colors.amber;
       borderWidth = 2;
     } else if (!isFinalizedWithWinner && candidate.isUserVotedForThis) {
       borderColor = theme.colorScheme.primary;
@@ -207,6 +208,8 @@ class _DateCandidateCard extends StatelessWidget {
     final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
     final actionEnabled = actionTap != null;
     final shouldShowActionChip = actionEnabled;
+    final isPriorityAction =
+        !candidate.isWinner && candidate.isAvailableForOwnerChoiceNow;
 
     const overlayLeftInset = 6.0;
     const overlayRightInset = 0.0;
@@ -261,34 +264,44 @@ class _DateCandidateCard extends StatelessWidget {
                               size: 28,
                               color: Colors.amber,
                             )
-                          : candidate.canDelete
-                              ? InkWell(
-                                  onTap: canDeleteTap
-                                      ? () => onDelete!(candidate.dateTime)
-                                      : null,
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(1),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 32,
-                                      color: canDeleteTap
-                                          ? Colors.redAccent
-                                          : Colors.redAccent.withOpacity(0.45),
-                                    ),
-                                  ),
+                          : candidate.isOwnerPriorityChoice
+                              ? const Icon(
+                                  Icons.flag_rounded,
+                                  size: 26,
+                                  color: Colors.amber,
                                 )
-                              : null,
+                              : candidate.canDelete
+                                  ? InkWell(
+                                      onTap: canDeleteTap
+                                          ? () => onDelete!(candidate.dateTime)
+                                          : null,
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(1),
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 32,
+                                          color: canDeleteTap
+                                              ? Colors.redAccent
+                                              : Colors.redAccent
+                                                  .withOpacity(0.45),
+                                        ),
+                                      ),
+                                    )
+                                  : null,
                     ),
                   ),
                 ),
               ],
             ),
-            if (candidate.isOwnerPriorityChoice) ...[
+            if (candidate.isOwnerPriorityChoice && !candidate.isWinner) ...[
               const SizedBox(height: 6),
               Text(
-                'Выбор создателя',
-                style: theme.textTheme.labelMedium,
+                'Приоритет создателя',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: Colors.amber,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
             if (shouldShowActionChip) ...[
@@ -297,6 +310,7 @@ class _DateCandidateCard extends StatelessWidget {
                 label: _buildActionLabel(),
                 enabled: actionEnabled,
                 onTap: actionTap,
+                isPriority: isPriorityAction,
               ),
             ],
           ],
@@ -307,23 +321,27 @@ class _DateCandidateCard extends StatelessWidget {
 
   Future<void> Function()? _resolvePrimaryAction() {
     if (candidate.isWinner) return null;
-    if (candidate.canUnvote && onUnvote != null) {
-      return () => onUnvote!(candidate.dateTime);
-    }
-    if (candidate.canVote && onVote != null) {
-      return () => onVote!(candidate.dateTime);
-    }
+
     if (candidate.isAvailableForOwnerChoiceNow &&
         onChooseOwnerPriority != null) {
       return () => onChooseOwnerPriority!(candidate.dateTime);
     }
+
+    if (candidate.canUnvote && onUnvote != null) {
+      return () => onUnvote!(candidate.dateTime);
+    }
+
+    if (candidate.canVote && onVote != null) {
+      return () => onVote!(candidate.dateTime);
+    }
+
     return null;
   }
 
   String _buildActionLabel() {
+    if (candidate.isAvailableForOwnerChoiceNow) return 'Приоритет';
     if (candidate.canUnvote) return 'Снять';
     if (candidate.canVote) return 'Выбрать';
-    if (candidate.isAvailableForOwnerChoiceNow) return 'Выбрать';
     if (ownerChoiceModeActive && !candidate.isAvailableForOwnerChoiceNow) {
       return 'Недоступно';
     }
@@ -452,16 +470,20 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final bool enabled;
   final Future<void> Function()? onTap;
+  final bool isPriority;
 
   const _ActionChip({
     required this.label,
     required this.enabled,
     required this.onTap,
+    this.isPriority = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final activeColor = isPriority ? Colors.amber : theme.colorScheme.primary;
+    final disabledColor = theme.disabledColor;
 
     return InkWell(
       onTap: (!enabled || onTap == null) ? null : () => onTap!(),
@@ -472,14 +494,18 @@ class _ActionChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: enabled
-              ? theme.colorScheme.primary.withOpacity(0.12)
-              : theme.disabledColor.withOpacity(0.12),
+              ? activeColor.withOpacity(0.16)
+              : disabledColor.withOpacity(0.12),
+          border: enabled && isPriority
+              ? Border.all(color: Colors.amber.withOpacity(0.65))
+              : null,
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
           style: theme.textTheme.labelLarge?.copyWith(
-            color: enabled ? theme.colorScheme.primary : theme.disabledColor,
+            color: enabled ? activeColor : disabledColor,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
