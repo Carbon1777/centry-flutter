@@ -144,7 +144,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         if (snapshot.postDeadlineGraceActive)
           Text(
             'Голосование завершено. Победитель пока не определен.',
@@ -153,11 +153,6 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
         else if (snapshot.ownerChoiceModeActive)
           Text(
             'Доступен приоритетный выбор создателя.',
-            style: theme.textTheme.bodySmall,
-          )
-        else if (snapshot.isVotingActive)
-          Text(
-            'До конца голосования: ${snapshot.hoursLeftToDeadline} ч.',
             style: theme.textTheme.bodySmall,
           )
         else if (snapshot.candidatesCount < 2)
@@ -216,7 +211,7 @@ class _DateCandidateCard extends StatelessWidget {
     return Opacity(
       opacity: opacity,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
         decoration: BoxDecoration(
           border: Border.all(color: borderColor, width: borderWidth),
           borderRadius: BorderRadius.circular(14),
@@ -224,36 +219,43 @@ class _DateCandidateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Stack(
               children: [
-                Text(
-                  '${candidate.votesCount}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
+                _CalendarTile(candidate: candidate),
+                Positioned(
+                  top: 8,
+                  left: 10,
+                  child: Text(
+                    '${candidate.votesCount}',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-                const Spacer(),
                 if (candidate.canDelete)
-                  InkWell(
-                    onTap: canDeleteTap
-                        ? () => onDelete!(candidate.dateTime)
-                        : null,
-                    borderRadius: BorderRadius.circular(999),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(
-                        Icons.close,
-                        size: 18,
-                        color: canDeleteTap
-                            ? Colors.red
-                            : Colors.red.withOpacity(0.45),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: InkWell(
+                      onTap: canDeleteTap
+                          ? () => onDelete!(candidate.dateTime)
+                          : null,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Padding(
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(
+                          Icons.close,
+                          size: 24,
+                          color: canDeleteTap
+                              ? Colors.red
+                              : Colors.red.withOpacity(0.45),
+                        ),
                       ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 6),
-            _CalendarTile(candidate: candidate),
             if (candidate.isOwnerPriorityChoice) ...[
               const SizedBox(height: 6),
               Text(
@@ -323,7 +325,7 @@ class _CalendarTile extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(6, 28, 6, 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
