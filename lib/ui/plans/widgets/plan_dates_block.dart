@@ -201,6 +201,7 @@ class _DateCandidateCard extends StatelessWidget {
         candidate.canDelete && !actionsDisabled && onDelete != null;
     final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
     final actionEnabled = actionTap != null;
+    final shouldShowActionChip = candidate.isWinner || actionEnabled;
 
     return Opacity(
       opacity: opacity,
@@ -259,12 +260,14 @@ class _DateCandidateCard extends StatelessWidget {
                 style: theme.textTheme.labelMedium,
               ),
             ],
-            const SizedBox(height: 8),
-            _ActionChip(
-              label: _buildActionLabel(),
-              enabled: actionEnabled,
-              onTap: actionTap,
-            ),
+            if (shouldShowActionChip) ...[
+              const SizedBox(height: 8),
+              _ActionChip(
+                label: _buildActionLabel(),
+                enabled: actionEnabled,
+                onTap: actionTap,
+              ),
+            ],
           ],
         ),
       ),
@@ -309,15 +312,10 @@ class _CalendarTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final weekday = candidate.weekdayRu.isNotEmpty
-        ? candidate.weekdayRu
-        : _weekdayRu(candidate.dateTime);
-    final dateLabel = candidate.dateLabel.isNotEmpty
-        ? candidate.dateLabel
-        : _fallbackDateLabel(candidate.dateTime);
-    final timeLabel = candidate.timeLabel.isNotEmpty
-        ? candidate.timeLabel
-        : _fallbackTimeLabel(candidate.dateTime);
+    final local = candidate.dateTime.toLocal();
+    final weekday = _weekdayRu(local);
+    final dateLabel = _fallbackDateLabel(local);
+    final timeLabel = _fallbackTimeLabel(local);
 
     return Container(
       width: double.infinity,
