@@ -62,24 +62,17 @@ abstract class PlansRepository {
     required String placeId,
   });
 
-  /// Проголосовать за дату
+  /// Голосование по дате
   Future<void> votePlanDate({
     required String appUserId,
     required String planId,
     required DateTime dateAt,
   });
 
-  /// Снять свой голос за дату
+  /// Снять голос по дате
   Future<void> unvotePlanDate({
     required String appUserId,
     required String planId,
-  });
-
-  /// Приоритетный выбор owner по дате
-  Future<void> choosePlanDateOwnerPriority({
-    required String appUserId,
-    required String planId,
-    required DateTime dateAt,
   });
 
   /// Добавить место в план
@@ -96,11 +89,24 @@ abstract class PlansRepository {
     required DateTime dateAt,
   });
 
-  /// Удалить дату-кандидат из плана
+  /// Удалить дату из плана
   Future<void> deletePlanDate({
     required String appUserId,
     required String planId,
     required DateTime dateAt,
+  });
+
+  /// Поставить приоритет даты от создателя
+  Future<void> choosePlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
+    required DateTime dateAt,
+  });
+
+  /// Снять приоритет даты от создателя
+  Future<void> clearPlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
   });
 
   /// Выйти из плана

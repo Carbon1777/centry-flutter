@@ -40,7 +40,8 @@ class PlanDetailsDto {
         ? PlanDateVotingDto.fromJson(rawDateVoting)
         : rawDateVoting is Map
             ? PlanDateVotingDto.fromJson(
-                Map<String, dynamic>.from(rawDateVoting))
+                Map<String, dynamic>.from(rawDateVoting),
+              )
             : PlanDateVotingDto.fromLegacy(
                 votingDeadlineAt: plan.votingDeadlineAt,
                 decidedDateAt: plan.decidedDateAt,
@@ -128,7 +129,7 @@ class PlanCoreDto {
   /// server-first count (owner включён)
   final int membersCount;
 
-  /// ✅ server-first permission: показывать ли кнопку "Добавить участника"
+  /// server-first permission: показывать ли кнопку "Добавить участника"
   final bool canAddMembers;
 
   final DateTime createdAt;
@@ -210,11 +211,11 @@ class PlanMemberDto {
   final bool canAddFriend;
   final bool canRemoveMember;
 
-  /// ✅ server-first: backend must provide this
+  /// server-first: backend must provide this
   /// true when member.app_user_id == p_app_user_id in get_plan_details_v1
   final bool isMe;
 
-  /// ✅ server-first relationship flags (relative to текущему пользователю)
+  /// server-first relationship flags (relative to текущему пользователю)
   /// - isFriend: уже друзья (иконки Add friend быть не должно)
   /// - hasPendingFriendRequest: есть активный pending friend request (иконка есть, но disabled)
   ///
@@ -336,6 +337,7 @@ class PlanDateVotingDto {
             canVote: false,
             canUnvote: false,
             canDelete: false,
+            canClearOwnerPriority: false,
             positionIndex: entry.key,
           ),
         )
@@ -376,6 +378,7 @@ class PlanDateVotingCandidateDto {
   final bool canVote;
   final bool canUnvote;
   final bool canDelete;
+  final bool canClearOwnerPriority;
   final int positionIndex;
 
   PlanDateVotingCandidateDto({
@@ -396,6 +399,7 @@ class PlanDateVotingCandidateDto {
     required this.canVote,
     required this.canUnvote,
     required this.canDelete,
+    required this.canClearOwnerPriority,
     required this.positionIndex,
   });
 
@@ -427,6 +431,7 @@ class PlanDateVotingCandidateDto {
       canVote: _asBool(json['can_vote']),
       canUnvote: _asBool(json['can_unvote']),
       canDelete: _asBool(json['can_delete']),
+      canClearOwnerPriority: _asBool(json['can_clear_owner_priority']),
       positionIndex: _asInt(json['position_index']),
     );
   }
