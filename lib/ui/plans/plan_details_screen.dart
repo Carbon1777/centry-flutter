@@ -49,6 +49,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   Timer? _liveRefreshTimer;
   bool _liveRefreshInFlight = false;
 
+
   String _humanizeError(Object e) {
     return _userMessageForError(e);
   }
@@ -140,6 +141,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     _liveRefreshTimer = null;
   }
 
+
   String _userMessageForError(Object e) {
     // Server-first UX: never show raw backend exceptions to the user.
     if (e is PostgrestException) {
@@ -148,9 +150,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       final msg = e.message.toString().toLowerCase();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied = code == 'P0001' ||
-          msg.contains('access denied') ||
-          details.contains('access denied');
+      final isAccessDenied =
+          code == 'P0001' || msg.contains('access denied') || details.contains('access denied');
 
       if (isAccessDenied) {
         return 'План больше недоступен или у вас нет доступа.';
@@ -234,18 +235,11 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         visible: newValue,
       );
 
-      await showCenterToast(
-        context,
-        message: newValue ? 'Видим' : 'Не видим',
-      );
+      await showCenterToast(context, message: newValue ? 'Видим' : 'Не видим');
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _visibilityLoading = false);
@@ -328,11 +322,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -359,11 +349,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await showCenterToast(context, message: 'Участник удалён');
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
       rethrow;
     } finally {
       if (mounted) {
@@ -406,19 +392,14 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await showCenterToast(context, message: 'Приглашение отправлено');
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
       }
     }
   }
-
-  Future<void> _editTitle() async {
+Future<void> _editTitle() async {
     if (_details == null) return;
     final plan = _details!.plan;
     if (!_canEditTitle(plan)) return;
@@ -468,11 +449,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     }
   }
 
@@ -563,11 +540,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     }
   }
 
@@ -591,42 +564,132 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       await _load(showSpinner: false);
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
-      );
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     }
   }
 
   Future<void> _addPlanDateCandidate() async {
     if (_details == null || _actionLoading) return;
 
-    final plan = _details!.plan;
     final picked = await _pickDateTime();
-
     if (picked == null) return;
 
     setState(() => _actionLoading = true);
-
     try {
       await widget.repository.addPlanDate(
         appUserId: widget.appUserId,
-        planId: plan.id,
+        planId: widget.planId,
         dateAt: picked,
       );
-
       await _load(showSpinner: false);
-
       if (!mounted) return;
       await showCenterToast(context, message: 'Дата добавлена');
     } catch (e) {
       if (!mounted) return;
-      await showCenterToast(
-        context,
-        message: _humanizeError(e),
-        isError: true,
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _votePlanDate(DateTime dateAt) async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.votePlanDate(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+        dateAt: dateAt,
       );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _unvotePlanDate(DateTime _) async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.unvotePlanDate(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _deletePlanDate(DateTime dateAt) async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.deletePlanDate(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+        dateAt: dateAt,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _choosePlanDateOwnerPriority(DateTime dateAt) async {
+    if (_details == null || _actionLoading) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Подтвердите выбор'),
+        content: Text(formatPlanDateTime(dateAt)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.choosePlanDateOwnerPriority(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+        dateAt: dateAt,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
     } finally {
       if (mounted) {
         setState(() => _actionLoading = false);
@@ -845,6 +908,10 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onEditDescription: _editDescription,
                   onEditDeadline: _editVotingDeadline,
                   onAddDateCandidate: _addPlanDateCandidate,
+                  onVoteDate: _votePlanDate,
+                  onUnvoteDate: _unvotePlanDate,
+                  onDeleteDate: _deletePlanDate,
+                  onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
                   onRemoveMember: _removeMemberDirect,
                   onCreateInvite: _createInvite,
                   onAddByPublicId: _addMemberByPublicId,
@@ -868,6 +935,10 @@ class _Body extends StatelessWidget {
   final VoidCallback onEditDescription;
   final VoidCallback onEditDeadline;
   final Future<void> Function() onAddDateCandidate;
+  final Future<void> Function(DateTime dateAt) onVoteDate;
+  final Future<void> Function(DateTime dateAt) onUnvoteDate;
+  final Future<void> Function(DateTime dateAt) onDeleteDate;
+  final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
 
   final Future<String> Function() onCreateInvite;
@@ -889,6 +960,10 @@ class _Body extends StatelessWidget {
     required this.onEditDescription,
     required this.onEditDeadline,
     required this.onAddDateCandidate,
+    required this.onVoteDate,
+    required this.onUnvoteDate,
+    required this.onDeleteDate,
+    required this.onChooseOwnerPriorityDate,
     required this.onRemoveMember,
     required this.onCreateInvite,
     required this.onAddByPublicId,
@@ -1018,8 +1093,7 @@ class _Body extends StatelessWidget {
         InkWell(
           onTap: () {
             if (details.ownerMember == null) return;
-            final isArchiveReadOnly =
-                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+            final isArchiveReadOnly = details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
             showDialog(
               context: context,
               builder: (dialogContext) => PlanMembersModal(
@@ -1077,6 +1151,10 @@ class _Body extends StatelessWidget {
           items: details.dateCandidates,
           dateVoting: details.dateVoting,
           onAddCandidate: onAddDateCandidate,
+          onVote: onVoteDate,
+          onUnvote: onUnvoteDate,
+          onDelete: onDeleteDate,
+          onChooseOwnerPriority: onChooseOwnerPriorityDate,
           actionsDisabled: actionsDisabled,
         ),
         const SizedBox(height: 10),
@@ -1201,10 +1279,7 @@ class _ErrorState extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Повторить'),
-            ),
+            ElevatedButton(onPressed: onRetry, child: const Text('Повторить')),
           ],
         ),
       ),
