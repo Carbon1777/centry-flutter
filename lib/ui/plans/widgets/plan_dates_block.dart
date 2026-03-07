@@ -330,7 +330,10 @@ class _CalendarTile extends StatelessWidget {
             weekday,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
+            style: theme.textTheme.labelSmall?.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
@@ -342,8 +345,8 @@ class _CalendarTile extends StatelessWidget {
                 dateLabel,
                 maxLines: 1,
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -354,7 +357,10 @@ class _CalendarTile extends StatelessWidget {
             timeLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -467,19 +473,19 @@ String _fallbackTimeLabel(DateTime value) {
 String _weekdayRu(DateTime value) {
   switch (value.weekday) {
     case DateTime.monday:
-      return 'Понедельник';
+      return 'Пн';
     case DateTime.tuesday:
-      return 'Вторник';
+      return 'Вт';
     case DateTime.wednesday:
-      return 'Среда';
+      return 'Ср';
     case DateTime.thursday:
-      return 'Четверг';
+      return 'Чт';
     case DateTime.friday:
-      return 'Пятница';
+      return 'Пт';
     case DateTime.saturday:
-      return 'Суббота';
+      return 'Сб';
     case DateTime.sunday:
-      return 'Воскресенье';
+      return 'Вс';
   }
   return '';
 }
