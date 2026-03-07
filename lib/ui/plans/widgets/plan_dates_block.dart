@@ -232,8 +232,8 @@ class _DateCandidateCard extends StatelessWidget {
                 ),
                 if (candidate.canDelete)
                   Positioned(
-                    top: -4,
-                    right: -4,
+                    top: 4,
+                    right: 6,
                     child: InkWell(
                       onTap: canDeleteTap
                           ? () => onDelete!(candidate.dateTime)
@@ -331,7 +331,7 @@ class _CalendarTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelSmall?.copyWith(
-              fontSize: 13,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
             ),
             textAlign: TextAlign.center,
