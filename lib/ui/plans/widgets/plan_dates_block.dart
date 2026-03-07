@@ -203,7 +203,8 @@ class _DateCandidateCard extends StatelessWidget {
     final actionEnabled = actionTap != null;
     final shouldShowActionChip = candidate.isWinner || actionEnabled;
 
-    const overlayInset = 6.0;
+    const overlayLeftInset = 6.0;
+    const overlayRightInset = 0.0;
     const overlayTop = 4.0;
     const overlayBoxSize = 34.0;
 
@@ -224,7 +225,7 @@ class _DateCandidateCard extends StatelessWidget {
                 _CalendarTile(candidate: candidate),
                 Positioned(
                   top: overlayTop,
-                  left: overlayInset,
+                  left: overlayLeftInset,
                   child: SizedBox(
                     width: overlayBoxSize,
                     height: overlayBoxSize,
@@ -244,7 +245,7 @@ class _DateCandidateCard extends StatelessWidget {
                 if (candidate.canDelete)
                   Positioned(
                     top: overlayTop,
-                    right: overlayInset,
+                    right: overlayRightInset,
                     child: SizedBox(
                       width: overlayBoxSize,
                       height: overlayBoxSize,
