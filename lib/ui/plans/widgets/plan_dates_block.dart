@@ -203,6 +203,10 @@ class _DateCandidateCard extends StatelessWidget {
     final actionEnabled = actionTap != null;
     final shouldShowActionChip = candidate.isWinner || actionEnabled;
 
+    const overlayInset = 6.0;
+    const overlayTop = 4.0;
+    const overlayBoxSize = 34.0;
+
     return Opacity(
       opacity: opacity,
       child: Container(
@@ -219,13 +223,13 @@ class _DateCandidateCard extends StatelessWidget {
               children: [
                 _CalendarTile(candidate: candidate),
                 Positioned(
-                  top: 4,
-                  left: 4,
+                  top: overlayTop,
+                  left: overlayInset,
                   child: SizedBox(
-                    width: 34,
-                    height: 34,
+                    width: overlayBoxSize,
+                    height: overlayBoxSize,
                     child: Align(
-                      alignment: Alignment.topLeft,
+                      alignment: Alignment.centerLeft,
                       child: Text(
                         '${candidate.votesCount}',
                         style: theme.textTheme.headlineMedium?.copyWith(
@@ -239,13 +243,13 @@ class _DateCandidateCard extends StatelessWidget {
                 ),
                 if (candidate.canDelete)
                   Positioned(
-                    top: 4,
-                    right: 4,
+                    top: overlayTop,
+                    right: overlayInset,
                     child: SizedBox(
-                      width: 34,
-                      height: 34,
+                      width: overlayBoxSize,
+                      height: overlayBoxSize,
                       child: Align(
-                        alignment: Alignment.topRight,
+                        alignment: Alignment.centerRight,
                         child: InkWell(
                           onTap: canDeleteTap
                               ? () => onDelete!(candidate.dateTime)
