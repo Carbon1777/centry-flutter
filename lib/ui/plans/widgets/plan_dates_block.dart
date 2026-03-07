@@ -330,9 +330,9 @@ class _CalendarTile extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -341,19 +341,31 @@ class _CalendarTile extends StatelessWidget {
             weekday,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall,
+            style: theme.textTheme.labelSmall?.copyWith(fontSize: 11),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
-          Text(
-            dateLabel,
-            style: theme.textTheme.titleMedium,
-            textAlign: TextAlign.center,
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                dateLabel,
+                maxLines: 1,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             timeLabel,
-            style: theme.textTheme.bodyMedium,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -435,8 +447,8 @@ class _ActionChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: enabled
-              ? theme.colorScheme.primary.withValues(alpha: 0.12)
-              : theme.disabledColor.withValues(alpha: 0.12),
+              ? theme.colorScheme.primary.withOpacity(0.12)
+              : theme.disabledColor.withOpacity(0.12),
         ),
         child: Text(
           label,
