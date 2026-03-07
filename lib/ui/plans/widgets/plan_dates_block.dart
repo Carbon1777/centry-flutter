@@ -11,6 +11,7 @@ class PlanDatesBlock extends StatelessWidget {
   final Future<void> Function(DateTime dateAt)? onUnvote;
   final Future<void> Function(DateTime dateAt)? onDelete;
   final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final Future<void> Function()? onClearOwnerPriority;
   final Future<void> Function()? onAddCandidate;
 
   final bool actionsDisabled;
@@ -23,6 +24,7 @@ class PlanDatesBlock extends StatelessWidget {
     this.onUnvote,
     this.onDelete,
     this.onChooseOwnerPriority,
+    this.onClearOwnerPriority,
     this.onAddCandidate,
     this.actionsDisabled = false,
   });
@@ -37,6 +39,7 @@ class PlanDatesBlock extends StatelessWidget {
         onUnvote: onUnvote,
         onDelete: onDelete,
         onChooseOwnerPriority: onChooseOwnerPriority,
+        onClearOwnerPriority: onClearOwnerPriority,
         onAddCandidate: onAddCandidate,
         actionsDisabled: actionsDisabled,
       );
@@ -73,6 +76,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
   final Future<void> Function(DateTime dateAt)? onUnvote;
   final Future<void> Function(DateTime dateAt)? onDelete;
   final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final Future<void> Function()? onClearOwnerPriority;
   final Future<void> Function()? onAddCandidate;
   final bool actionsDisabled;
 
@@ -82,6 +86,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
     required this.onUnvote,
     required this.onDelete,
     required this.onChooseOwnerPriority,
+    required this.onClearOwnerPriority,
     required this.onAddCandidate,
     required this.actionsDisabled,
   });
@@ -90,6 +95,27 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
+    final hasOwnerPriorityChoice = snapshot.candidates.any(
+      (c) => c.isOwnerPriorityChoice,
+    );
+
+    TextStyle? helperStyle = theme.textTheme.bodySmall;
+    String? helperText;
+
+    if (snapshot.postDeadlineGraceActive) {
+      helperText = 'Голосование завершено. Победитель пока не определен.';
+    } else if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
+      helperText = 'Создатель поставил свой приоритет.';
+      helperStyle = theme.textTheme.bodySmall?.copyWith(
+        color: Colors.amber,
+        fontWeight: FontWeight.w700,
+      );
+    } else if (snapshot.ownerChoiceModeActive) {
+      helperText = 'Доступен приоритетный выбор создателя.';
+    } else if (snapshot.candidatesCount < 2) {
+      helperText =
+          'Голосование станет доступно, когда появится минимум 2 даты.';
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,11 +133,13 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
                   child: _DateCandidateCard(
                     candidate: candidate,
                     ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+                    hasOwnerPriorityChoice: hasOwnerPriorityChoice,
                     isFinalizedWithWinner: isFinalizedWithWinner,
                     onVote: onVote,
                     onUnvote: onUnvote,
                     onDelete: onDelete,
                     onChooseOwnerPriority: onChooseOwnerPriority,
+                    onClearOwnerPriority: onClearOwnerPriority,
                     actionsDisabled: actionsDisabled,
                   ),
                 );
@@ -140,22 +168,10 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 10),
-        if (snapshot.postDeadlineGraceActive)
-          Text(
-            'Голосование завершено. Победитель пока не определен.',
-            style: theme.textTheme.bodySmall,
-          )
-        else if (snapshot.ownerChoiceModeActive)
-          Text(
-            'Доступен приоритетный выбор создателя.',
-            style: theme.textTheme.bodySmall,
-          )
-        else if (snapshot.candidatesCount < 2)
-          Text(
-            'Голосование станет доступно, когда появится минимум 2 даты.',
-            style: theme.textTheme.bodySmall,
-          ),
+        if (helperText != null) ...[
+          const SizedBox(height: 10),
+          Text(helperText, style: helperStyle),
+        ],
       ],
     );
   }
@@ -164,29 +180,34 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
 class _DateCandidateCard extends StatelessWidget {
   final PlanDateVotingCandidateDto candidate;
   final bool ownerChoiceModeActive;
+  final bool hasOwnerPriorityChoice;
   final bool isFinalizedWithWinner;
   final Future<void> Function(DateTime dateAt)? onVote;
   final Future<void> Function(DateTime dateAt)? onUnvote;
   final Future<void> Function(DateTime dateAt)? onDelete;
   final Future<void> Function(DateTime dateAt)? onChooseOwnerPriority;
+  final Future<void> Function()? onClearOwnerPriority;
   final bool actionsDisabled;
 
   const _DateCandidateCard({
     required this.candidate,
     required this.ownerChoiceModeActive,
+    required this.hasOwnerPriorityChoice,
     required this.isFinalizedWithWinner,
     required this.onVote,
     required this.onUnvote,
     required this.onDelete,
     required this.onChooseOwnerPriority,
+    required this.onClearOwnerPriority,
     required this.actionsDisabled,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isOwnerPriorityCandidate =
-        !isFinalizedWithWinner && candidate.isAvailableForOwnerChoiceNow;
+    final isOwnerPriorityCandidate = !isFinalizedWithWinner &&
+        ownerChoiceModeActive &&
+        candidate.isAvailableForOwnerChoiceNow;
 
     Color borderColor = theme.dividerColor;
     double borderWidth = 1;
@@ -197,7 +218,10 @@ class _DateCandidateCard extends StatelessWidget {
     } else if (isOwnerPriorityCandidate) {
       borderColor = Colors.amber;
       borderWidth = 2;
-    } else if (!isFinalizedWithWinner && candidate.isUserVotedForThis) {
+    } else if (!isFinalizedWithWinner &&
+        !ownerChoiceModeActive &&
+        !hasOwnerPriorityChoice &&
+        candidate.isUserVotedForThis) {
       borderColor = theme.colorScheme.primary;
       borderWidth = 2;
     }
@@ -208,8 +232,8 @@ class _DateCandidateCard extends StatelessWidget {
     final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
     final actionEnabled = actionTap != null;
     final shouldShowActionChip = actionEnabled;
-    final isPriorityAction =
-        !candidate.isWinner && candidate.isAvailableForOwnerChoiceNow;
+    final isPriorityAction = candidate.canClearOwnerPriority ||
+        candidate.isAvailableForOwnerChoiceNow;
 
     const overlayLeftInset = 6.0;
     const overlayRightInset = 0.0;
@@ -294,16 +318,6 @@ class _DateCandidateCard extends StatelessWidget {
                 ),
               ],
             ),
-            if (candidate.isOwnerPriorityChoice && !candidate.isWinner) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Приоритет создателя',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: Colors.amber,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
             if (shouldShowActionChip) ...[
               const SizedBox(height: 8),
               _ActionChip(
@@ -322,6 +336,10 @@ class _DateCandidateCard extends StatelessWidget {
   Future<void> Function()? _resolvePrimaryAction() {
     if (candidate.isWinner) return null;
 
+    if (candidate.canClearOwnerPriority && onClearOwnerPriority != null) {
+      return () => onClearOwnerPriority!();
+    }
+
     if (candidate.isAvailableForOwnerChoiceNow &&
         onChooseOwnerPriority != null) {
       return () => onChooseOwnerPriority!(candidate.dateTime);
@@ -339,6 +357,7 @@ class _DateCandidateCard extends StatelessWidget {
   }
 
   String _buildActionLabel() {
+    if (candidate.canClearOwnerPriority) return 'Снять';
     if (candidate.isAvailableForOwnerChoiceNow) return 'Приоритет';
     if (candidate.canUnvote) return 'Снять';
     if (candidate.canVote) return 'Выбрать';
