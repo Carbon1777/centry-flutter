@@ -23,6 +23,7 @@ import 'package:centry/features/places/filters/places_filters_dialog.dart';
 import 'package:centry/features/places/map/places_map.dart';
 import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/add_place/add_place_dialog.dart';
+import 'package:centry/ui/common/center_toast.dart';
 
 enum PlacesViewMode {
   list,
@@ -330,7 +331,6 @@ class _PlacesListState extends State<_PlacesList> {
       setState(() => _searchLoading = true);
 
       try {
-        // IMPORTANT: suggestions are real titles from DB, ranked server-side.
         final items = await widget.repository.loadPlaceSearchSuggestions(
           query: q,
           limit: 25,
@@ -338,7 +338,6 @@ class _PlacesListState extends State<_PlacesList> {
 
         if (!mounted) return;
 
-        // Ignore stale response if text changed while awaiting.
         if (_searchController.text.trim() != q) {
           setState(() => _searchLoading = false);
           return;
@@ -535,10 +534,9 @@ class _PlacesListState extends State<_PlacesList> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Место отправлено на модерацию.'),
-        ),
+      await showCenterToast(
+        context,
+        message: 'Место отправлено на модерацию.',
       );
     } catch (error) {
       if (kDebugMode) {
@@ -547,10 +545,10 @@ class _PlacesListState extends State<_PlacesList> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_extractServerErrorMessage(error)),
-        ),
+      await showCenterToast(
+        context,
+        message: _extractServerErrorMessage(error),
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -627,8 +625,6 @@ class _PlacesListState extends State<_PlacesList> {
             ],
           ),
         ),
-
-        // Suggestions panel (non-intrusive, above list)
         if (_searchLoading)
           Align(
             alignment: Alignment.centerLeft,
@@ -641,7 +637,6 @@ class _PlacesListState extends State<_PlacesList> {
               ),
             ),
           ),
-
         if (!_searchLoading && _suggestions.isNotEmpty)
           Container(
             margin: const EdgeInsets.only(top: 8),
@@ -686,8 +681,6 @@ class _PlacesListState extends State<_PlacesList> {
 
   @override
   Widget build(BuildContext context) {
-    // IMPORTANT:
-    // Search block must NOT scroll with the list. List below scrolls/paginates.
     return Stack(
       children: [
         Padding(
@@ -847,7 +840,6 @@ class PlaceCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ==== LEFT: IMAGE + RATING ====
             SizedBox(
               width: 72,
               child: Column(
@@ -906,8 +898,6 @@ class PlaceCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-
-                  // ⭐ RATING
                   if (place.dto.rating != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -930,16 +920,12 @@ class PlaceCard extends StatelessWidget {
                 ],
               ),
             ),
-
             const SizedBox(width: 12),
-
-            // ==== RIGHT: TEXT BLOCK ====
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Title + Map link
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -962,8 +948,6 @@ class PlaceCard extends StatelessWidget {
                       ),
                     ],
                   ),
-
-                  // Distance
                   if (place.distanceLabel != null)
                     Text(
                       place.distanceLabel!,
@@ -974,10 +958,7 @@ class PlaceCard extends StatelessWidget {
                         height: 1.0,
                       ),
                     ),
-
                   const SizedBox(height: 2),
-
-                  // Type
                   Text(
                     place.typeLabel,
                     style: Theme.of(context)
@@ -985,10 +966,7 @@ class PlaceCard extends StatelessWidget {
                         .bodySmall
                         ?.copyWith(color: Colors.grey),
                   ),
-
                   const SizedBox(height: 2),
-
-                  // City + Area
                   Text(
                     place.areaName != null
                         ? '${place.cityName} · ${place.areaName}'
@@ -998,10 +976,7 @@ class PlaceCard extends StatelessWidget {
                         .bodySmall
                         ?.copyWith(color: Colors.grey.shade500),
                   ),
-
                   const SizedBox(height: 2),
-
-                  // Metro + Details
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
