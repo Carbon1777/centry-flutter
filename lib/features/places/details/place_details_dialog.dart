@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/places/places_repository.dart';
 import '../../profile/profile_email_modal.dart';
+import 'add_place_to_plan_modal.dart';
 
 class PlaceDetailsDialog extends StatefulWidget {
   final PlacesRepository repository;
@@ -50,19 +51,17 @@ class PlaceDetailsDialog extends StatefulWidget {
 class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   bool _loading = true;
   bool _voting = false;
-  bool _hasChanged = false; // ✅ добавлено
+  bool _hasChanged = false;
 
   bool _savingSaved = false;
   bool _savedByMe = false;
+  bool _addingToPlan = false;
 
   int _likes = 0;
   int _dislikes = 0;
   int _myVote = 0;
   double? _rating;
 
-  // ==========================
-  // META (content only)
-  // ==========================
   String? _metaCityName;
   String? _metaAreaName;
   String? _metaAddress;
@@ -107,7 +106,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       debugPrint('[PlaceDetailsDialog] initState placeId=${widget.placeId}');
     }
 
-    // 🔎 DEBUG SNAPSHOT
     Future.microtask(() async {
       final snapshot = await UserSnapshotStorage().read();
       debugPrint(
@@ -183,13 +181,13 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
       if (goRegister != true) return;
 
-      // Snapshot is required to bootstrap the upgrade flow (Guest → User).
       final s = snapshot;
       if (s == null) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Не удалось открыть регистрацию: нет snapshot')),
+            content: Text('Не удалось открыть регистрацию: нет snapshot'),
+          ),
         );
         return;
       }
@@ -203,10 +201,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
             'public_id': s.publicId,
             'nickname': s.nickname,
           },
-          onUpgradeSuccess: () {
-            // Do not mutate business state here.
-            // We will re-read snapshot after the modal closes and then proceed.
-          },
+          onUpgradeSuccess: () {},
         ),
       );
 
@@ -235,7 +230,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     try {
       await widget.repository.toggleSavedPlace(widget.placeId);
 
-      // Canonical refetch of details (server is the source of truth).
       final result = await widget.repository.getPlaceDetails(
         placeId: widget.placeId,
       );
@@ -267,11 +261,9 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   }
 
   Future<void> _ensureSavedAfterUpgrade() async {
-    // After magic-link upgrade we must refetch canonical details and ensure "saved" is applied once.
     await _loadDetails();
     if (!mounted) return;
 
-    // If already saved (e.g. previous attempt succeeded) — do nothing.
     if (_savedByMe) return;
 
     await _toggleSavedCanonical();
@@ -310,6 +302,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       if (!mounted) return;
 
       dynamic asString(dynamic v) => v == null ? null : v.toString();
+
       int? asIntNullable(dynamic v) {
         if (v == null) return null;
         if (v is int) return v;
@@ -325,7 +318,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
           if (s != null && s.isNotEmpty) phones.add(s);
         }
       } else if (phonesRaw is Map) {
-        // tolerate shapes like {items:[...]} or {phones:[...]}
         final items = phonesRaw['items'] ?? phonesRaw['phones'];
         if (items is List) {
           for (final e in items) {
@@ -341,7 +333,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         metroName = asString(metroRaw['name']);
       }
 
-      // photos: take first as preview if present
       String? previewKey;
       bool? previewPlaceholder;
       final photosRaw = meta['photos'];
@@ -377,7 +368,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       });
     } catch (e) {
       if (!mounted) return;
-      // meta load failed
       if (kDebugMode) {
         debugPrint('[PlaceDetailsDialog] meta load failed: $e');
       }
@@ -410,7 +400,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         _rating = _asDouble(result['rating']);
         _savedByMe = _asBool(result['saved_by_me']);
         _voting = false;
-        _hasChanged = true; // ✅ фиксируем изменение
+        _hasChanged = true;
       });
     } catch (_) {
       if (!mounted) return;
@@ -443,8 +433,50 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     );
   }
 
+  Future<void> _onAddToPlanPressed() async {
+    if (_loading || _addingToPlan) return;
+
+    setState(() {
+      _addingToPlan = true;
+    });
+
+    try {
+      final result = await AddPlaceToPlanModal.show(
+        context,
+        placeId: widget.placeId,
+      );
+
+      if (!mounted) return;
+
+      if (result == null) {
+        setState(() {
+          _addingToPlan = false;
+        });
+        return;
+      }
+
+      _hasChanged = true;
+      setState(() {
+        _addingToPlan = false;
+      });
+
+      Navigator.of(context).pop(result);
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[PlaceDetailsDialog] add to plan failed: $e');
+        debugPrint('$st');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _addingToPlan = false;
+      });
+    }
+  }
+
   void _close() {
-    Navigator.of(context).pop(_hasChanged); // ✅ возвращаем флаг
+    Navigator.of(context).pop(_hasChanged);
   }
 
   @override
@@ -454,7 +486,9 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Stack(
         children: [
           if (_loading)
@@ -470,271 +504,287 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(20)),
-                  child: AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (_effectivePreviewMediaUrl != null)
-                          Image.network(
-                            _effectivePreviewMediaUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                              return Image.asset(
-                                'assets/images/place_placeholder.png',
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          )
-                        else if (_effectivePreviewStorageKey != null)
-                          Image.network(
-                            Supabase.instance.client.storage
-                                .from('brand-media')
-                                .getPublicUrl(_effectivePreviewStorageKey!),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) {
-                              return Image.asset(
-                                'assets/images/place_placeholder.png',
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          )
-                        else
-                          Image.asset(
-                            'assets/images/place_placeholder.png',
-                            fit: BoxFit.cover,
-                          ),
-                        if (_effectivePreviewIsPlaceholder)
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Text(
-                                'Плейсхолдер. Актуальные фото добавятся позже',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (_effectivePreviewMediaUrl != null)
+                            Image.network(
+                              _effectivePreviewMediaUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) {
+                                return Image.asset(
+                                  'assets/images/place_placeholder.png',
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            )
+                          else if (_effectivePreviewStorageKey != null)
+                            Image.network(
+                              Supabase.instance.client.storage
+                                  .from('brand-media')
+                                  .getPublicUrl(_effectivePreviewStorageKey!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) {
+                                return Image.asset(
+                                  'assets/images/place_placeholder.png',
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            )
+                          else
+                            Image.asset(
+                              'assets/images/place_placeholder.png',
+                              fit: BoxFit.cover,
+                            ),
+                          if (_effectivePreviewIsPlaceholder)
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'Плейсхолдер. Актуальные фото добавятся позже',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                  child: SingleChildScrollView(
-                    child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.typeLabel,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: colors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.title,
-                              style: theme.textTheme.titleMedium,
-                            ),
-                          ),
-                          OutlinedButton(
-                            onPressed: (_loading || _savingSaved)
-                                ? null
-                                : _onSavedPressed,
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              minimumSize: const Size(160, 36),
-                            ),
-                            child: _savingSaved
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : Text(
-                                    _savedByMe
-                                        ? 'Удалить из Моих мест'
-                                        : 'Добавить в Мои места',
-                                  ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-
-                      // ==========================
-                      // INFO (contract order)
-                      // City → Area → Metro → Address → Website → Phone → Rating
-                      // ==========================
-                      if (_effectiveCityName != null &&
-                          _effectiveCityName!.trim().isNotEmpty) ...[
-                        Text(
-                          _effectiveCityName!,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 6),
-                      ],
-
-                      if (_effectiveAreaName != null &&
-                          _effectiveAreaName!.trim().isNotEmpty) ...[
-                        Text(
-                          _effectiveAreaName!,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 6),
-                      ],
-
-                      if (_effectiveMetroName != null &&
-                          _effectiveMetroName!.trim().isNotEmpty) ...[
-                        Text(
-                          'м. ${_effectiveMetroName}${_effectiveMetroDistanceM != null ? " · ${_effectiveMetroDistanceM} м" : ""}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 6),
-                      ],
-
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _effectiveAddress,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.copy_rounded, size: 18),
-                            onPressed: _copyAddress,
-                          ),
-                        ],
-                      ),
-
-                      if (_effectiveWebsiteUrl != null &&
-                          _effectiveWebsiteUrl!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        OutlinedButton(
-                          onPressed: _openWebsite,
-                          child: const Text('Сайт'),
-                        ),
-                      ],
-
-                      if (_effectivePhones.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Column(
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                      child: SingleChildScrollView(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            for (final p in _effectivePhones)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: OutlinedButton(
-                                  onPressed: () async {
-                                    final tel = p.trim();
-                                    if (tel.isEmpty) return;
-                                    final uri = Uri(scheme: 'tel', path: tel);
-                                    await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.externalApplication,
-                                    );
-                                  },
-                                  child: Text(p),
-                                ),
+                            Text(
+                              widget.typeLabel,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w600,
                               ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    widget.title,
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed: (_loading || _savingSaved)
+                                      ? null
+                                      : _onSavedPressed,
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 8,
+                                    ),
+                                    minimumSize: const Size(160, 36),
+                                  ),
+                                  child: _savingSaved
+                                      ? const SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(
+                                          _savedByMe
+                                              ? 'Удалить из Моих мест'
+                                              : 'Добавить в Мои места',
+                                        ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            if (_effectiveCityName != null &&
+                                _effectiveCityName!.trim().isNotEmpty) ...[
+                              Text(
+                                _effectiveCityName!,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            if (_effectiveAreaName != null &&
+                                _effectiveAreaName!.trim().isNotEmpty) ...[
+                              Text(
+                                _effectiveAreaName!,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            if (_effectiveMetroName != null &&
+                                _effectiveMetroName!.trim().isNotEmpty) ...[
+                              Text(
+                                'м. ${_effectiveMetroName}${_effectiveMetroDistanceM != null ? " · ${_effectiveMetroDistanceM} м" : ""}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _effectiveAddress,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.copy_rounded,
+                                    size: 18,
+                                  ),
+                                  onPressed: _copyAddress,
+                                ),
+                              ],
+                            ),
+                            if (_effectiveWebsiteUrl != null &&
+                                _effectiveWebsiteUrl!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              OutlinedButton(
+                                onPressed: _openWebsite,
+                                child: const Text('Сайт'),
+                              ),
+                            ],
+                            if (_effectivePhones.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final p in _effectivePhones)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: OutlinedButton(
+                                        onPressed: () async {
+                                          final tel = p.trim();
+                                          if (tel.isEmpty) return;
+                                          final uri = Uri(
+                                            scheme: 'tel',
+                                            path: tel,
+                                          );
+                                          await launchUrl(
+                                            uri,
+                                            mode:
+                                                LaunchMode.externalApplication,
+                                          );
+                                        },
+                                        child: Text(p),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            Text(
+                              'Рейтинг',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _rating != null
+                                  ? _rating!.toStringAsFixed(1)
+                                  : '—',
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                _Vote(
+                                  icon: Icons.thumb_up_alt_rounded,
+                                  count: _likes,
+                                  active: _myVote == 1,
+                                  activeColor: Colors.green,
+                                  onTap: _canTapVote
+                                      ? () => _vote(_myVote == 1 ? 0 : 1)
+                                      : null,
+                                ),
+                                const SizedBox(width: 16),
+                                _Vote(
+                                  icon: Icons.thumb_down_alt_rounded,
+                                  count: _dislikes,
+                                  active: _myVote == -1,
+                                  activeColor: Colors.redAccent,
+                                  onTap: _canTapVote
+                                      ? () => _vote(_myVote == -1 ? 0 : -1)
+                                      : null,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: (_loading || _addingToPlan)
+                                    ? null
+                                    : _onAddToPlanPressed,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2DD4BF),
+                                  foregroundColor: Colors.black,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: _addingToPlan
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.black,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Добавить в план',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: _openRoute,
+                                    child: const Text('Маршрут'),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-
-                      const SizedBox(height: 6),
-                      Text(
-                        'Рейтинг',
-                        style: theme.textTheme.bodySmall,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _rating != null ? _rating!.toStringAsFixed(1) : '—',
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          _Vote(
-                            icon: Icons.thumb_up_alt_rounded,
-                            count: _likes,
-                            active: _myVote == 1,
-                            activeColor: Colors.green,
-                            onTap: _canTapVote
-                                ? () => _vote(_myVote == 1 ? 0 : 1)
-                                : null,
-                          ),
-                          const SizedBox(width: 16),
-                          _Vote(
-                            icon: Icons.thumb_down_alt_rounded,
-                            count: _dislikes,
-                            active: _myVote == -1,
-                            activeColor: Colors.redAccent,
-                            onTap: _canTapVote
-                                ? () => _vote(_myVote == -1 ? 0 : -1)
-                                : null,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {},
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2DD4BF),
-                            foregroundColor: Colors.black,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Добавить в план',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _openRoute,
-                              child: const Text('Маршрут'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                  ),
-                ),
-                ),
                 ],
               ),
             ),
@@ -747,7 +797,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
               child: IconButton(
                 icon: const Icon(Icons.close),
                 color: Colors.white,
-                onPressed: _close, // ✅ изменено
+                onPressed: _close,
               ),
             ),
           ),
