@@ -1,17 +1,17 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/geo/geo_service.dart';
+import '../../data/local/user_snapshot_storage.dart';
 import '../../data/places/place_dto.dart';
 import '../../data/places/places_feed_result.dart';
 import '../../data/places/places_repository.dart';
 import '../../data/places/places_repository_impl.dart';
+import '../../data/plans/plans_repository_impl.dart';
 import 'package:centry/features/places/geo_info/places_geo_info_controller.dart';
 import 'package:centry/features/places/geo_info/places_geo_info_dialog.dart';
 
@@ -21,9 +21,10 @@ import 'package:centry/features/places/filters/places_filters_dialog.dart';
 
 // КАРТА
 import 'package:centry/features/places/map/places_map.dart';
+import 'package:centry/features/places/details/add_place_to_plan_modal.dart';
 import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/add_place/add_place_dialog.dart';
-import 'package:centry/ui/common/center_toast.dart';
+import 'package:centry/ui/plans/plan_details_screen.dart';
 
 enum PlacesViewMode {
   list,
@@ -239,11 +240,9 @@ class _PlacesList extends StatefulWidget {
 
 class _PlacesListState extends State<_PlacesList> {
   static const int _pageSize = 20;
-  static const String _userSnapshotStorageKey = 'user_snapshot';
 
   final List<PlaceUiModel> _places = [];
   final ScrollController _scrollController = ScrollController();
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   // SEARCH UI (server-driven)
   final TextEditingController _searchController = TextEditingController();
@@ -260,8 +259,6 @@ class _PlacesListState extends State<_PlacesList> {
   bool _loading = false;
   bool _hasMore = true;
   int _offset = 0;
-
-  bool _creatingPlaceSubmission = false;
 
   @override
   void initState() {
@@ -331,6 +328,7 @@ class _PlacesListState extends State<_PlacesList> {
       setState(() => _searchLoading = true);
 
       try {
+        // IMPORTANT: suggestions are real titles from DB, ranked server-side.
         final items = await widget.repository.loadPlaceSearchSuggestions(
           query: q,
           limit: 25,
@@ -338,6 +336,7 @@ class _PlacesListState extends State<_PlacesList> {
 
         if (!mounted) return;
 
+        // Ignore stale response if text changed while awaiting.
         if (_searchController.text.trim() != q) {
           setState(() => _searchLoading = false);
           return;
@@ -434,149 +433,57 @@ class _PlacesListState extends State<_PlacesList> {
   }
 
   Future<String> _resolveCurrentAppUserId() async {
-    final rawSnapshot = await _secureStorage.read(key: _userSnapshotStorageKey);
-    if (rawSnapshot != null && rawSnapshot.isNotEmpty) {
-      try {
-        final json = jsonDecode(rawSnapshot) as Map<String, dynamic>;
-        final snapshotUserId = json['id']?.toString();
-
-        if (snapshotUserId != null && snapshotUserId.isNotEmpty) {
-          return snapshotUserId;
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('PLACES user_snapshot parse error: $e');
-        }
-      }
+    final snapshot = await UserSnapshotStorage().read();
+    if (snapshot != null && snapshot.id.trim().isNotEmpty) {
+      return snapshot.id;
     }
 
     final authUserId = Supabase.instance.client.auth.currentUser?.id;
-    if (authUserId != null && authUserId.isNotEmpty) {
-      final row = await Supabase.instance.client
-          .from('app_users')
-          .select('id')
-          .eq('auth_user_id', authUserId)
-          .maybeSingle();
-
-      final appUserId = row?['id']?.toString();
-      if (appUserId != null && appUserId.isNotEmpty) {
-        return appUserId;
-      }
+    if (authUserId == null || authUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
     }
 
-    throw Exception('Пользователь не найден');
+    final row = await Supabase.instance.client
+        .from('app_users')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+    final appUserId = row?['id']?.toString();
+    if (appUserId == null || appUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    return appUserId;
   }
 
-  String _mapDialogTypeToServerCategory(String typeLabel) {
-    switch (typeLabel) {
-      case 'Бар':
-        return 'bar';
-      case 'Ночной клуб':
-        return 'nightclub';
-      case 'Ресторан':
-        return 'restaurant';
-      case 'Кино':
-        return 'cinema';
-      case 'Театр':
-        return 'theatre';
-      default:
-        throw Exception('Неизвестный тип места');
-    }
-  }
-
-  String _extractServerErrorMessage(Object error) {
-    String combined = '';
-
-    if (error is PostgrestException) {
-      combined = [
-        error.message,
-        error.details,
-        error.hint,
-        error.code,
-      ].whereType<String>().join(' | ');
-    } else {
-      combined = error.toString();
-    }
-
-    final lower = combined.toLowerCase();
-
-    if (lower.contains('такое место уже есть в списке') ||
-        lower.contains('already exists in the list') ||
-        lower.contains('duplicate') ||
-        lower.contains('23505')) {
-      return 'Такое место уже есть в списке.';
-    }
-
-    if (lower.contains('пользователь не найден') ||
-        lower.contains('user not found') ||
-        lower.contains('not authenticated') ||
-        lower.contains('unauthorized') ||
-        lower.contains('jwt') ||
-        lower.contains('auth')) {
-      return 'Не удалось определить пользователя.';
-    }
-
-    if (lower.contains('required') ||
-        lower.contains('обязател') ||
-        lower.contains('invalid') ||
-        lower.contains('неизвестный тип места')) {
-      return 'Проверьте заполнение полей.';
-    }
-
-    return 'Не удалось добавить место.';
-  }
-
-  Future<void> _openAddPlaceDialog() async {
-    if (_creatingPlaceSubmission) return;
-
-    final result = await showDialog<AddPlaceDialogResult>(
-      context: context,
-      builder: (_) => const AddPlaceDialog(),
-    );
-
-    if (!mounted || result == null) return;
-
-    setState(() => _creatingPlaceSubmission = true);
-
+  Future<void> _openPlanDetails({
+    required String planId,
+  }) async {
     try {
       final appUserId = await _resolveCurrentAppUserId();
-      final category = _mapDialogTypeToServerCategory(result.typeLabel);
-
-      await Supabase.instance.client.rpc(
-        'create_place_submission_v1',
-        params: {
-          'p_app_user_id': appUserId,
-          'p_title': result.name,
-          'p_category': category,
-          'p_city': result.city,
-          'p_street': result.street,
-          'p_house': result.house,
-          'p_website': result.website,
-        },
-      );
 
       if (!mounted) return;
 
-      await showCenterToast(
-        context,
-        message: 'Место отправлено на модерацию.',
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlanDetailsScreen(
+            appUserId: appUserId,
+            planId: planId,
+            repository: PlansRepositoryImpl(Supabase.instance.client),
+          ),
+        ),
       );
-    } catch (error) {
+    } catch (e) {
       if (kDebugMode) {
-        debugPrint('PLACE SUBMISSION create error: $error');
+        debugPrint('[PlacesScreen] open plan details failed: $e');
       }
 
       if (!mounted) return;
 
-      await showCenterToast(
-        context,
-        message: _extractServerErrorMessage(error),
-        isError: true,
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть план')),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _creatingPlaceSubmission = false);
-      }
     }
   }
 
@@ -648,6 +555,8 @@ class _PlacesListState extends State<_PlacesList> {
             ],
           ),
         ),
+
+        // Suggestions panel (non-intrusive, above list)
         if (_searchLoading)
           Align(
             alignment: Alignment.centerLeft,
@@ -660,6 +569,7 @@ class _PlacesListState extends State<_PlacesList> {
               ),
             ),
           ),
+
         if (!_searchLoading && _suggestions.isNotEmpty)
           Container(
             margin: const EdgeInsets.only(top: 8),
@@ -704,6 +614,8 @@ class _PlacesListState extends State<_PlacesList> {
 
   @override
   Widget build(BuildContext context) {
+    // IMPORTANT:
+    // Search block must NOT scroll with the list. List below scrolls/paginates.
     return Stack(
       children: [
         Padding(
@@ -711,43 +623,29 @@ class _PlacesListState extends State<_PlacesList> {
           child: Column(
             children: [
               GestureDetector(
-                onTap: _creatingPlaceSubmission ? null : _openAddPlaceDialog,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 150),
-                  opacity: _creatingPlaceSubmission ? 0.7 : 1,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainer,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
+                onTap: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const AddPlaceDialog(),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainer,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
-                    child: Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_creatingPlaceSubmission) ...[
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 10),
-                          ],
-                          Text(
-                            _creatingPlaceSubmission
-                                ? 'Отправляем...'
-                                : 'Добавить новое место',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Добавить новое место',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -773,8 +671,8 @@ class _PlacesListState extends State<_PlacesList> {
 
                     return PlaceCard(
                       place: place,
-                      onDetailsTap: () {
-                        showDialog<void>(
+                      onDetailsTap: () async {
+                        final result = await showDialog<Object?>(
                           context: context,
                           builder: (_) => PlaceDetailsDialog(
                             repository: widget.repository,
@@ -793,6 +691,12 @@ class _PlacesListState extends State<_PlacesList> {
                             websiteUrl: place.dto.websiteUrl,
                           ),
                         );
+
+                        if (!mounted) return;
+
+                        if (result is AddPlaceToPlanResult) {
+                          await _openPlanDetails(planId: result.planId);
+                        }
                       },
                       onMapTap: () {
                         widget.onOpenOnMap(place.dto);
@@ -863,6 +767,7 @@ class PlaceCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ==== LEFT: IMAGE + RATING ====
             SizedBox(
               width: 72,
               child: Column(
@@ -921,6 +826,8 @@ class PlaceCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
+
+                  // ⭐ RATING
                   if (place.dto.rating != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -943,12 +850,16 @@ class PlaceCard extends StatelessWidget {
                 ],
               ),
             ),
+
             const SizedBox(width: 12),
+
+            // ==== RIGHT: TEXT BLOCK ====
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Title + Map link
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -971,6 +882,8 @@ class PlaceCard extends StatelessWidget {
                       ),
                     ],
                   ),
+
+                  // Distance
                   if (place.distanceLabel != null)
                     Text(
                       place.distanceLabel!,
@@ -981,7 +894,10 @@ class PlaceCard extends StatelessWidget {
                         height: 1.0,
                       ),
                     ),
+
                   const SizedBox(height: 2),
+
+                  // Type
                   Text(
                     place.typeLabel,
                     style: Theme.of(context)
@@ -989,7 +905,10 @@ class PlaceCard extends StatelessWidget {
                         .bodySmall
                         ?.copyWith(color: Colors.grey),
                   ),
+
                   const SizedBox(height: 2),
+
+                  // City + Area
                   Text(
                     place.areaName != null
                         ? '${place.cityName} · ${place.areaName}'
@@ -999,7 +918,10 @@ class PlaceCard extends StatelessWidget {
                         .bodySmall
                         ?.copyWith(color: Colors.grey.shade500),
                   ),
+
                   const SizedBox(height: 2),
+
+                  // Metro + Details
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
