@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/geo/geo_service.dart';
 import '../../data/places/place_dto.dart';
@@ -236,9 +238,11 @@ class _PlacesList extends StatefulWidget {
 
 class _PlacesListState extends State<_PlacesList> {
   static const int _pageSize = 20;
+  static const String _userSnapshotStorageKey = 'user_snapshot';
 
   final List<PlaceUiModel> _places = [];
   final ScrollController _scrollController = ScrollController();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   // SEARCH UI (server-driven)
   final TextEditingController _searchController = TextEditingController();
@@ -431,23 +435,37 @@ class _PlacesListState extends State<_PlacesList> {
   }
 
   Future<String> _resolveCurrentAppUserId() async {
+    final rawSnapshot = await _secureStorage.read(key: _userSnapshotStorageKey);
+    if (rawSnapshot != null && rawSnapshot.isNotEmpty) {
+      try {
+        final json = jsonDecode(rawSnapshot) as Map<String, dynamic>;
+        final snapshotUserId = json['id']?.toString();
+
+        if (snapshotUserId != null && snapshotUserId.isNotEmpty) {
+          return snapshotUserId;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('PLACES user_snapshot parse error: $e');
+        }
+      }
+    }
+
     final authUserId = Supabase.instance.client.auth.currentUser?.id;
-    if (authUserId == null || authUserId.isEmpty) {
-      throw Exception('Вы не авторизованы');
+    if (authUserId != null && authUserId.isNotEmpty) {
+      final row = await Supabase.instance.client
+          .from('app_users')
+          .select('id')
+          .eq('auth_user_id', authUserId)
+          .maybeSingle();
+
+      final appUserId = row?['id']?.toString();
+      if (appUserId != null && appUserId.isNotEmpty) {
+        return appUserId;
+      }
     }
 
-    final row = await Supabase.instance.client
-        .from('app_users')
-        .select('id')
-        .eq('auth_user_id', authUserId)
-        .maybeSingle();
-
-    final appUserId = row?['id']?.toString();
-    if (appUserId == null || appUserId.isEmpty) {
-      throw Exception('Пользователь не найден');
-    }
-
-    return appUserId;
+    throw Exception('Пользователь не найден');
   }
 
   String _mapDialogTypeToServerCategory(String typeLabel) {
