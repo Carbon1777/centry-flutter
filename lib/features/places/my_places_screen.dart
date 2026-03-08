@@ -529,6 +529,11 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
     final statusColor = submission.statusColor(context);
     final statusBgColor = submission.statusBackgroundColor(context);
 
+    const addToPlanFillColor = Color(0xFF19D3C5);
+    const addToPlanTextColor = Color(0xFF081217);
+    final secondaryButtonBorderColor = Colors.white.withOpacity(0.82);
+    const secondaryButtonTextColor = Color(0xFF4E8DFF);
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       shape: RoundedRectangleBorder(
@@ -663,6 +668,7 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                           const SizedBox(height: 22),
                           SizedBox(
                             width: double.infinity,
+                            height: 56,
                             child: FilledButton(
                               onPressed: () async {
                                 await showCenterToast(
@@ -672,16 +678,22 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                                 );
                               },
                               style: FilledButton.styleFrom(
+                                elevation: 0,
+                                backgroundColor: addToPlanFillColor,
+                                foregroundColor: addToPlanTextColor,
+                                disabledBackgroundColor: addToPlanFillColor,
+                                disabledForegroundColor: addToPlanTextColor,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
                               child: const Text(
                                 'Добавить в план',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
+                                  fontSize: 16,
                                 ),
                               ),
                             ),
@@ -689,19 +701,27 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
+                            height: 56,
                             child: OutlinedButton(
                               onPressed: () => Navigator.of(context).pop(),
                               style: OutlinedButton.styleFrom(
+                                foregroundColor: secondaryButtonTextColor,
+                                side: BorderSide(
+                                  color: secondaryButtonBorderColor,
+                                  width: 1.4,
+                                ),
+                                backgroundColor: Colors.transparent,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
                               child: const Text(
                                 'Закрыть',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
+                                  fontSize: 16,
                                 ),
                               ),
                             ),
