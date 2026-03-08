@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:centry/data/places/place_dto.dart';
@@ -8,6 +10,7 @@ import 'package:centry/data/places/places_repository.dart';
 import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/map/places_map.dart';
 import 'package:centry/features/places/filters/places_filters_controller.dart';
+import 'package:centry/ui/common/center_toast.dart';
 import 'package:centry/ui/places/places_screen.dart'; // PlaceCard / PlaceUiModel
 
 enum MyPlacesViewMode {
@@ -28,6 +31,8 @@ class MyPlacesScreen extends StatefulWidget {
 }
 
 class _MyPlacesScreenState extends State<MyPlacesScreen> {
+  static const String _userSnapshotStorageKey = 'user_snapshot';
+
   bool _loading = true;
   List<PlaceDto> _places = [];
   List<_MyPlaceSubmissionItem> _submissions = [];
@@ -39,6 +44,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
       ValueNotifier<PlaceDto?>(null);
 
   final PlacesFiltersController _filtersController = PlacesFiltersController();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   @override
   void initState() {
@@ -52,9 +58,23 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
   }
 
   Future<String> _resolveCurrentAppUserId() async {
+    final rawSnapshot = await _secureStorage.read(key: _userSnapshotStorageKey);
+    if (rawSnapshot != null && rawSnapshot.isNotEmpty) {
+      try {
+        final json = jsonDecode(rawSnapshot) as Map<String, dynamic>;
+        final snapshotUserId = json['id']?.toString();
+
+        if (snapshotUserId != null && snapshotUserId.isNotEmpty) {
+          return snapshotUserId;
+        }
+      } catch (_) {
+        // ignore and fallback below
+      }
+    }
+
     final authUserId = Supabase.instance.client.auth.currentUser?.id;
     if (authUserId == null || authUserId.isEmpty) {
-      throw Exception('Вы не авторизованы');
+      throw Exception('Пользователь не найден');
     }
 
     final row = await Supabase.instance.client
@@ -146,32 +166,8 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
   Future<void> _openSubmissionDetails(_MyPlaceSubmissionItem submission) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(submission.title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Тип: ${submission.typeLabel}'),
-            const SizedBox(height: 8),
-            Text('Город: ${submission.city}'),
-            const SizedBox(height: 4),
-            Text('Адрес: ${submission.address}'),
-            if (submission.websiteUrl != null &&
-                submission.websiteUrl!.trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Сайт: ${submission.websiteUrl}'),
-            ],
-            const SizedBox(height: 12),
-            Text('Статус: ${submission.statusLabel}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Закрыть'),
-          ),
-        ],
+      builder: (_) => _MyPlaceSubmissionDetailsDialog(
+        submission: submission,
       ),
     );
   }
@@ -403,102 +399,335 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
     final statusColor = submission.statusColor(context);
     final statusBgColor = submission.statusBackgroundColor(context);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.place_outlined,
-              size: 32,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        submission.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 96),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 72,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.asset(
+                        'assets/images/place_placeholder.png',
+                        fit: BoxFit.cover,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          submission.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
-                      decoration: BoxDecoration(
-                        color: statusBgColor,
-                        borderRadius: BorderRadius.circular(999),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBgColor,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          submission.statusLabel,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                        ),
                       ),
-                      child: Text(
-                        submission.statusLabel,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: statusColor,
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    submission.typeLabel,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    submission.city,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    submission.address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      style: compactTextButtonStyle,
+                      onPressed: onDetailsTap,
+                      child: const Text('Подробнее'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
+  const _MyPlaceSubmissionDetailsDialog({
+    required this.submission,
+  });
+
+  final _MyPlaceSubmissionItem submission;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final statusColor = submission.statusColor(context);
+    final statusBgColor = submission.statusBackgroundColor(context);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: theme.colorScheme.surface,
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 1.35,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            'assets/images/place_placeholder.png',
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.55),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'Плейсхолдер. Фото добавятся позже',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            submission.typeLabel,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.primary,
                               fontWeight: FontWeight.w600,
                             ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  submission.title,
+                                  style:
+                                      theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusBgColor,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  submission.statusLabel,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            submission.city,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            submission.address,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                          if (submission.websiteUrl != null &&
+                              submission.websiteUrl!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              submission.websiteUrl!,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Статус',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            submission.statusLabel,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: () async {
+                                await showCenterToast(
+                                  context,
+                                  message:
+                                      'Добавление в план будет доступно позже.',
+                                );
+                              },
+                              style: FilledButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text(
+                                'Добавить в план',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Text(
+                                'Закрыть',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  submission.typeLabel,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  submission.city,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey.shade500),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  submission.address,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Colors.grey.shade500),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    style: compactTextButtonStyle,
-                    onPressed: onDetailsTap,
-                    child: const Text('Подробнее'),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Material(
+                  color: Colors.black45,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    icon: const Icon(Icons.close),
+                    color: Colors.white,
+                    onPressed: () => Navigator.of(context).pop(),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
