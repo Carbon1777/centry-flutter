@@ -256,6 +256,8 @@ class _PlacesListState extends State<_PlacesList> {
   bool _hasMore = true;
   int _offset = 0;
 
+  bool _creatingPlaceSubmission = false;
+
   @override
   void initState() {
     super.initState();
@@ -428,6 +430,117 @@ class _PlacesListState extends State<_PlacesList> {
     }
   }
 
+  Future<String> _resolveCurrentAppUserId() async {
+    final authUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (authUserId == null || authUserId.isEmpty) {
+      throw Exception('Вы не авторизованы');
+    }
+
+    final row = await Supabase.instance.client
+        .from('app_users')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+    final appUserId = row?['id']?.toString();
+    if (appUserId == null || appUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    return appUserId;
+  }
+
+  String _mapDialogTypeToServerCategory(String typeLabel) {
+    switch (typeLabel) {
+      case 'Бар':
+        return 'bar';
+      case 'Ночной клуб':
+        return 'nightclub';
+      case 'Ресторан':
+        return 'restaurant';
+      case 'Кино':
+        return 'cinema';
+      case 'Театр':
+        return 'theatre';
+      default:
+        throw Exception('Неизвестный тип места');
+    }
+  }
+
+  String _extractServerErrorMessage(Object error) {
+    if (error is PostgrestException) {
+      final message = error.message.trim();
+      if (message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    final raw = error.toString().trim();
+    if (raw.startsWith('Exception: ')) {
+      return raw.substring('Exception: '.length).trim();
+    }
+    if (raw.isNotEmpty) {
+      return raw;
+    }
+
+    return 'Не удалось добавить место';
+  }
+
+  Future<void> _openAddPlaceDialog() async {
+    if (_creatingPlaceSubmission) return;
+
+    final result = await showDialog<AddPlaceDialogResult>(
+      context: context,
+      builder: (_) => const AddPlaceDialog(),
+    );
+
+    if (!mounted || result == null) return;
+
+    setState(() => _creatingPlaceSubmission = true);
+
+    try {
+      final appUserId = await _resolveCurrentAppUserId();
+      final category = _mapDialogTypeToServerCategory(result.typeLabel);
+
+      await Supabase.instance.client.rpc(
+        'create_place_submission_v1',
+        params: {
+          'p_app_user_id': appUserId,
+          'p_title': result.name,
+          'p_category': category,
+          'p_city': result.city,
+          'p_street': result.street,
+          'p_house': result.house,
+          'p_website': result.website,
+        },
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Место отправлено на модерацию.'),
+        ),
+      );
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('PLACE SUBMISSION create error: $error');
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_extractServerErrorMessage(error)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _creatingPlaceSubmission = false);
+      }
+    }
+  }
+
   PlaceUiModel _mapToUi(PlaceDto dto) {
     return PlaceUiModel(
       dto: dto,
@@ -479,7 +592,8 @@ class _PlacesListState extends State<_PlacesList> {
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                  visualDensity:
+                      const VisualDensity(horizontal: -2, vertical: -2),
                 ),
                 onPressed: _onFindPressed,
                 child: const Text('Найти'),
@@ -562,38 +676,50 @@ class _PlacesListState extends State<_PlacesList> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              
               GestureDetector(
-                onTap: () {
-                  showDialog<void>(
-                    context: context,
-                    builder: (_) => const AddPlaceDialog(),
-                  );
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainer,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant,
+                onTap: _creatingPlaceSubmission ? null : _openAddPlaceDialog,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 150),
+                  opacity: _creatingPlaceSubmission ? 0.7 : 1,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Добавить новое место',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_creatingPlaceSubmission) ...[
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                          Text(
+                            _creatingPlaceSubmission
+                                ? 'Отправляем...'
+                                : 'Добавить новое место',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
               _buildSearchBlock(context),
-
               const SizedBox(height: 12),
               Expanded(
                 child: ListView.separated(
@@ -644,7 +770,6 @@ class _PlacesListState extends State<_PlacesList> {
             ],
           ),
         ),
-
         if (_showScrollToTop)
           Positioned(
             right: 16,
