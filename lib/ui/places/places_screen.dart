@@ -485,22 +485,45 @@ class _PlacesListState extends State<_PlacesList> {
   }
 
   String _extractServerErrorMessage(Object error) {
+    String combined = '';
+
     if (error is PostgrestException) {
-      final message = error.message.trim();
-      if (message.isNotEmpty) {
-        return message;
-      }
+      combined = [
+        error.message,
+        error.details,
+        error.hint,
+        error.code,
+      ].whereType<String>().join(' | ');
+    } else {
+      combined = error.toString();
     }
 
-    final raw = error.toString().trim();
-    if (raw.startsWith('Exception: ')) {
-      return raw.substring('Exception: '.length).trim();
-    }
-    if (raw.isNotEmpty) {
-      return raw;
+    final lower = combined.toLowerCase();
+
+    if (lower.contains('такое место уже есть в списке') ||
+        lower.contains('already exists in the list') ||
+        lower.contains('duplicate') ||
+        lower.contains('23505')) {
+      return 'Такое место уже есть в списке.';
     }
 
-    return 'Не удалось добавить место';
+    if (lower.contains('пользователь не найден') ||
+        lower.contains('user not found') ||
+        lower.contains('not authenticated') ||
+        lower.contains('unauthorized') ||
+        lower.contains('jwt') ||
+        lower.contains('auth')) {
+      return 'Не удалось определить пользователя.';
+    }
+
+    if (lower.contains('required') ||
+        lower.contains('обязател') ||
+        lower.contains('invalid') ||
+        lower.contains('неизвестный тип места')) {
+      return 'Проверьте заполнение полей.';
+    }
+
+    return 'Не удалось добавить место.';
   }
 
   Future<void> _openAddPlaceDialog() async {
