@@ -38,6 +38,8 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
   List<_MyPlaceSubmissionItem> _submissions = [];
   StreamSubscription<void>? _sub;
 
+  final Set<String> _rejectedSeenAckInFlightIds = <String>{};
+
   MyPlacesViewMode _viewMode = MyPlacesViewMode.list;
 
   final ValueNotifier<PlaceDto?> _mapFocusPlace =
@@ -140,6 +142,53 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     });
   }
 
+  Future<void> _ackRejectedSubmissionSeen(
+    _MyPlaceSubmissionItem submission,
+  ) async {
+    if (!submission.shouldAckRejectedSeen) return;
+    if (_rejectedSeenAckInFlightIds.contains(submission.submissionId)) return;
+
+    _rejectedSeenAckInFlightIds.add(submission.submissionId);
+
+    try {
+      final appUserId = await _resolveCurrentAppUserId();
+
+      final raw = await Supabase.instance.client.rpc(
+        'ack_rejected_place_submission_seen_v1',
+        params: {
+          'p_app_user_id': appUserId,
+          'p_submission_id': submission.submissionId,
+        },
+      );
+
+      final map =
+          raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+
+      final rejectedSeenAt = map['rejected_seen_at']?.toString();
+      final rejectedDeleteAfterAt = map['rejected_delete_after_at']?.toString();
+
+      if (!mounted) return;
+
+      setState(() {
+        _submissions = _submissions.map((item) {
+          if (item.submissionId != submission.submissionId) {
+            return item;
+          }
+
+          return item.copyWith(
+            rejectedSeenAt: rejectedSeenAt ?? item.rejectedSeenAt,
+            rejectedDeleteAfterAt:
+                rejectedDeleteAfterAt ?? item.rejectedDeleteAfterAt,
+          );
+        }).toList();
+      });
+    } catch (e) {
+      debugPrint('[MyPlacesScreen] ack rejected seen error: $e');
+    } finally {
+      _rejectedSeenAckInFlightIds.remove(submission.submissionId);
+    }
+  }
+
   Future<void> _openDetails(PlaceUiModel place) async {
     await showDialog(
       context: context,
@@ -239,9 +288,13 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _MyPlaceSubmissionCard(
+                              key: ValueKey(submission.submissionId),
                               submission: submission,
                               onDetailsTap: () =>
                                   _openSubmissionDetails(submission),
+                              onRejectedShown: submission.shouldAckRejectedSeen
+                                  ? () => _ackRejectedSubmissionSeen(submission)
+                                  : null,
                             ),
                           );
                         }
@@ -287,6 +340,8 @@ class _MyPlaceSubmissionItem {
     this.approvedCorePlaceId,
     this.updatedAt,
     this.reviewedAt,
+    this.rejectedSeenAt,
+    this.rejectedDeleteAfterAt,
   });
 
   factory _MyPlaceSubmissionItem.fromJson(Map<String, dynamic> json) {
@@ -304,6 +359,8 @@ class _MyPlaceSubmissionItem {
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString(),
       reviewedAt: json['reviewed_at']?.toString(),
+      rejectedSeenAt: json['rejected_seen_at']?.toString(),
+      rejectedDeleteAfterAt: json['rejected_delete_after_at']?.toString(),
     );
   }
 
@@ -320,6 +377,36 @@ class _MyPlaceSubmissionItem {
   final String createdAt;
   final String? updatedAt;
   final String? reviewedAt;
+  final String? rejectedSeenAt;
+  final String? rejectedDeleteAfterAt;
+
+  _MyPlaceSubmissionItem copyWith({
+    String? rejectedSeenAt,
+    String? rejectedDeleteAfterAt,
+  }) {
+    return _MyPlaceSubmissionItem(
+      submissionId: submissionId,
+      title: title,
+      type: type,
+      city: city,
+      street: street,
+      house: house,
+      address: address,
+      websiteUrl: websiteUrl,
+      status: status,
+      approvedCorePlaceId: approvedCorePlaceId,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      reviewedAt: reviewedAt,
+      rejectedSeenAt: rejectedSeenAt ?? this.rejectedSeenAt,
+      rejectedDeleteAfterAt:
+          rejectedDeleteAfterAt ?? this.rejectedDeleteAfterAt,
+    );
+  }
+
+  bool get shouldAckRejectedSeen =>
+      status == 'REJECTED' &&
+      (rejectedSeenAt == null || rejectedSeenAt!.trim().isEmpty);
 
   String get typeLabel {
     switch (type) {
@@ -378,17 +465,38 @@ class _MyPlaceSubmissionItem {
   }
 }
 
-class _MyPlaceSubmissionCard extends StatelessWidget {
+class _MyPlaceSubmissionCard extends StatefulWidget {
   const _MyPlaceSubmissionCard({
+    super.key,
     required this.submission,
     required this.onDetailsTap,
+    this.onRejectedShown,
   });
 
   final _MyPlaceSubmissionItem submission;
   final VoidCallback onDetailsTap;
+  final VoidCallback? onRejectedShown;
+
+  @override
+  State<_MyPlaceSubmissionCard> createState() => _MyPlaceSubmissionCardState();
+}
+
+class _MyPlaceSubmissionCardState extends State<_MyPlaceSubmissionCard> {
+  bool _rejectedShownReported = false;
 
   @override
   Widget build(BuildContext context) {
+    if (widget.submission.shouldAckRejectedSeen &&
+        !_rejectedShownReported &&
+        widget.onRejectedShown != null) {
+      _rejectedShownReported = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onRejectedShown!.call();
+      });
+    }
+
     final compactTextButtonStyle = TextButton.styleFrom(
       padding: EdgeInsets.zero,
       minimumSize: Size.zero,
@@ -396,8 +504,8 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
       visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
     );
 
-    final statusColor = submission.statusColor(context);
-    final statusBgColor = submission.statusBackgroundColor(context);
+    final statusColor = widget.submission.statusColor(context);
+    final statusBgColor = widget.submission.statusBackgroundColor(context);
 
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 96),
@@ -444,7 +552,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          submission.title,
+                          widget.submission.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium,
@@ -461,7 +569,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          submission.statusLabel,
+                          widget.submission.statusLabel,
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
                                     color: statusColor,
@@ -473,7 +581,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    submission.typeLabel,
+                    widget.submission.typeLabel,
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -481,7 +589,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    submission.city,
+                    widget.submission.city,
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -489,7 +597,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    submission.address,
+                    widget.submission.address,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context)
@@ -502,7 +610,7 @@ class _MyPlaceSubmissionCard extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       style: compactTextButtonStyle,
-                      onPressed: onDetailsTap,
+                      onPressed: widget.onDetailsTap,
                       child: const Text('Подробнее'),
                     ),
                   ),
