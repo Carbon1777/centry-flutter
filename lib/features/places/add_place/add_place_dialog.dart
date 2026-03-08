@@ -1,5 +1,23 @@
 import 'package:flutter/material.dart';
 
+class AddPlaceDialogResult {
+  const AddPlaceDialogResult({
+    required this.name,
+    required this.typeLabel,
+    required this.city,
+    required this.street,
+    required this.house,
+    required this.website,
+  });
+
+  final String name;
+  final String typeLabel;
+  final String city;
+  final String street;
+  final String house;
+  final String? website;
+}
+
 class AddPlaceDialog extends StatefulWidget {
   const AddPlaceDialog({super.key});
 
@@ -54,7 +72,9 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
   }
 
   void _openKeyboardOverlay(
-      TextEditingController targetController, String label) {
+    TextEditingController targetController,
+    String label,
+  ) {
     _keyboardOverlay?.remove();
 
     final focusNode = FocusNode();
@@ -120,15 +140,22 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedType == null || _selectedCity == null) return;
 
-    Navigator.of(context).pop();
+    _closeOverlay();
 
-    Future.microtask(() {
-      showDialog(
-        context: context,
-        builder: (_) => const _AddPlaceModeDialog(),
-      );
-    });
+    Navigator.of(context).pop(
+      AddPlaceDialogResult(
+        name: _nameController.text.trim(),
+        typeLabel: _selectedType!,
+        city: _selectedCity!,
+        street: _streetController.text.trim(),
+        house: _houseController.text.trim(),
+        website: _linkController.text.trim().isEmpty
+            ? null
+            : _linkController.text.trim(),
+      ),
+    );
   }
 
   @override
@@ -187,7 +214,11 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       decoration: _inputDecoration('Тип'),
                       items: _types
                           .map(
-                              (e) => DropdownMenuItem(value: e, child: Text(e)))
+                            (e) => DropdownMenuItem<String>(
+                              value: e,
+                              child: Text(e),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) =>
                           setState(() => _selectedType = value),
@@ -199,7 +230,11 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       decoration: _inputDecoration('Город'),
                       items: _cities
                           .map(
-                              (e) => DropdownMenuItem(value: e, child: Text(e)))
+                            (e) => DropdownMenuItem<String>(
+                              value: e,
+                              child: Text(e),
+                            ),
+                          )
                           .toList(),
                       onChanged: (value) =>
                           setState(() => _selectedCity = value),
@@ -268,51 +303,14 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
               child: IconButton(
                 icon: const Icon(Icons.close),
                 color: Colors.white,
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  _closeOverlay();
+                  Navigator.of(context).pop();
+                },
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AddPlaceModeDialog extends StatelessWidget {
-  const _AddPlaceModeDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 44, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Выберите как вы хотите добавить место',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 32),
-            OutlinedButton(
-              onPressed: () {},
-              child: const Text('Добавить в общий список мест'),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              onPressed: () {},
-              child: const Text('Добавить в Мои места'),
-            ),
-          ],
-        ),
       ),
     );
   }
