@@ -486,9 +486,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Stack(
         children: [
           if (_loading)
@@ -505,9 +503,8 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
-                    ),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(20)),
                     child: AspectRatio(
                       aspectRatio: 16 / 9,
                       child: Stack(
@@ -654,10 +651,8 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(
-                                    Icons.copy_rounded,
-                                    size: 18,
-                                  ),
+                                  icon:
+                                      const Icon(Icons.copy_rounded, size: 18),
                                   onPressed: _copyAddress,
                                 ),
                               ],
