@@ -1,3 +1,5 @@
+import '../places/place_dto.dart';
+
 class PlanDetailsDto {
   final PlanCoreDto plan;
 
@@ -472,21 +474,172 @@ class DateCandidateDto {
 /* ===================== PLACE CANDIDATES ===================== */
 
 class PlaceCandidateDto {
-  final String placeId;
+  final String candidateId;
+  final String sourceKind;
+  final String? placeId;
+  final String? placeSubmissionId;
+
+  final String title;
+  final String type;
+  final String address;
+  final String? cityId;
+  final String cityName;
+  final String? areaId;
+  final String? areaName;
+
+  final double? lat;
+  final double? lng;
+  final double? distanceM;
+
+  final String? previewMediaUrl;
+  final String? previewStorageKey;
+  final bool previewIsPlaceholder;
+  final String? metroName;
+  final int? metroDistanceM;
+  final double? rating;
+  final int likesCount;
+  final int dislikesCount;
+  final String? websiteUrl;
+
+  final String? moderationStatus;
+  final bool isPendingModeration;
+  final bool isRejected;
   final int votesCount;
-  final bool myVote;
+  final String createdByUserId;
+  final bool createdByCurrentUser;
+  final bool isUserVotedForThis;
+  final bool isLeading;
+  final bool isWinner;
+  final bool isDimmed;
+  final bool canVote;
+  final bool canUnvote;
+  final bool canDelete;
+  final int positionIndex;
 
   PlaceCandidateDto({
+    required this.candidateId,
+    required this.sourceKind,
     required this.placeId,
+    required this.placeSubmissionId,
+    required this.title,
+    required this.type,
+    required this.address,
+    required this.cityId,
+    required this.cityName,
+    required this.areaId,
+    required this.areaName,
+    required this.lat,
+    required this.lng,
+    required this.distanceM,
+    required this.previewMediaUrl,
+    required this.previewStorageKey,
+    required this.previewIsPlaceholder,
+    required this.metroName,
+    required this.metroDistanceM,
+    required this.rating,
+    required this.likesCount,
+    required this.dislikesCount,
+    required this.websiteUrl,
+    required this.moderationStatus,
+    required this.isPendingModeration,
+    required this.isRejected,
     required this.votesCount,
-    required this.myVote,
+    required this.createdByUserId,
+    required this.createdByCurrentUser,
+    required this.isUserVotedForThis,
+    required this.isLeading,
+    required this.isWinner,
+    required this.isDimmed,
+    required this.canVote,
+    required this.canUnvote,
+    required this.canDelete,
+    required this.positionIndex,
   });
 
+  bool get isCorePlace => sourceKind == 'CORE' && placeId != null && lat != null && lng != null;
+  bool get isSubmissionPlace => sourceKind == 'SUBMISSION';
+
+  PlaceDto? toPlaceDto() {
+    if (!isCorePlace) return null;
+
+    return PlaceDto(
+      id: placeId!,
+      title: title,
+      type: type,
+      address: address,
+      cityId: cityId ?? '',
+      cityName: cityName,
+      areaId: areaId,
+      areaName: areaName,
+      lat: lat!,
+      lng: lng!,
+      distanceM: distanceM,
+      previewMediaUrl: previewMediaUrl,
+      previewStorageKey: previewStorageKey,
+      previewIsPlaceholder: previewIsPlaceholder,
+      metroName: metroName,
+      metroDistanceM: metroDistanceM,
+      rating: rating,
+      likesCount: likesCount,
+      dislikesCount: dislikesCount,
+      websiteUrl: websiteUrl,
+    );
+  }
+
   factory PlaceCandidateDto.fromJson(Map<String, dynamic> json) {
+    double? asDouble(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
+    }
+
+    int? asIntNullable(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
+
     return PlaceCandidateDto(
-      placeId: _asString(json['place_id']),
+      candidateId: _asString(json['candidate_id']),
+      sourceKind: _asString(json['source_kind']),
+      placeId: json['place_id']?.toString(),
+      placeSubmissionId: json['place_submission_id']?.toString(),
+      title: _asString(json['title']),
+      type: _asString(json['type']),
+      address: _asString(json['address']),
+      cityId: json['city_id']?.toString(),
+      cityName: _asString(json['city_name']),
+      areaId: json['area_id']?.toString(),
+      areaName: json['area_name']?.toString(),
+      lat: asDouble(json['lat']),
+      lng: asDouble(json['lng']),
+      distanceM: asDouble(json['distance_m']),
+      previewMediaUrl: json['preview_media_url']?.toString(),
+      previewStorageKey: json['preview_storage_key']?.toString(),
+      previewIsPlaceholder: _asBool(json['preview_is_placeholder']),
+      metroName: json['metro_name']?.toString(),
+      metroDistanceM: asIntNullable(json['metro_distance_m']),
+      rating: asDouble(json['rating']),
+      likesCount: _asInt(json['likes_count']),
+      dislikesCount: _asInt(json['dislikes_count']),
+      websiteUrl: json['website_url']?.toString(),
+      moderationStatus: json['moderation_status']?.toString(),
+      isPendingModeration: _asBool(json['is_pending_moderation']),
+      isRejected: _asBool(json['is_rejected']),
       votesCount: _asInt(json['votes_count']),
-      myVote: _asBool(json['my_vote']),
+      createdByUserId: _asString(json['created_by_user_id']),
+      createdByCurrentUser: _asBool(json['created_by_current_user']),
+      isUserVotedForThis: _asBool(json['is_user_voted_for_this']),
+      isLeading: _asBool(json['is_leading']),
+      isWinner: _asBool(json['is_winner']),
+      isDimmed: _asBool(json['is_dimmed']),
+      canVote: _asBool(json['can_vote']),
+      canUnvote: _asBool(json['can_unvote']),
+      canDelete: _asBool(json['can_delete']),
+      positionIndex: _asInt(json['position_index']),
     );
   }
 }

@@ -32,23 +32,14 @@ enum PlacesViewMode {
 }
 
 class PlacesScreen extends StatefulWidget {
-  final String? sourcePlanId;
-  final String? sourcePlanTitle;
+  final PlacesViewMode initialViewMode;
+  final PlaceDto? initialFocusPlace;
 
   const PlacesScreen({
     super.key,
-    this.sourcePlanId,
-    this.sourcePlanTitle,
+    this.initialViewMode = PlacesViewMode.list,
+    this.initialFocusPlace,
   });
-
-  bool get isPlanFlow {
-    final planId = sourcePlanId?.trim();
-    final planTitle = sourcePlanTitle?.trim();
-    return planId != null &&
-        planId.isNotEmpty &&
-        planTitle != null &&
-        planTitle.isNotEmpty;
-  }
 
   @override
   State<PlacesScreen> createState() => _PlacesScreenState();
@@ -73,6 +64,7 @@ class _PlacesScreenState extends State<PlacesScreen> {
   @override
   void initState() {
     super.initState();
+    _viewMode = widget.initialViewMode;
     _repository = PlacesRepositoryImpl(Supabase.instance.client);
 
     /// 🔴 Подписка на live invalidation
@@ -82,6 +74,18 @@ class _PlacesScreenState extends State<PlacesScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowGeoInfo();
+
+      final initialFocusPlace = widget.initialFocusPlace;
+      if (widget.initialViewMode == PlacesViewMode.map && initialFocusPlace != null) {
+        _mapFocusPlace.value = initialFocusPlace;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_mapFocusPlace.value == initialFocusPlace) {
+            _mapFocusPlace.value = null;
+          }
+        });
+      }
     });
   }
 
@@ -223,8 +227,6 @@ class _PlacesScreenState extends State<PlacesScreen> {
               filtersController: _filtersController,
               reloadSignal: _reloadSignal,
               onOpenOnMap: _openPlaceOnMap,
-              sourcePlanId: widget.sourcePlanId,
-              sourcePlanTitle: widget.sourcePlanTitle,
             )
           : PlacesMap(
               repository: _repository,
@@ -245,25 +247,12 @@ class _PlacesList extends StatefulWidget {
     required this.filtersController,
     required this.reloadSignal,
     required this.onOpenOnMap,
-    required this.sourcePlanId,
-    required this.sourcePlanTitle,
   });
 
   final PlacesRepository repository;
   final PlacesFiltersController filtersController;
   final ValueListenable<int> reloadSignal;
   final ValueChanged<PlaceDto> onOpenOnMap;
-  final String? sourcePlanId;
-  final String? sourcePlanTitle;
-
-  bool get isPlanFlow {
-    final planId = sourcePlanId?.trim();
-    final planTitle = sourcePlanTitle?.trim();
-    return planId != null &&
-        planId.isNotEmpty &&
-        planTitle != null &&
-        planTitle.isNotEmpty;
-  }
 
   @override
   State<_PlacesList> createState() => _PlacesListState();
@@ -653,37 +642,35 @@ class _PlacesListState extends State<_PlacesList> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              if (!widget.isPlanFlow) ...[
-                GestureDetector(
-                  onTap: () {
-                    showDialog<void>(
-                      context: context,
-                      builder: (_) => const AddPlaceDialog(),
-                    );
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainer,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant,
-                      ),
+              GestureDetector(
+                onTap: () {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => const AddPlaceDialog(),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainer,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
                     ),
-                    child: Center(
-                      child: Text(
-                        'Добавить новое место',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
-                      ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Добавить новое место',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-              ],
+              ),
+              const SizedBox(height: 12),
               _buildSearchBlock(context),
               const SizedBox(height: 12),
               Expanded(
@@ -722,19 +709,12 @@ class _PlacesListState extends State<_PlacesList> {
                             metroName: place.dto.metroName,
                             metroDistanceM: place.dto.metroDistanceM,
                             websiteUrl: place.dto.websiteUrl,
-                            sourcePlanId: widget.sourcePlanId,
-                            sourcePlanTitle: widget.sourcePlanTitle,
                           ),
                         );
 
                         if (!mounted) return;
 
                         if (result is AddPlaceToPlanResult) {
-                          if (widget.isPlanFlow) {
-                            Navigator.of(context).pop(result);
-                            return;
-                          }
-
                           await _openPlanDetails(planId: result.planId);
                         }
                       },

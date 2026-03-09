@@ -82,6 +82,15 @@ abstract class PlansRepository {
     required String placeId,
   });
 
+
+  /// Удалить место из плана
+  Future<void> removePlanPlace({
+    required String appUserId,
+    required String planId,
+    String? placeId,
+    String? placeSubmissionId,
+  });
+
   /// Добавить дату в план
   Future<void> addPlanDate({
     required String appUserId,
