@@ -9,6 +9,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plan_details_dto.dart';
+import '../../data/places/places_repository_impl.dart';
 
 import 'widgets/plan_formatters.dart';
 import 'widgets/plan_dates_block.dart';
@@ -18,6 +19,7 @@ import 'widgets/add_place_source_modal.dart';
 
 import '../common/center_toast.dart';
 import '../places/places_screen.dart';
+import '../../features/places/my_places_screen.dart';
 
 class PlanDetailsScreen extends StatefulWidget {
   final String appUserId;
@@ -671,16 +673,28 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         return;
 
       case PlanPlaceAddSource.myPlaces:
-        await showCenterToast(
-          context,
-          message: 'Список «Мои места» подключим следующим шагом.',
+        final result = await Navigator.of(context).push<Object?>(
+          MaterialPageRoute<Object?>(
+            builder: (_) => MyPlacesScreen(
+              repository: PlacesRepositoryImpl(Supabase.instance.client),
+              sourcePlanId: _details!.plan.id,
+              sourcePlanTitle: _details!.plan.title,
+            ),
+          ),
         );
+
+        if (!mounted) return;
+
+        if (result != null) {
+          await _load(showSpinner: false);
+        }
         return;
 
       case PlanPlaceAddSource.createOwnPlace:
         await showCenterToast(
           context,
-          message: 'Создание своего места из плана подключим следующим шагом.',
+          message:
+              'Создание своего места из плана подключим после привязки точной RPC-сигнатуры.',
         );
         return;
     }
