@@ -27,6 +27,9 @@ class PlaceDetailsDialog extends StatefulWidget {
   final String? metroName;
   final int? metroDistanceM;
 
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
+
   const PlaceDetailsDialog({
     super.key,
     required this.repository,
@@ -42,6 +45,8 @@ class PlaceDetailsDialog extends StatefulWidget {
     this.previewIsPlaceholder = false,
     this.metroName,
     this.metroDistanceM,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
   });
 
   @override
@@ -72,6 +77,15 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   int? _metaMetroDistanceM;
   String? _metaPreviewStorageKey;
   bool? _metaPreviewIsPlaceholder;
+
+  bool get _isPlanFlow {
+    final planId = widget.sourcePlanId?.trim();
+    final planTitle = widget.sourcePlanTitle?.trim();
+    return planId != null &&
+        planId.isNotEmpty &&
+        planTitle != null &&
+        planTitle.isNotEmpty;
+  }
 
   String get _effectiveAddress {
     final n = _metaNormalizedAddress;
@@ -433,8 +447,172 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     );
   }
 
+  Future<String> _resolveCurrentAppUserId() async {
+    final snapshot = await UserSnapshotStorage().read();
+    if (snapshot != null && snapshot.id.trim().isNotEmpty) {
+      return snapshot.id;
+    }
+
+    final authUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (authUserId == null || authUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    final row = await Supabase.instance.client
+        .from('app_users')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+    final appUserId = row?['id']?.toString();
+    if (appUserId == null || appUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    return appUserId;
+  }
+
+  String _humanizeAddToPlanError(Object e) {
+    if (e is PostgrestException) {
+      final combined = [
+        e.message,
+        e.details,
+        e.hint,
+        e.code,
+      ]
+          .where((v) => v != null && v.toString().trim().isNotEmpty)
+          .join(' ')
+          .toLowerCase();
+
+      if (combined.contains('place already added to plan')) {
+        return 'Место уже добавлено';
+      }
+
+      if (combined.contains('already added')) {
+        return 'Место уже добавлено';
+      }
+
+      if (combined.contains('max') && combined.contains('5')) {
+        return 'В плане уже 5 мест';
+      }
+
+      if (combined.contains('limit') && combined.contains('5')) {
+        return 'В плане уже 5 мест';
+      }
+
+      if (combined.contains('rejected')) {
+        return 'Отклонённое место нельзя добавить в новый план';
+      }
+
+      if (combined.contains('access denied') ||
+          combined.contains('not a member') ||
+          combined.contains('banned')) {
+        return 'План недоступен';
+      }
+
+      if (combined.contains('open')) {
+        return 'Добавлять места можно только в открытый план';
+      }
+    }
+
+    return 'Не удалось добавить место в план';
+  }
+
+  Future<bool> _confirmAddToSourcePlan() async {
+    final planTitle = widget.sourcePlanTitle?.trim();
+    if (planTitle == null || planTitle.isEmpty) return false;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Подтверждение добавления в план'),
+        content: Text(
+          'Подтвердите, что хотите добавить место в план "$planTitle"',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отменить'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Добавить'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed == true;
+  }
+
+  Future<void> _addToSourcePlanDirectly() async {
+    final planId = widget.sourcePlanId?.trim();
+    final planTitle = widget.sourcePlanTitle?.trim();
+    if (planId == null ||
+        planId.isEmpty ||
+        planTitle == null ||
+        planTitle.isEmpty) {
+      return;
+    }
+
+    final confirmed = await _confirmAddToSourcePlan();
+    if (!confirmed) return;
+
+    setState(() {
+      _addingToPlan = true;
+    });
+
+    try {
+      final appUserId = await _resolveCurrentAppUserId();
+
+      await Supabase.instance.client.rpc(
+        'add_plan_place_v2',
+        params: {
+          'p_app_user_id': appUserId,
+          'p_plan_id': planId,
+          'p_place_id': widget.placeId,
+          'p_place_submission_id': null,
+        },
+      );
+
+      if (!mounted) return;
+
+      _hasChanged = true;
+      setState(() {
+        _addingToPlan = false;
+      });
+
+      Navigator.of(context).pop(
+        AddPlaceToPlanResult(
+          planId: planId,
+          planTitle: planTitle,
+        ),
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[PlaceDetailsDialog] direct add to source plan failed: $e');
+        debugPrint('$st');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _addingToPlan = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_humanizeAddToPlanError(e))),
+      );
+    }
+  }
+
   Future<void> _onAddToPlanPressed() async {
     if (_loading || _addingToPlan) return;
+
+    if (_isPlanFlow) {
+      await _addToSourcePlanDirectly();
+      return;
+    }
 
     setState(() {
       _addingToPlan = true;

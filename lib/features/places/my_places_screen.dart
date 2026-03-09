@@ -7,11 +7,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:centry/data/places/place_dto.dart';
 import 'package:centry/data/places/places_repository.dart';
+import 'package:centry/data/plans/plans_repository_impl.dart';
+import 'package:centry/features/places/details/add_place_to_plan_modal.dart';
 import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/map/places_map.dart';
 import 'package:centry/features/places/filters/places_filters_controller.dart';
 import 'package:centry/ui/common/center_toast.dart';
 import 'package:centry/ui/places/places_screen.dart'; // PlaceCard / PlaceUiModel
+import 'package:centry/ui/plans/plan_details_screen.dart';
 
 enum MyPlacesViewMode {
   list,
@@ -20,10 +23,14 @@ enum MyPlacesViewMode {
 
 class MyPlacesScreen extends StatefulWidget {
   final PlacesRepository repository;
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
 
   const MyPlacesScreen({
     super.key,
     required this.repository,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
   });
 
   @override
@@ -47,6 +54,9 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
 
   final PlacesFiltersController _filtersController = PlacesFiltersController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+
+  bool get _isPlanFlow =>
+      widget.sourcePlanId != null && widget.sourcePlanTitle != null;
 
   @override
   void initState() {
@@ -189,8 +199,56 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     }
   }
 
+  String _mapPlanPlaceAddError(String message) {
+    switch (message) {
+      case 'Place already added to plan':
+        return 'Место уже добавлено';
+      case 'Plan already has 5 places':
+        return 'В плане уже 5 мест';
+      case 'Plan is not open':
+        return 'План закрыт';
+      case 'Not a member of plan':
+        return 'Нет доступа к плану';
+      case 'Rejected place cannot be added to new plan':
+        return 'Отклонённое место нельзя добавить в новый план';
+      case 'Place not found':
+      case 'Place submission not found':
+        return 'Место не найдено';
+      default:
+        return message.isEmpty ? 'Не удалось добавить место в план' : message;
+    }
+  }
+
+  Future<void> _openPlanDetails({
+    required String planId,
+  }) async {
+    try {
+      final appUserId = await _resolveCurrentAppUserId();
+
+      if (!mounted) return;
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlanDetailsScreen(
+            appUserId: appUserId,
+            planId: planId,
+            repository: PlansRepositoryImpl(Supabase.instance.client),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[MyPlacesScreen] open plan details failed: $e');
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть план')),
+      );
+    }
+  }
+
   Future<void> _openDetails(PlaceUiModel place) async {
-    await showDialog(
+    final result = await showDialog<Object?>(
       context: context,
       builder: (_) => PlaceDetailsDialog(
         repository: widget.repository,
@@ -209,16 +267,43 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
       ),
     );
 
+    if (!mounted) return;
+
+    if (result == true && _isPlanFlow) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    if (result is AddPlaceToPlanResult) {
+      await _openPlanDetails(planId: result.planId);
+    }
+
     await _load();
   }
 
   Future<void> _openSubmissionDetails(_MyPlaceSubmissionItem submission) async {
-    await showDialog<void>(
+    final result = await showDialog<Object?>(
       context: context,
       builder: (_) => _MyPlaceSubmissionDetailsDialog(
         submission: submission,
+        resolveCurrentAppUserId: _resolveCurrentAppUserId,
+        sourcePlanId: widget.sourcePlanId,
+        sourcePlanTitle: widget.sourcePlanTitle,
       ),
     );
+
+    if (!mounted) return;
+
+    if (result == true && _isPlanFlow) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    if (result is AddPlaceToPlanResult) {
+      await _openPlanDetails(planId: result.planId);
+    }
+
+    await _load();
   }
 
   void _openOnMap(PlaceDto place) {
@@ -624,18 +709,146 @@ class _MyPlaceSubmissionCardState extends State<_MyPlaceSubmissionCard> {
   }
 }
 
-class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
+class _MyPlaceSubmissionDetailsDialog extends StatefulWidget {
   const _MyPlaceSubmissionDetailsDialog({
     required this.submission,
+    required this.resolveCurrentAppUserId,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
   });
 
   final _MyPlaceSubmissionItem submission;
+  final Future<String> Function() resolveCurrentAppUserId;
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
+
+  @override
+  State<_MyPlaceSubmissionDetailsDialog> createState() =>
+      _MyPlaceSubmissionDetailsDialogState();
+}
+
+class _MyPlaceSubmissionDetailsDialogState
+    extends State<_MyPlaceSubmissionDetailsDialog> {
+  bool _addingToPlan = false;
+
+  bool get _isPlanFlow =>
+      widget.sourcePlanId != null && widget.sourcePlanTitle != null;
+
+  bool get _canAddToPlan => widget.submission.status != 'REJECTED';
+
+  String _mapPlanPlaceAddError(String message) {
+    switch (message) {
+      case 'Place already added to plan':
+        return 'Место уже добавлено';
+      case 'Plan already has 5 places':
+        return 'В плане уже 5 мест';
+      case 'Plan is not open':
+        return 'План закрыт';
+      case 'Not a member of plan':
+        return 'Нет доступа к плану';
+      case 'Rejected place cannot be added to new plan':
+        return 'Отклонённое место нельзя добавить в новый план';
+      case 'Place not found':
+      case 'Place submission not found':
+        return 'Место не найдено';
+      default:
+        return message.isEmpty ? 'Не удалось добавить место в план' : message;
+    }
+  }
+
+  Future<bool> _confirmAddToPlan() async {
+    final planTitle = widget.sourcePlanTitle ?? '';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Подтверждение добавления в план'),
+        content: Text(
+          'Подтвердите, что хотите добавить место в план «$planTitle».',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отменить'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Добавить'),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
+  }
+
+  Future<void> _onAddToPlanPressed() async {
+    if (_addingToPlan || !_canAddToPlan) return;
+
+    setState(() => _addingToPlan = true);
+
+    try {
+      if (_isPlanFlow) {
+        final confirmed = await _confirmAddToPlan();
+        if (!mounted) return;
+
+        if (!confirmed) {
+          setState(() => _addingToPlan = false);
+          return;
+        }
+
+        final appUserId = await widget.resolveCurrentAppUserId();
+
+        await Supabase.instance.client.rpc(
+          'add_plan_place_v2',
+          params: {
+            'p_app_user_id': appUserId,
+            'p_plan_id': widget.sourcePlanId,
+            'p_place_id': null,
+            'p_place_submission_id': widget.submission.submissionId,
+          },
+        );
+
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+        return;
+      }
+
+      final result = await AddPlaceToPlanModal.show(
+        context,
+        placeSubmissionId: widget.submission.submissionId,
+      );
+
+      if (!mounted) return;
+
+      if (result == null) {
+        setState(() => _addingToPlan = false);
+        return;
+      }
+
+      Navigator.of(context).pop(result);
+    } catch (e) {
+      if (!mounted) return;
+
+      final message = e is PostgrestException
+          ? e.message.toString().trim()
+          : e.toString().replaceFirst('Exception: ', '').trim();
+
+      setState(() => _addingToPlan = false);
+
+      await showCenterToast(
+        context,
+        message: _mapPlanPlaceAddError(message),
+        isError: true,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final statusColor = submission.statusColor(context);
-    final statusBgColor = submission.statusBackgroundColor(context);
+    final statusColor = widget.submission.statusColor(context);
+    final statusBgColor = widget.submission.statusBackgroundColor(context);
 
     const addToPlanFillColor = Color(0xFF19D3C5);
     const addToPlanTextColor = Color(0xFF081217);
@@ -696,7 +909,7 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            submission.typeLabel,
+                            widget.submission.typeLabel,
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: theme.colorScheme.primary,
                               fontWeight: FontWeight.w600,
@@ -708,7 +921,7 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  submission.title,
+                                  widget.submission.title,
                                   style:
                                       theme.textTheme.headlineSmall?.copyWith(
                                     fontWeight: FontWeight.w700,
@@ -726,7 +939,7 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
-                                  submission.statusLabel,
+                                  widget.submission.statusLabel,
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: statusColor,
                                     fontWeight: FontWeight.w700,
@@ -737,23 +950,23 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                           ),
                           const SizedBox(height: 14),
                           Text(
-                            submission.city,
+                            widget.submission.city,
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: Colors.grey.shade400,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            submission.address,
+                            widget.submission.address,
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: Colors.grey.shade400,
                             ),
                           ),
-                          if (submission.websiteUrl != null &&
-                              submission.websiteUrl!.trim().isNotEmpty) ...[
+                          if (widget.submission.websiteUrl != null &&
+                              widget.submission.websiteUrl!.trim().isNotEmpty) ...[
                             const SizedBox(height: 12),
                             Text(
-                              submission.websiteUrl!,
+                              widget.submission.websiteUrl!,
                               style: theme.textTheme.bodyLarge?.copyWith(
                                 color: theme.colorScheme.primary,
                               ),
@@ -768,7 +981,7 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            submission.statusLabel,
+                            widget.submission.statusLabel,
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -778,32 +991,39 @@ class _MyPlaceSubmissionDetailsDialog extends StatelessWidget {
                             width: double.infinity,
                             height: 56,
                             child: FilledButton(
-                              onPressed: () async {
-                                await showCenterToast(
-                                  context,
-                                  message:
-                                      'Добавление в план будет доступно позже.',
-                                );
-                              },
+                              onPressed: (_addingToPlan || !_canAddToPlan)
+                                  ? null
+                                  : _onAddToPlanPressed,
                               style: FilledButton.styleFrom(
                                 elevation: 0,
                                 backgroundColor: addToPlanFillColor,
                                 foregroundColor: addToPlanTextColor,
-                                disabledBackgroundColor: addToPlanFillColor,
-                                disabledForegroundColor: addToPlanTextColor,
+                                disabledBackgroundColor:
+                                    addToPlanFillColor.withOpacity(0.45),
+                                disabledForegroundColor:
+                                    addToPlanTextColor.withOpacity(0.75),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                               ),
-                              child: const Text(
-                                'Добавить в план',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                ),
-                              ),
+                              child: _addingToPlan
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: addToPlanTextColor,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Добавить в план',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 12),
