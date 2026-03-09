@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/geo/geo_service.dart';
 import '../../../data/plans/plan_details_dto.dart';
 
 class PlanPlacesBlock extends StatelessWidget {
@@ -151,7 +152,45 @@ class _CoreCandidateCard extends StatelessWidget {
     }
   }
 
-  String? _distanceLabel(double? distanceM) {
+  double? _resolveDistanceM() {
+    if (item.distanceM != null) return item.distanceM;
+
+    final geo = GeoService.instance.current.value;
+    if (geo == null || item.lat == null || item.lng == null) return null;
+
+    return _distanceBetweenMeters(
+      geo.lat,
+      geo.lng,
+      item.lat!,
+      item.lng!,
+    );
+  }
+
+  double _distanceBetweenMeters(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const earthRadiusM = 6371000.0;
+
+    double degToRad(double deg) => deg * math.pi / 180.0;
+
+    final dLat = degToRad(lat2 - lat1);
+    final dLng = degToRad(lng2 - lng1);
+
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(degToRad(lat1)) *
+            math.cos(degToRad(lat2)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusM * c;
+  }
+
+  String? _distanceLabel() {
+    final distanceM = _resolveDistanceM();
     if (distanceM == null) return null;
 
     if (distanceM < 1000) {
@@ -163,7 +202,8 @@ class _CoreCandidateCard extends StatelessWidget {
     return '${km.toStringAsFixed(digits)} км от вас';
   }
 
-  Color _distanceColor(double? distanceM) {
+  Color _distanceColor() {
+    final distanceM = _resolveDistanceM();
     if (distanceM == null) return Colors.transparent;
 
     if (distanceM < 1000) {
@@ -191,7 +231,7 @@ class _CoreCandidateCard extends StatelessWidget {
           height: 1.05,
         );
 
-    final distanceLabel = _distanceLabel(item.distanceM);
+    final distanceLabel = _distanceLabel();
 
     return Stack(
       children: [
@@ -315,33 +355,24 @@ class _CoreCandidateCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (distanceLabel != null)
+                      if (distanceLabel != null) ...[
                         Text(
                           distanceLabel,
                           style:
                               Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: _distanceColor(item.distanceM),
+                                    color: _distanceColor(),
                                     fontWeight: FontWeight.w600,
                                     height: 1.0,
                                   ),
                         ),
-                      const SizedBox(height: 2),
+                        const SizedBox(height: 2),
+                      ],
                       Text(
                         _typeLabel(item.type),
                         style: Theme.of(context)
                             .textTheme
                             .bodySmall
                             ?.copyWith(color: Colors.grey),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.areaName != null
-                            ? '${item.cityName} · ${item.areaName}'
-                            : item.cityName,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey.shade500),
                       ),
                       const SizedBox(height: 2),
                       Row(
