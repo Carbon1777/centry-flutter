@@ -102,4 +102,31 @@ abstract class PlacesRepository {
   /// Returns only places marked by current domain user.
   /// Server is source of truth.
   Future<List<PlaceDto>> getMyPlaces();
+
+  /// 🔹 Create user place submission (ordinary flow)
+  ///
+  /// Canonical server RPC:
+  /// create_place_submission_v1(...)
+  Future<Map<String, dynamic>> createPlaceSubmission({
+    required String title,
+    required String category,
+    required String city,
+    required String street,
+    required String house,
+    String? website,
+  });
+
+  /// 🔹 Create user place submission and immediately try to add it into plan
+  ///
+  /// Canonical server RPC:
+  /// create_place_submission_and_add_to_plan_v1(...)
+  Future<Map<String, dynamic>> createPlaceSubmissionAndAddToPlan({
+    required String planId,
+    required String title,
+    required String category,
+    required String city,
+    required String street,
+    required String house,
+    String? website,
+  });
 }
