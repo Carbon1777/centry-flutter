@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-
-import 'plan_members_modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'plan_members_modal.dart';
+
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plan_details_dto.dart';
 import '../../data/places/places_repository_impl.dart';
+
+import '../../features/places/add_place/add_place_dialog.dart';
+import '../../features/places/my_places_screen.dart';
 
 import 'widgets/plan_formatters.dart';
 import 'widgets/plan_dates_block.dart';
@@ -19,7 +22,6 @@ import 'widgets/add_place_source_modal.dart';
 
 import '../common/center_toast.dart';
 import '../places/places_screen.dart';
-import '../../features/places/my_places_screen.dart';
 
 class PlanDetailsScreen extends StatefulWidget {
   final String appUserId;
@@ -155,6 +157,56 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
 
     return 'Не удалось загрузить план. Проверьте соединение и попробуйте ещё раз.';
+  }
+
+  String _mapUiCategoryToCanonical(String typeLabel) {
+    switch (typeLabel.trim()) {
+      case 'Бар':
+        return 'bar';
+      case 'Ночной клуб':
+        return 'nightclub';
+      case 'Ресторан':
+        return 'restaurant';
+      case 'Кино':
+        return 'cinema';
+      case 'Театр':
+        return 'theatre';
+      default:
+        return typeLabel.trim().toLowerCase();
+    }
+  }
+
+  bool _asBool(dynamic value) {
+    if (value == true) return true;
+    if (value == false) return false;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final v = value.trim().toLowerCase();
+      return v == 'true' || v == '1';
+    }
+    return false;
+  }
+
+  String _humanizeCreateOwnPlaceAddError(String? raw) {
+    final message = (raw ?? '').trim();
+    if (message.isEmpty) {
+      return 'Не удалось добавить место в план';
+    }
+
+    switch (message) {
+      case 'Place already added to plan':
+        return 'Место уже добавлено';
+      case 'Plan already has 5 places':
+        return 'В плане уже 5 мест';
+      case 'Plan is not open':
+        return 'Добавлять места можно только в открытый план';
+      case 'Not a member of plan':
+        return 'Нет доступа к плану';
+      case 'Rejected place cannot be added to new plan':
+        return 'Отклонённое место нельзя добавить в новый план';
+      default:
+        return message;
+    }
   }
 
   Future<void> _refreshSilentlyIfPossible() async {
@@ -691,11 +743,45 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         return;
 
       case PlanPlaceAddSource.createOwnPlace:
-        await showCenterToast(
-          context,
-          message:
-              'Создание своего места из плана подключим после привязки точной RPC-сигнатуры.',
+        final placesRepository = PlacesRepositoryImpl(Supabase.instance.client);
+
+        final rawResult = await showDialog<Object?>(
+          context: context,
+          builder: (_) => AddPlaceDialog(
+            onSubmit: (form) async {
+              return await placesRepository.createPlaceSubmissionAndAddToPlan(
+                planId: _details!.plan.id,
+                title: form.name,
+                category: _mapUiCategoryToCanonical(form.typeLabel),
+                city: form.city,
+                street: form.street,
+                house: form.house,
+                website: form.website,
+              );
+            },
+          ),
         );
+
+        if (!mounted || rawResult == null) return;
+
+        if (rawResult is Map) {
+          final result = Map<String, dynamic>.from(rawResult);
+          final addedToPlan = _asBool(result['added_to_plan']);
+
+          if (addedToPlan) {
+            await _load(showSpinner: false);
+            return;
+          }
+
+          final addError = result['add_to_plan_error']?.toString();
+          await showCenterToast(
+            context,
+            message: _humanizeCreateOwnPlaceAddError(addError),
+            isError: true,
+          );
+          return;
+        }
+
         return;
     }
   }

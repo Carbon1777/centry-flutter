@@ -110,7 +110,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
       if (_cachedDomainUserId != id) {
         if (kDebugMode) {
           debugPrint(
-              '[PlacesRepository] domain_user_id updated from snapshot: $id');
+            '[PlacesRepository] domain_user_id updated from snapshot: $id',
+          );
         }
       }
       _cachedDomainUserId = id;
@@ -124,7 +125,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
 
       if (kDebugMode) {
         debugPrint(
-            '[PlacesRepository] snapshot missing, restoring via RPC get_domain_user_by_auth_user_id auth_user_id=$authId');
+          '[PlacesRepository] snapshot missing, restoring via RPC get_domain_user_by_auth_user_id auth_user_id=$authId',
+        );
       }
 
       final row = await _fetchDomainUserByAuthUserId(authId);
@@ -150,7 +152,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
 
           if (kDebugMode) {
             debugPrint(
-                '[PlacesRepository] domain_user_id restored via RPC: $domainId');
+              '[PlacesRepository] domain_user_id restored via RPC: $domainId',
+            );
           }
 
           return domainId;
@@ -169,6 +172,18 @@ class PlacesRepositoryImpl implements PlacesRepository {
     if (!kDebugMode) return;
     debugPrint('[PlacesRepository] RPC ERROR in $fn: $e');
     debugPrint('$st');
+  }
+
+  Map<String, dynamic> _expectJsonMap(String fn, dynamic response) {
+    if (response is Map) {
+      return Map<String, dynamic>.from(response);
+    }
+
+    if (response is List && response.isNotEmpty && response.first is Map) {
+      return Map<String, dynamic>.from(response.first as Map);
+    }
+
+    throw StateError('Unexpected $fn response');
   }
 
   // ===========================================================
@@ -300,7 +315,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
 
       if (kDebugMode) {
         debugPrint(
-            '[PlacesRepository] RPC search_places_suggestions_v1 raw=$raw');
+          '[PlacesRepository] RPC search_places_suggestions_v1 raw=$raw',
+        );
       }
 
       if (raw is List) {
@@ -389,7 +405,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
 
       if (kDebugMode) {
         debugPrint(
-            '[PlacesRepository] RPC get_places_filters_state_v1 params=$params');
+          '[PlacesRepository] RPC get_places_filters_state_v1 params=$params',
+        );
       }
 
       final response = await _client.rpc(
@@ -521,7 +538,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
     }
   }
 
-// ===========================================================
+  // ===========================================================
   // VOTE
   // ===========================================================
 
@@ -554,7 +571,6 @@ class PlacesRepositoryImpl implements PlacesRepository {
     }
   }
 
-  
   @override
   Future<List<PlaceDto>> getMyPlaces() async {
     final resolvedUserId = await _resolveDomainUserId();
@@ -567,7 +583,8 @@ class PlacesRepositoryImpl implements PlacesRepository {
     final geo = GeoService.instance.current.value;
 
     debugPrint(
-        '[PlacesRepository] getMyPlaces → domainUserId: $resolvedUserId geo=${geo == null ? "null" : "${geo.lat},${geo.lng}"}');
+      '[PlacesRepository] getMyPlaces → domainUserId: $resolvedUserId geo=${geo == null ? "null" : "${geo.lat},${geo.lng}"}',
+    );
 
     final response = await _client.rpc(
       'get_my_places_v1',
@@ -619,4 +636,81 @@ class PlacesRepositoryImpl implements PlacesRepository {
     _invalidationController.add(null);
   }
 
+  @override
+  Future<Map<String, dynamic>> createPlaceSubmission({
+    required String title,
+    required String category,
+    required String city,
+    required String street,
+    required String house,
+    String? website,
+  }) async {
+    final resolvedUserId = await _resolveDomainUserId();
+
+    try {
+      final response = await _client.rpc(
+        'create_place_submission_v1',
+        params: {
+          'p_app_user_id': resolvedUserId,
+          'p_title': title,
+          'p_category': category,
+          'p_city': city,
+          'p_street': street,
+          'p_house': house,
+          'p_website': website,
+        },
+      );
+
+      final data = _expectJsonMap('create_place_submission_v1', response);
+
+      _invalidationController.add(null);
+
+      return data;
+    } catch (e, st) {
+      _logRpcError('create_place_submission_v1', e, st);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> createPlaceSubmissionAndAddToPlan({
+    required String planId,
+    required String title,
+    required String category,
+    required String city,
+    required String street,
+    required String house,
+    String? website,
+  }) async {
+    final resolvedUserId = await _resolveDomainUserId();
+
+    try {
+      final response = await _client.rpc(
+        'create_place_submission_and_add_to_plan_v1',
+        params: {
+          'p_app_user_id': resolvedUserId,
+          'p_plan_id': planId,
+          'p_title': title,
+          'p_category': category,
+          'p_city': city,
+          'p_street': street,
+          'p_house': house,
+          'p_website': website,
+        },
+      );
+
+      final data = _expectJsonMap(
+        'create_place_submission_and_add_to_plan_v1',
+        response,
+      );
+
+      // submission was created canonically even when added_to_plan=false
+      _invalidationController.add(null);
+
+      return data;
+    } catch (e, st) {
+      _logRpcError('create_place_submission_and_add_to_plan_v1', e, st);
+      rethrow;
+    }
+  }
 }
