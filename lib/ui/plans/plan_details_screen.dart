@@ -654,14 +654,20 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
     switch (source) {
       case PlanPlaceAddSource.generalList:
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const PlacesScreen(),
+        final result = await Navigator.of(context).push<Object?>(
+          MaterialPageRoute<Object?>(
+            builder: (_) => PlacesScreen(
+              sourcePlanId: _details!.plan.id,
+              sourcePlanTitle: _details!.plan.title,
+            ),
           ),
         );
 
         if (!mounted) return;
-        await _load(showSpinner: false);
+
+        if (result != null) {
+          await _load(showSpinner: false);
+        }
         return;
 
       case PlanPlaceAddSource.myPlaces:
