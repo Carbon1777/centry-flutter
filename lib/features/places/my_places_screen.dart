@@ -55,8 +55,14 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
   final PlacesFiltersController _filtersController = PlacesFiltersController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
-  bool get _isPlanFlow =>
-      widget.sourcePlanId != null && widget.sourcePlanTitle != null;
+  bool get _isPlanFlow {
+    final planId = widget.sourcePlanId?.trim();
+    final planTitle = widget.sourcePlanTitle?.trim();
+    return planId != null &&
+        planId.isNotEmpty &&
+        planTitle != null &&
+        planTitle.isNotEmpty;
+  }
 
   @override
   void initState() {
@@ -199,26 +205,6 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     }
   }
 
-  String _mapPlanPlaceAddError(String message) {
-    switch (message) {
-      case 'Place already added to plan':
-        return 'Место уже добавлено';
-      case 'Plan already has 5 places':
-        return 'В плане уже 5 мест';
-      case 'Plan is not open':
-        return 'План закрыт';
-      case 'Not a member of plan':
-        return 'Нет доступа к плану';
-      case 'Rejected place cannot be added to new plan':
-        return 'Отклонённое место нельзя добавить в новый план';
-      case 'Place not found':
-      case 'Place submission not found':
-        return 'Место не найдено';
-      default:
-        return message.isEmpty ? 'Не удалось добавить место в план' : message;
-    }
-  }
-
   Future<void> _openPlanDetails({
     required String planId,
   }) async {
@@ -264,17 +250,19 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         previewIsPlaceholder: place.dto.previewIsPlaceholder,
         metroName: place.dto.metroName,
         metroDistanceM: place.dto.metroDistanceM,
+        sourcePlanId: widget.sourcePlanId,
+        sourcePlanTitle: widget.sourcePlanTitle,
       ),
     );
 
     if (!mounted) return;
 
-    if (result == true && _isPlanFlow) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-
     if (result is AddPlaceToPlanResult) {
+      if (_isPlanFlow) {
+        Navigator.of(context).pop(result);
+        return;
+      }
+
       await _openPlanDetails(planId: result.planId);
     }
 
@@ -294,12 +282,12 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
 
     if (!mounted) return;
 
-    if (result == true && _isPlanFlow) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-
     if (result is AddPlaceToPlanResult) {
+      if (_isPlanFlow) {
+        Navigator.of(context).pop(result);
+        return;
+      }
+
       await _openPlanDetails(planId: result.planId);
     }
 
@@ -731,8 +719,14 @@ class _MyPlaceSubmissionDetailsDialogState
     extends State<_MyPlaceSubmissionDetailsDialog> {
   bool _addingToPlan = false;
 
-  bool get _isPlanFlow =>
-      widget.sourcePlanId != null && widget.sourcePlanTitle != null;
+  bool get _isPlanFlow {
+    final planId = widget.sourcePlanId?.trim();
+    final planTitle = widget.sourcePlanTitle?.trim();
+    return planId != null &&
+        planId.isNotEmpty &&
+        planTitle != null &&
+        planTitle.isNotEmpty;
+  }
 
   bool get _canAddToPlan => widget.submission.status != 'REJECTED';
 
@@ -757,14 +751,14 @@ class _MyPlaceSubmissionDetailsDialogState
   }
 
   Future<bool> _confirmAddToPlan() async {
-    final planTitle = widget.sourcePlanTitle ?? '';
+    final planTitle = widget.sourcePlanTitle?.trim() ?? '';
 
     final result = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Подтверждение добавления в план'),
         content: Text(
-          'Подтвердите, что хотите добавить место в план «$planTitle».',
+          'Подтвердите, что хотите добавить место в план "$planTitle"',
         ),
         actions: [
           TextButton(
@@ -798,19 +792,27 @@ class _MyPlaceSubmissionDetailsDialogState
         }
 
         final appUserId = await widget.resolveCurrentAppUserId();
+        final planId = widget.sourcePlanId!.trim();
+        final planTitle = widget.sourcePlanTitle!.trim();
 
         await Supabase.instance.client.rpc(
           'add_plan_place_v2',
           params: {
             'p_app_user_id': appUserId,
-            'p_plan_id': widget.sourcePlanId,
+            'p_plan_id': planId,
             'p_place_id': null,
             'p_place_submission_id': widget.submission.submissionId,
           },
         );
 
         if (!mounted) return;
-        Navigator.of(context).pop(true);
+
+        Navigator.of(context).pop(
+          AddPlaceToPlanResult(
+            planId: planId,
+            planTitle: planTitle,
+          ),
+        );
         return;
       }
 
@@ -963,7 +965,9 @@ class _MyPlaceSubmissionDetailsDialogState
                             ),
                           ),
                           if (widget.submission.websiteUrl != null &&
-                              widget.submission.websiteUrl!.trim().isNotEmpty) ...[
+                              widget.submission.websiteUrl!
+                                  .trim()
+                                  .isNotEmpty) ...[
                             const SizedBox(height: 12),
                             Text(
                               widget.submission.websiteUrl!,
