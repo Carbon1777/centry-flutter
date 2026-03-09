@@ -14,8 +14,10 @@ import 'widgets/plan_formatters.dart';
 import 'widgets/plan_dates_block.dart';
 import 'widgets/plan_places_block.dart';
 import 'widgets/plan_chat_block.dart';
+import 'widgets/add_place_source_modal.dart';
 
 import '../common/center_toast.dart';
+import '../places/places_screen.dart';
 
 class PlanDetailsScreen extends StatefulWidget {
   final String appUserId;
@@ -639,6 +641,45 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
+  Future<void> _openAddPlaceSourceFlow() async {
+    if (_details == null || _actionLoading) return;
+    if (_details!.plan.status != 'OPEN') return;
+
+    final source = await PlanPlaceAddSourceModal.show(
+      context,
+      planTitle: _details!.plan.title,
+    );
+
+    if (!mounted || source == null) return;
+
+    switch (source) {
+      case PlanPlaceAddSource.generalList:
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const PlacesScreen(),
+          ),
+        );
+
+        if (!mounted) return;
+        await _load(showSpinner: false);
+        return;
+
+      case PlanPlaceAddSource.myPlaces:
+        await showCenterToast(
+          context,
+          message: 'Список «Мои места» подключим следующим шагом.',
+        );
+        return;
+
+      case PlanPlaceAddSource.createOwnPlace:
+        await showCenterToast(
+          context,
+          message: 'Создание своего места из плана подключим следующим шагом.',
+        );
+        return;
+    }
+  }
+
   Future<void> _choosePlanDateOwnerPriority(DateTime dateAt) async {
     if (_details == null || _actionLoading) return;
 
@@ -914,6 +955,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onVoteDate: _votePlanDate,
                   onUnvoteDate: _unvotePlanDate,
                   onDeleteDate: _deletePlanDate,
+                  onAddPlaceCandidate: _openAddPlaceSourceFlow,
                   onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
                   onClearOwnerPriorityDate: _clearPlanDateOwnerPriority,
                   onRemoveMember: _removeMemberDirect,
@@ -942,6 +984,7 @@ class _Body extends StatelessWidget {
   final Future<void> Function(DateTime dateAt) onVoteDate;
   final Future<void> Function(DateTime dateAt) onUnvoteDate;
   final Future<void> Function(DateTime dateAt) onDeleteDate;
+  final VoidCallback onAddPlaceCandidate;
   final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
   final Future<void> Function() onClearOwnerPriorityDate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
@@ -966,6 +1009,7 @@ class _Body extends StatelessWidget {
     required this.onVoteDate,
     required this.onUnvoteDate,
     required this.onDeleteDate,
+    required this.onAddPlaceCandidate,
     required this.onChooseOwnerPriorityDate,
     required this.onClearOwnerPriorityDate,
     required this.onRemoveMember,
@@ -1175,7 +1219,11 @@ class _Body extends StatelessWidget {
         const Divider(height: 1, thickness: 1),
         const _SectionTitle('Голосование по местам'),
         const SizedBox(height: 6),
-        PlanPlacesBlock(items: details.placeCandidates),
+        PlanPlacesBlock(
+          items: details.placeCandidates,
+          onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
+          actionsDisabled: actionsDisabled,
+        ),
         const SizedBox(height: 10),
         const Divider(height: 1, thickness: 1),
         const _SectionTitle('Чат'),
