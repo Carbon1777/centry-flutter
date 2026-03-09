@@ -31,14 +31,21 @@ enum PlacesViewMode {
 }
 
 class PlacesScreen extends StatefulWidget {
-  const PlacesScreen({super.key});
+  final PlacesViewMode initialViewMode;
+  final PlaceDto? initialFocusPlace;
+
+  const PlacesScreen({
+    super.key,
+    this.initialViewMode = PlacesViewMode.list,
+    this.initialFocusPlace,
+  });
 
   @override
   State<PlacesScreen> createState() => _PlacesScreenState();
 }
 
 class _PlacesScreenState extends State<PlacesScreen> {
-  PlacesViewMode _viewMode = PlacesViewMode.list;
+  late PlacesViewMode _viewMode;
 
   final _geoInfoController = PlacesGeoInfoController();
   final _filtersController = PlacesFiltersController();
@@ -49,13 +56,15 @@ class _PlacesScreenState extends State<PlacesScreen> {
   /// 🔴 Live invalidation subscription
   late final StreamSubscription<void> _repoInvalidationSub;
 
-  /// UI-сигнал: сфокусировать карту на конкретном месте (из списка).
+  /// UI-сигнал: сфокусировать карту на конкретном месте (из списка / извне).
   final ValueNotifier<PlaceDto?> _mapFocusPlace =
       ValueNotifier<PlaceDto?>(null);
 
   @override
   void initState() {
     super.initState();
+
+    _viewMode = widget.initialViewMode;
     _repository = PlacesRepositoryImpl(Supabase.instance.client);
 
     /// 🔴 Подписка на live invalidation
@@ -65,6 +74,14 @@ class _PlacesScreenState extends State<PlacesScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowGeoInfo();
+
+      final initialFocusPlace = widget.initialFocusPlace;
+      if (initialFocusPlace != null) {
+        _focusPlaceOnMap(
+          initialFocusPlace,
+          switchToMap: widget.initialViewMode == PlacesViewMode.map,
+        );
+      }
     });
   }
 
@@ -172,8 +189,14 @@ class _PlacesScreenState extends State<PlacesScreen> {
     _reloadSignal.value++;
   }
 
-  void _openPlaceOnMap(PlaceDto place) {
-    setState(() => _viewMode = PlacesViewMode.map);
+  void _focusPlaceOnMap(
+    PlaceDto place, {
+    bool switchToMap = true,
+  }) {
+    if (switchToMap) {
+      setState(() => _viewMode = PlacesViewMode.map);
+    }
+
     _mapFocusPlace.value = place;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,6 +205,10 @@ class _PlacesScreenState extends State<PlacesScreen> {
         _mapFocusPlace.value = null;
       }
     });
+  }
+
+  void _openPlaceOnMap(PlaceDto place) {
+    _focusPlaceOnMap(place, switchToMap: true);
   }
 
   @override
