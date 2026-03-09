@@ -376,10 +376,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => PlacesScreen(
-          initialViewMode: PlacesViewMode.map,
-          initialFocusPlace: dto,
-        ),
+        builder: (_) => const PlacesScreen(),
       ),
     );
   }
