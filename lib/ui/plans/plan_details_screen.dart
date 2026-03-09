@@ -1,18 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'plan_members_modal.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plan_details_dto.dart';
 import '../../data/places/places_repository_impl.dart';
 
-import '../../features/places/add_place/add_place_dialog.dart';
-import '../../features/places/my_places_screen.dart';
+import '../../features/places/details/place_details_dialog.dart';
 
 import 'widgets/plan_formatters.dart';
 import 'widgets/plan_dates_block.dart';
@@ -159,56 +158,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     return 'Не удалось загрузить план. Проверьте соединение и попробуйте ещё раз.';
   }
 
-  String _mapUiCategoryToCanonical(String typeLabel) {
-    switch (typeLabel.trim()) {
-      case 'Бар':
-        return 'bar';
-      case 'Ночной клуб':
-        return 'nightclub';
-      case 'Ресторан':
-        return 'restaurant';
-      case 'Кино':
-        return 'cinema';
-      case 'Театр':
-        return 'theatre';
-      default:
-        return typeLabel.trim().toLowerCase();
-    }
-  }
-
-  bool _asBool(dynamic value) {
-    if (value == true) return true;
-    if (value == false) return false;
-    if (value is num) return value != 0;
-    if (value is String) {
-      final v = value.trim().toLowerCase();
-      return v == 'true' || v == '1';
-    }
-    return false;
-  }
-
-  String _humanizeCreateOwnPlaceAddError(String? raw) {
-    final message = (raw ?? '').trim();
-    if (message.isEmpty) {
-      return 'Не удалось добавить место в план';
-    }
-
-    switch (message) {
-      case 'Place already added to plan':
-        return 'Место уже добавлено';
-      case 'Plan already has 5 places':
-        return 'В плане уже 5 мест';
-      case 'Plan is not open':
-        return 'Добавлять места можно только в открытый план';
-      case 'Not a member of plan':
-        return 'Нет доступа к плану';
-      case 'Rejected place cannot be added to new plan':
-        return 'Отклонённое место нельзя добавить в новый план';
-      default:
-        return message;
-    }
-  }
-
   Future<void> _refreshSilentlyIfPossible() async {
     if (!mounted) return;
     if (_loading || _actionLoading || _visibilityLoading) return;
@@ -310,6 +259,129 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       default:
         return status;
     }
+  }
+
+  String _humanizeRemovePlaceError(Object e) {
+    if (e is PostgrestException) {
+      final msg = e.message.toString();
+      if (msg.trim().isNotEmpty) return msg;
+    }
+    return 'Не удалось удалить место из плана';
+  }
+
+  Future<void> _removePlaceCandidate(PlaceCandidateDto candidate) async {
+    if (_actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.removePlanPlace(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+        placeId: candidate.placeId,
+        placeSubmissionId: candidate.placeSubmissionId,
+      );
+
+      if (!mounted) return;
+      await _load(showSpinner: false);
+
+      if (!mounted) return;
+      await showCenterToast(context, message: 'Удалено из плана');
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(
+        context,
+        message: _humanizeRemovePlaceError(e),
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _openPlaceCandidateDetails(PlaceCandidateDto candidate) async {
+    final dto = candidate.toPlaceDto();
+    if (dto == null) {
+      await showCenterToast(
+        context,
+        message: 'Для места на модерации карточка деталей пока недоступна.',
+        isError: true,
+      );
+      return;
+    }
+
+    final result = await showDialog<Object?>(
+      context: context,
+      builder: (_) => PlaceDetailsDialog(
+        repository: PlacesRepositoryImpl(Supabase.instance.client),
+        placeId: dto.id,
+        title: dto.title,
+        typeLabel: _typeLabelFromCategory(dto.type),
+        address: dto.address,
+        lat: dto.lat,
+        lng: dto.lng,
+        websiteUrl: dto.websiteUrl,
+        previewMediaUrl: dto.previewMediaUrl,
+        previewStorageKey: dto.previewStorageKey,
+        previewIsPlaceholder: dto.previewIsPlaceholder,
+        metroName: dto.metroName,
+        metroDistanceM: dto.metroDistanceM,
+        isAlreadyInCurrentPlan: true,
+        onRemoveFromCurrentPlan: candidate.canDelete
+            ? () => widget.repository.removePlanPlace(
+                  appUserId: widget.appUserId,
+                  planId: widget.planId,
+                  placeId: candidate.placeId,
+                  placeSubmissionId: candidate.placeSubmissionId,
+                )
+            : null,
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result != null) {
+      await _load(showSpinner: false);
+    }
+  }
+
+  String _typeLabelFromCategory(String type) {
+    switch (type) {
+      case 'restaurant':
+        return 'Ресторан';
+      case 'bar':
+        return 'Бар';
+      case 'nightclub':
+        return 'Ночной клуб';
+      case 'cinema':
+        return 'Кинотеатр';
+      case 'theatre':
+        return 'Театр';
+      default:
+        return 'Место';
+    }
+  }
+
+  Future<void> _openPlaceCandidateOnMap(PlaceCandidateDto candidate) async {
+    final dto = candidate.toPlaceDto();
+    if (dto == null) {
+      await showCenterToast(
+        context,
+        message: 'Для места на модерации карта пока недоступна.',
+        isError: true,
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlacesScreen(
+          initialViewMode: PlacesViewMode.map,
+          initialFocusPlace: dto,
+        ),
+      ),
+    );
   }
 
   Future<void> _onPrimaryAction() async {
@@ -708,80 +780,28 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
     switch (source) {
       case PlanPlaceAddSource.generalList:
-        final result = await Navigator.of(context).push<Object?>(
-          MaterialPageRoute<Object?>(
-            builder: (_) => PlacesScreen(
-              sourcePlanId: _details!.plan.id,
-              sourcePlanTitle: _details!.plan.title,
-            ),
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const PlacesScreen(),
           ),
         );
 
         if (!mounted) return;
-
-        if (result != null) {
-          await _load(showSpinner: false);
-        }
+        await _load(showSpinner: false);
         return;
 
       case PlanPlaceAddSource.myPlaces:
-        final result = await Navigator.of(context).push<Object?>(
-          MaterialPageRoute<Object?>(
-            builder: (_) => MyPlacesScreen(
-              repository: PlacesRepositoryImpl(Supabase.instance.client),
-              sourcePlanId: _details!.plan.id,
-              sourcePlanTitle: _details!.plan.title,
-            ),
-          ),
+        await showCenterToast(
+          context,
+          message: 'Список «Мои места» подключим следующим шагом.',
         );
-
-        if (!mounted) return;
-
-        if (result != null) {
-          await _load(showSpinner: false);
-        }
         return;
 
       case PlanPlaceAddSource.createOwnPlace:
-        final placesRepository = PlacesRepositoryImpl(Supabase.instance.client);
-
-        final rawResult = await showDialog<Object?>(
-          context: context,
-          builder: (_) => AddPlaceDialog(
-            onSubmit: (form) async {
-              return await placesRepository.createPlaceSubmissionAndAddToPlan(
-                planId: _details!.plan.id,
-                title: form.name,
-                category: _mapUiCategoryToCanonical(form.typeLabel),
-                city: form.city,
-                street: form.street,
-                house: form.house,
-                website: form.website,
-              );
-            },
-          ),
+        await showCenterToast(
+          context,
+          message: 'Создание своего места из плана подключим следующим шагом.',
         );
-
-        if (!mounted || rawResult == null) return;
-
-        if (rawResult is Map) {
-          final result = Map<String, dynamic>.from(rawResult);
-          final addedToPlan = _asBool(result['added_to_plan']);
-
-          if (addedToPlan) {
-            await _load(showSpinner: false);
-            return;
-          }
-
-          final addError = result['add_to_plan_error']?.toString();
-          await showCenterToast(
-            context,
-            message: _humanizeCreateOwnPlaceAddError(addError),
-            isError: true,
-          );
-          return;
-        }
-
         return;
     }
   }
@@ -1062,6 +1082,9 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onUnvoteDate: _unvotePlanDate,
                   onDeleteDate: _deletePlanDate,
                   onAddPlaceCandidate: _openAddPlaceSourceFlow,
+                  onOpenPlaceDetails: _openPlaceCandidateDetails,
+                  onOpenPlaceOnMap: _openPlaceCandidateOnMap,
+                  onRemovePlaceCandidate: _removePlaceCandidate,
                   onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
                   onClearOwnerPriorityDate: _clearPlanDateOwnerPriority,
                   onRemoveMember: _removeMemberDirect,
@@ -1091,6 +1114,9 @@ class _Body extends StatelessWidget {
   final Future<void> Function(DateTime dateAt) onUnvoteDate;
   final Future<void> Function(DateTime dateAt) onDeleteDate;
   final VoidCallback onAddPlaceCandidate;
+  final ValueChanged<PlaceCandidateDto> onOpenPlaceDetails;
+  final ValueChanged<PlaceCandidateDto> onOpenPlaceOnMap;
+  final ValueChanged<PlaceCandidateDto> onRemovePlaceCandidate;
   final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
   final Future<void> Function() onClearOwnerPriorityDate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
@@ -1116,6 +1142,9 @@ class _Body extends StatelessWidget {
     required this.onUnvoteDate,
     required this.onDeleteDate,
     required this.onAddPlaceCandidate,
+    required this.onOpenPlaceDetails,
+    required this.onOpenPlaceOnMap,
+    required this.onRemovePlaceCandidate,
     required this.onChooseOwnerPriorityDate,
     required this.onClearOwnerPriorityDate,
     required this.onRemoveMember,
@@ -1329,6 +1358,9 @@ class _Body extends StatelessWidget {
           items: details.placeCandidates,
           onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
           actionsDisabled: actionsDisabled,
+          onOpenDetails: onOpenPlaceDetails,
+          onOpenOnMap: onOpenPlaceOnMap,
+          onRemoveCandidate: onRemovePlaceCandidate,
         ),
         const SizedBox(height: 10),
         const Divider(height: 1, thickness: 1),

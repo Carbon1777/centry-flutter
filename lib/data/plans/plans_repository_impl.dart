@@ -224,6 +224,24 @@ class PlansRepositoryImpl implements PlansRepository {
   }
 
   @override
+  Future<void> removePlanPlace({
+    required String appUserId,
+    required String planId,
+    String? placeId,
+    String? placeSubmissionId,
+  }) async {
+    await _client.rpc(
+      'remove_plan_place_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_place_id': placeId,
+        'p_place_submission_id': placeSubmissionId,
+      },
+    );
+  }
+
+  @override
   Future<void> addPlanDate({
     required String appUserId,
     required String planId,

@@ -27,8 +27,13 @@ class PlaceDetailsDialog extends StatefulWidget {
   final String? metroName;
   final int? metroDistanceM;
 
+  /// plan-flow: открыть детали места в контексте конкретного плана
   final String? sourcePlanId;
   final String? sourcePlanTitle;
+
+  /// место уже состоит в текущем плане
+  final bool isAlreadyInCurrentPlan;
+  final Future<void> Function()? onRemoveFromCurrentPlan;
 
   const PlaceDetailsDialog({
     super.key,
@@ -47,6 +52,8 @@ class PlaceDetailsDialog extends StatefulWidget {
     this.metroDistanceM,
     this.sourcePlanId,
     this.sourcePlanTitle,
+    this.isAlreadyInCurrentPlan = false,
+    this.onRemoveFromCurrentPlan,
   });
 
   @override
@@ -85,6 +92,17 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         planId.isNotEmpty &&
         planTitle != null &&
         planTitle.isNotEmpty;
+  }
+
+  bool get _showRemoveFromPlanAction => widget.isAlreadyInCurrentPlan;
+
+  String get _planPrimaryButtonLabel {
+    if (_showRemoveFromPlanAction) {
+      return widget.onRemoveFromCurrentPlan != null
+          ? 'Удалить из плана'
+          : 'В плане';
+    }
+    return 'Добавить в план';
   }
 
   String get _effectiveAddress {
@@ -492,6 +510,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         return 'Место уже добавлено';
       }
 
+      if (combined.contains('plan already has 5 places')) {
+        return 'В плане уже 5 мест';
+      }
+
       if (combined.contains('max') && combined.contains('5')) {
         return 'В плане уже 5 мест';
       }
@@ -608,6 +630,43 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
   Future<void> _onAddToPlanPressed() async {
     if (_loading || _addingToPlan) return;
+
+    if (_showRemoveFromPlanAction) {
+      if (widget.onRemoveFromCurrentPlan == null) return;
+
+      setState(() {
+        _addingToPlan = true;
+      });
+
+      try {
+        await widget.onRemoveFromCurrentPlan!.call();
+
+        if (!mounted) return;
+
+        _hasChanged = true;
+        setState(() {
+          _addingToPlan = false;
+        });
+
+        Navigator.of(context).pop(true);
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[PlaceDetailsDialog] remove from plan failed: $e');
+          debugPrint('$st');
+        }
+
+        if (!mounted) return;
+
+        setState(() {
+          _addingToPlan = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось удалить место из плана')),
+        );
+      }
+      return;
+    }
 
     if (_isPlanFlow) {
       await _addToSourcePlanDirectly();
@@ -913,7 +972,11 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                               child: ElevatedButton(
                                 onPressed: (_loading || _addingToPlan)
                                     ? null
-                                    : _onAddToPlanPressed,
+                                    : (_showRemoveFromPlanAction &&
+                                            widget.onRemoveFromCurrentPlan ==
+                                                null)
+                                        ? null
+                                        : _onAddToPlanPressed,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF2DD4BF),
                                   foregroundColor: Colors.black,
@@ -934,9 +997,9 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                           color: Colors.black,
                                         ),
                                       )
-                                    : const Text(
-                                        'Добавить в план',
-                                        style: TextStyle(
+                                    : Text(
+                                        _planPrimaryButtonLabel,
+                                        style: const TextStyle(
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
