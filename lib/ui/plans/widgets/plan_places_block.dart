@@ -90,10 +90,11 @@ class PlanPlacesBlock extends StatelessWidget {
                     onOpenDetails: onOpenDetails == null
                         ? null
                         : () => onOpenDetails!(item),
-                    onOpenOnMap: onOpenOnMap == null
-                        ? null
-                        : () => onOpenOnMap!(item),
-                    onRemove: item.canDelete && onRemoveCandidate != null && !actionsDisabled
+                    onOpenOnMap:
+                        onOpenOnMap == null ? null : () => onOpenOnMap!(item),
+                    onRemove: item.canDelete &&
+                            onRemoveCandidate != null &&
+                            !actionsDisabled
                         ? () => onRemoveCandidate!(item)
                         : null,
                   );
@@ -102,10 +103,11 @@ class PlanPlacesBlock extends StatelessWidget {
                 return _SubmissionCandidateCard(
                   item: item,
                   actionsDisabled: actionsDisabled,
-                  onOpenDetails: onOpenDetails == null
-                      ? null
-                      : () => onOpenDetails!(item),
-                  onRemove: item.canDelete && onRemoveCandidate != null && !actionsDisabled
+                  onOpenDetails:
+                      onOpenDetails == null ? null : () => onOpenDetails!(item),
+                  onRemove: item.canDelete &&
+                          onRemoveCandidate != null &&
+                          !actionsDisabled
                       ? () => onRemoveCandidate!(item)
                       : null,
                 );
@@ -149,6 +151,32 @@ class _CoreCandidateCard extends StatelessWidget {
     }
   }
 
+  String? _distanceLabel(double? distanceM) {
+    if (distanceM == null) return null;
+
+    if (distanceM < 1000) {
+      return '${distanceM.round()} м от вас';
+    }
+
+    final km = distanceM / 1000;
+    final digits = km < 10 ? 2 : 1;
+    return '${km.toStringAsFixed(digits)} км от вас';
+  }
+
+  Color _distanceColor(double? distanceM) {
+    if (distanceM == null) return Colors.transparent;
+
+    if (distanceM < 1000) {
+      return const Color(0xFF2E7D32);
+    } else if (distanceM < 5000) {
+      return const Color.fromARGB(255, 241, 241, 8);
+    } else if (distanceM < 10000) {
+      return const Color(0xFFEF6C00);
+    } else {
+      return const Color(0xFFC62828);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final compactTextButtonStyle = TextButton.styleFrom(
@@ -162,6 +190,8 @@ class _CoreCandidateCard extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
           height: 1.05,
         );
+
+    final distanceLabel = _distanceLabel(item.distanceM);
 
     return Stack(
       children: [
@@ -209,7 +239,8 @@ class _CoreCandidateCard extends StatelessWidget {
 
                               final key = item.previewStorageKey;
                               if (key != null && key.isNotEmpty) {
-                                final publicUrl = Supabase.instance.client.storage
+                                final publicUrl = Supabase
+                                    .instance.client.storage
                                     .from('brand-media')
                                     .getPublicUrl(key);
 
@@ -284,6 +315,16 @@ class _CoreCandidateCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (distanceLabel != null)
+                        Text(
+                          distanceLabel,
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: _distanceColor(item.distanceM),
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.0,
+                                  ),
+                        ),
                       const SizedBox(height: 2),
                       Text(
                         _typeLabel(item.type),
@@ -441,7 +482,8 @@ class _SubmissionCandidateCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   item.type,
-                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  style:
+                      theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
                 ),
                 const SizedBox(height: 2),
                 Text(
