@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddPlaceDialogResult {
   const AddPlaceDialogResult({
@@ -18,8 +19,17 @@ class AddPlaceDialogResult {
   final String? website;
 }
 
+typedef AddPlaceDialogSubmit = Future<Object?> Function(
+  AddPlaceDialogResult result,
+);
+
 class AddPlaceDialog extends StatefulWidget {
-  const AddPlaceDialog({super.key});
+  const AddPlaceDialog({
+    super.key,
+    this.onSubmit,
+  });
+
+  final AddPlaceDialogSubmit? onSubmit;
 
   @override
   State<AddPlaceDialog> createState() => _AddPlaceDialogState();
@@ -35,6 +45,7 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
 
   String? _selectedType;
   String? _selectedCity;
+  bool _submitting = false;
 
   final List<String> _types = const [
     'Бар',
@@ -68,10 +79,28 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
     );
   }
 
+  String _humanizeSubmitError(Object error) {
+    if (error is PostgrestException) {
+      final message = error.message.trim();
+      if (message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isNotEmpty) {
+      return text;
+    }
+
+    return 'Не удалось добавить место';
+  }
+
   Future<void> _openInputDialog(
     TextEditingController targetController,
     String label,
   ) async {
+    if (_submitting) return;
+
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: true,
@@ -89,22 +118,48 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_submitting) return;
     if (!_formKey.currentState!.validate()) return;
     if (_selectedType == null || _selectedCity == null) return;
 
-    Navigator.of(context).pop(
-      AddPlaceDialogResult(
-        name: _nameController.text.trim(),
-        typeLabel: _selectedType!,
-        city: _selectedCity!,
-        street: _streetController.text.trim(),
-        house: _houseController.text.trim(),
-        website: _linkController.text.trim().isEmpty
-            ? null
-            : _linkController.text.trim(),
-      ),
+    final result = AddPlaceDialogResult(
+      name: _nameController.text.trim(),
+      typeLabel: _selectedType!,
+      city: _selectedCity!,
+      street: _streetController.text.trim(),
+      house: _houseController.text.trim(),
+      website: _linkController.text.trim().isEmpty
+          ? null
+          : _linkController.text.trim(),
     );
+
+    if (widget.onSubmit == null) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+    });
+
+    try {
+      final submitResult = await widget.onSubmit!(result);
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop(submitResult);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_humanizeSubmitError(e))),
+      );
+
+      setState(() {
+        _submitting = false;
+      });
+    }
   }
 
   @override
@@ -150,8 +205,9 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                     TextFormField(
                       controller: _nameController,
                       readOnly: true,
-                      onTap: () =>
-                          _openInputDialog(_nameController, 'Название'),
+                      onTap: _submitting
+                          ? null
+                          : () => _openInputDialog(_nameController, 'Название'),
                       decoration: _inputDecoration('Название'),
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Обязательное поле'
@@ -169,8 +225,9 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                             ),
                           )
                           .toList(),
-                      onChanged: (value) =>
-                          setState(() => _selectedType = value),
+                      onChanged: _submitting
+                          ? null
+                          : (value) => setState(() => _selectedType = value),
                       validator: (v) => v == null ? 'Выберите тип' : null,
                     ),
                     const SizedBox(height: 16),
@@ -185,15 +242,18 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                             ),
                           )
                           .toList(),
-                      onChanged: (value) =>
-                          setState(() => _selectedCity = value),
+                      onChanged: _submitting
+                          ? null
+                          : (value) => setState(() => _selectedCity = value),
                       validator: (v) => v == null ? 'Выберите город' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _streetController,
                       readOnly: true,
-                      onTap: () => _openInputDialog(_streetController, 'Улица'),
+                      onTap: _submitting
+                          ? null
+                          : () => _openInputDialog(_streetController, 'Улица'),
                       decoration: _inputDecoration('Улица'),
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Обязательное поле'
@@ -203,7 +263,9 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                     TextFormField(
                       controller: _houseController,
                       readOnly: true,
-                      onTap: () => _openInputDialog(_houseController, '№ дома'),
+                      onTap: _submitting
+                          ? null
+                          : () => _openInputDialog(_houseController, '№ дома'),
                       decoration: _inputDecoration('№ дома'),
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Обязательное поле'
@@ -213,7 +275,9 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                     TextFormField(
                       controller: _linkController,
                       readOnly: true,
-                      onTap: () => _openInputDialog(_linkController, 'Сайт'),
+                      onTap: _submitting
+                          ? null
+                          : () => _openInputDialog(_linkController, 'Сайт'),
                       decoration: _inputDecoration('Сайт'),
                     ),
                     const SizedBox(height: 28),
@@ -221,17 +285,25 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       child: FractionallySizedBox(
                         widthFactor: 0.6,
                         child: OutlinedButton(
-                          onPressed: _submit,
+                          onPressed: _submitting ? null : _submit,
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          child: const Text(
-                            'Добавить место',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Добавить место',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
                         ),
                       ),
                     ),
@@ -249,7 +321,8 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
               child: IconButton(
                 icon: const Icon(Icons.close),
                 color: Colors.white,
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed:
+                    _submitting ? null : () => Navigator.of(context).pop(),
               ),
             ),
           ),
