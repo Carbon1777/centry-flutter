@@ -452,25 +452,28 @@ class _PlaceCandidateCard extends StatelessWidget {
   }
 
   Widget _buildModerationBadge(ThemeData theme) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 150),
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
-      decoration: BoxDecoration(
-        color: _moderationBackgroundColor(),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        _moderationLabel(),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: _moderationTextColor(),
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
-          height: 1,
+    return Transform.translate(
+      offset: const Offset(0, -8),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 150),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 5,
+        ),
+        decoration: BoxDecoration(
+          color: _moderationBackgroundColor(),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          _moderationLabel(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: _moderationTextColor(),
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            height: 1,
+          ),
         ),
       ),
     );
