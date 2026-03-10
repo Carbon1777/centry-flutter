@@ -13,7 +13,6 @@ class PlanPlacesBlock extends StatelessWidget {
   final VoidCallback? onAddCandidate;
   final bool actionsDisabled;
   final ValueChanged<PlaceCandidateDto>? onOpenDetails;
-  final ValueChanged<PlaceCandidateDto>? onOpenOnMap;
   final ValueChanged<PlaceCandidateDto>? onRemoveCandidate;
 
   const PlanPlacesBlock({
@@ -22,7 +21,6 @@ class PlanPlacesBlock extends StatelessWidget {
     this.onAddCandidate,
     this.actionsDisabled = false,
     this.onOpenDetails,
-    this.onOpenOnMap,
     this.onRemoveCandidate,
   });
 
@@ -88,11 +86,9 @@ class PlanPlacesBlock extends StatelessWidget {
                   return _CoreCandidateCard(
                     item: item,
                     actionsDisabled: actionsDisabled,
-                    onOpenDetails: onOpenDetails == null
+                    onTap: onOpenDetails == null
                         ? null
                         : () => onOpenDetails!(item),
-                    onOpenOnMap:
-                        onOpenOnMap == null ? null : () => onOpenOnMap!(item),
                     onRemove: item.canDelete &&
                             onRemoveCandidate != null &&
                             !actionsDisabled
@@ -104,7 +100,7 @@ class PlanPlacesBlock extends StatelessWidget {
                 return _SubmissionCandidateCard(
                   item: item,
                   actionsDisabled: actionsDisabled,
-                  onOpenDetails:
+                  onTap:
                       onOpenDetails == null ? null : () => onOpenDetails!(item),
                   onRemove: item.canDelete &&
                           onRemoveCandidate != null &&
@@ -123,15 +119,13 @@ class PlanPlacesBlock extends StatelessWidget {
 class _CoreCandidateCard extends StatelessWidget {
   final PlaceCandidateDto item;
   final bool actionsDisabled;
-  final VoidCallback? onOpenDetails;
-  final VoidCallback? onOpenOnMap;
+  final VoidCallback? onTap;
   final VoidCallback? onRemove;
 
   const _CoreCandidateCard({
     required this.item,
     required this.actionsDisabled,
-    this.onOpenDetails,
-    this.onOpenOnMap,
+    this.onTap,
     this.onRemove,
   });
 
@@ -200,209 +194,182 @@ class _CoreCandidateCard extends StatelessWidget {
     }
   }
 
+  String? _secondaryLine() {
+    if (item.metroName != null && item.metroName!.trim().isNotEmpty) {
+      return 'м.${item.metroName}'
+          '${item.metroDistanceM != null ? ' · ${item.metroDistanceM} м' : ''}';
+    }
+
+    final address = item.address.trim();
+    if (address.isNotEmpty) return address;
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final compactTextButtonStyle = TextButton.styleFrom(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-    );
-
-    final linkStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          height: 1.05,
-        );
-
     final distanceLabel = _distanceLabel();
+    final secondaryLine = _secondaryLine();
+    final cardRadius = BorderRadius.circular(16);
 
     return Stack(
       children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 96),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final lockedContentWidth = math.max(
-                  0.0,
-                  constraints.maxWidth - _candidateCardContentLockDelta,
-                );
+        Material(
+          color: Theme.of(context).cardColor,
+          borderRadius: cardRadius,
+          child: InkWell(
+            borderRadius: cardRadius,
+            onTap: actionsDisabled ? null : onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 96),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final lockedContentWidth = math.max(
+                      0.0,
+                      constraints.maxWidth - _candidateCardContentLockDelta,
+                    );
 
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    width: lockedContentWidth,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 72,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Builder(
-                                    builder: (_) {
-                                      final url = item.previewMediaUrl;
-
-                                      if (url != null && url.isNotEmpty) {
-                                        return Image.network(
-                                          url,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) {
-                                            return Image.asset(
-                                              'assets/images/place_placeholder.png',
-                                              fit: BoxFit.cover,
-                                            );
-                                          },
-                                        );
-                                      }
-
-                                      final key = item.previewStorageKey;
-                                      if (key != null && key.isNotEmpty) {
-                                        final publicUrl = Supabase
-                                            .instance.client.storage
-                                            .from('brand-media')
-                                            .getPublicUrl(key);
-
-                                        return Image.network(
-                                          publicUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) {
-                                            return Image.asset(
-                                              'assets/images/place_placeholder.png',
-                                              fit: BoxFit.cover,
-                                            );
-                                          },
-                                        );
-                                      }
-
-                                      return Image.asset(
-                                        'assets/images/place_placeholder.png',
-                                        fit: BoxFit.cover,
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              if (item.rating != null)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.star,
-                                      size: 14,
-                                      color: Colors.amber,
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: lockedContentWidth,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 72,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 72,
+                                    height: 72,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      item.rating!.toStringAsFixed(1),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Builder(
+                                        builder: (_) {
+                                          final url = item.previewMediaUrl;
+
+                                          if (url != null && url.isNotEmpty) {
+                                            return Image.network(
+                                              url,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) {
+                                                return Image.asset(
+                                                  'assets/images/place_placeholder.png',
+                                                  fit: BoxFit.cover,
+                                                );
+                                              },
+                                            );
+                                          }
+
+                                          final key = item.previewStorageKey;
+                                          if (key != null && key.isNotEmpty) {
+                                            final publicUrl = Supabase
+                                                .instance.client.storage
+                                                .from('brand-media')
+                                                .getPublicUrl(key);
+
+                                            return Image.network(
+                                              publicUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) {
+                                                return Image.asset(
+                                                  'assets/images/place_placeholder.png',
+                                                  fit: BoxFit.cover,
+                                                );
+                                              },
+                                            );
+                                          }
+
+                                          return Image.asset(
+                                            'assets/images/place_placeholder.png',
+                                            fit: BoxFit.cover,
+                                          );
+                                        },
                                       ),
                                     ),
-                                  ],
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
+                                  ),
+                                  const SizedBox(height: 6),
+                                  if (item.rating != null)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.star,
+                                          size: 14,
+                                          color: Colors.amber,
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          item.rating!.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      item.title,
-                                      maxLines: 1,
+                                  Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                  if (distanceLabel != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      distanceLabel,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: _distanceColor(),
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.0,
+                                          ),
+                                    ),
+                                  ],
+                                  if (secondaryLine != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      secondaryLine,
+                                      maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: Theme.of(context)
                                           .textTheme
-                                          .titleMedium,
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Colors.grey.shade500,
+                                          ),
                                     ),
-                                  ),
-                                  TextButton(
-                                    style: compactTextButtonStyle,
-                                    onPressed:
-                                        actionsDisabled ? null : onOpenOnMap,
-                                    child: Text(
-                                      'Посмотреть\nна карте',
-                                      textAlign: TextAlign.right,
-                                      style: linkStyle,
-                                    ),
-                                  ),
+                                  ],
                                 ],
                               ),
-                              if (distanceLabel != null) ...[
-                                Text(
-                                  distanceLabel,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                        color: _distanceColor(),
-                                        fontWeight: FontWeight.w600,
-                                        height: 1.0,
-                                      ),
-                                ),
-                                const SizedBox(height: 4),
-                              ],
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: item.metroName != null
-                                        ? Text(
-                                            'м.${item.metroName}'
-                                            '${item.metroDistanceM != null ? " · ${item.metroDistanceM} м" : ""}',
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: Colors.grey.shade500,
-                                                ),
-                                          )
-                                        : const SizedBox.shrink(),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  TextButton(
-                                    style: compactTextButtonStyle,
-                                    onPressed:
-                                        actionsDisabled ? null : onOpenDetails,
-                                    child: const Text('Подробнее'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
@@ -435,13 +402,13 @@ class _CoreCandidateCard extends StatelessWidget {
 class _SubmissionCandidateCard extends StatelessWidget {
   final PlaceCandidateDto item;
   final bool actionsDisabled;
-  final VoidCallback? onOpenDetails;
+  final VoidCallback? onTap;
   final VoidCallback? onRemove;
 
   const _SubmissionCandidateCard({
     required this.item,
     required this.actionsDisabled,
-    this.onOpenDetails,
+    this.onTap,
     this.onRemove,
   });
 
@@ -470,113 +437,99 @@ class _SubmissionCandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final compactTextButtonStyle = TextButton.styleFrom(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-    );
-
     final badgeRightOffset =
         (onRemove != null ? 44.0 : 12.0) + _candidateCardContentLockDelta;
     final reservedRightWidth = onRemove != null ? 144.0 : 110.0;
+    final cardRadius = BorderRadius.circular(16);
 
     return Stack(
       children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 96),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final lockedContentWidth = math.max(
-                  0.0,
-                  constraints.maxWidth - _candidateCardContentLockDelta,
-                );
+        Material(
+          color: theme.cardColor,
+          borderRadius: cardRadius,
+          child: InkWell(
+            borderRadius: cardRadius,
+            onTap: actionsDisabled ? null : onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 96),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final lockedContentWidth = math.max(
+                      0.0,
+                      constraints.maxWidth - _candidateCardContentLockDelta,
+                    );
 
-                return Align(
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    width: lockedContentWidth,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.asset(
-                              'assets/images/place_placeholder.png',
-                              fit: BoxFit.cover,
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox(
+                        width: lockedContentWidth,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.asset(
+                                  'assets/images/place_placeholder.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SizedBox(
-                            height: 72,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: EdgeInsets.only(
-                                      right: reservedRightWidth),
-                                  child: Text(
-                                    item.title,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      right: reservedRightWidth,
+                                    ),
+                                    child: Text(
+                                      item.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.cityName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.titleMedium,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: Colors.grey.shade500,
+                                      height: 1.0,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.cityName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: Colors.grey.shade500,
-                                    height: 1.0,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.address,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: Colors.grey.shade500,
+                                      height: 1.0,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  item.address,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: Colors.grey.shade500,
-                                    height: 1.0,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed:
-                                        actionsDisabled ? null : onOpenDetails,
-                                    style: compactTextButtonStyle,
-                                    child: const Text('Подробнее'),
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),

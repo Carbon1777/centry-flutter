@@ -345,6 +345,8 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
             previewIsPlaceholder: dto.previewIsPlaceholder,
             metroName: dto.metroName,
             metroDistanceM: dto.metroDistanceM,
+            sourcePlanId: widget.planId,
+            sourcePlanTitle: _details?.plan.title,
             isAlreadyInCurrentPlan: true,
             onRemoveFromCurrentPlan: candidate.canDelete
                 ? () => widget.repository.removePlanPlace(
@@ -360,6 +362,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         return _PlanSubmissionCandidateDetailsDialog(
           candidate: candidate,
           typeLabel: _typeLabelFromCategory(candidate.type),
+          isAlreadyInCurrentPlan: true,
           onRemoveFromCurrentPlan: candidate.canDelete
               ? () => widget.repository.removePlanPlace(
                     appUserId: widget.appUserId,
@@ -393,35 +396,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         return 'Театр';
       default:
         return 'Место';
-    }
-  }
-
-  Future<void> _openPlaceCandidateOnMap(PlaceCandidateDto candidate) async {
-    final dto = candidate.toPlaceDto();
-    if (dto == null) {
-      await showCenterToast(
-        context,
-        message: 'Для места на модерации карта пока недоступна.',
-        isError: true,
-      );
-      return;
-    }
-
-    final result = await Navigator.of(context).push<Object?>(
-      MaterialPageRoute<Object?>(
-        builder: (_) => PlacesScreen(
-          sourcePlanId: widget.planId,
-          sourcePlanTitle: _details?.plan.title,
-          currentPlanPlaceIds: _currentPlanPlaceIds,
-          initialViewMode: PlacesViewMode.map,
-          initialFocusPlace: dto,
-        ),
-      ),
-    );
-
-    if (!mounted) return;
-    if (result != null) {
-      await _load(showSpinner: false);
     }
   }
 
@@ -1233,7 +1207,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onDeleteDate: _deletePlanDate,
                   onAddPlaceCandidate: _openAddPlaceSourceFlow,
                   onOpenPlaceDetails: _openPlaceCandidateDetails,
-                  onOpenPlaceOnMap: _openPlaceCandidateOnMap,
                   onRemovePlaceCandidate: _removePlaceCandidate,
                   onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
                   onClearOwnerPriorityDate: _clearPlanDateOwnerPriority,
@@ -1246,16 +1219,17 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   }
 }
 
-
 class _PlanSubmissionCandidateDetailsDialog extends StatefulWidget {
   const _PlanSubmissionCandidateDetailsDialog({
     required this.candidate,
     required this.typeLabel,
+    this.isAlreadyInCurrentPlan = false,
     this.onRemoveFromCurrentPlan,
   });
 
   final PlaceCandidateDto candidate;
   final String typeLabel;
+  final bool isAlreadyInCurrentPlan;
   final Future<void> Function()? onRemoveFromCurrentPlan;
 
   @override
@@ -1267,6 +1241,17 @@ class _PlanSubmissionCandidateDetailsDialogState
     extends State<_PlanSubmissionCandidateDetailsDialog> {
   bool _actionLoading = false;
 
+  bool get _showRemoveFromPlanAction => widget.isAlreadyInCurrentPlan;
+
+  String get _primaryActionLabel {
+    if (_showRemoveFromPlanAction) {
+      return widget.onRemoveFromCurrentPlan != null
+          ? 'Удалить из плана'
+          : 'В плане';
+    }
+    return 'Добавить в план';
+  }
+
   String get _moderationStatusLabel {
     if (widget.candidate.isRejected) return 'Отклонено';
     if (widget.candidate.isPendingModeration) return 'На модерации';
@@ -1275,15 +1260,31 @@ class _PlanSubmissionCandidateDetailsDialogState
     return raw;
   }
 
-  Future<void> _onRemovePressed() async {
-    if (_actionLoading || widget.onRemoveFromCurrentPlan == null) return;
+  Color _statusColor(BuildContext context) {
+    if (widget.candidate.isRejected) {
+      return Theme.of(context).colorScheme.error;
+    }
+    return Colors.amber.shade700;
+  }
+
+  Color _statusBackgroundColor(BuildContext context) {
+    if (widget.candidate.isRejected) {
+      return Theme.of(context).colorScheme.error.withOpacity(0.12);
+    }
+    return Colors.amber.withOpacity(0.14);
+  }
+
+  Future<void> _onPrimaryPressed() async {
+    if (_actionLoading || !_showRemoveFromPlanAction) return;
+    if (widget.onRemoveFromCurrentPlan == null) return;
 
     setState(() => _actionLoading = true);
+
     try {
       await widget.onRemoveFromCurrentPlan!.call();
       if (!mounted) return;
       Navigator.of(context).pop(true);
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() => _actionLoading = false);
       await showCenterToast(
@@ -1297,133 +1298,233 @@ class _PlanSubmissionCandidateDetailsDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final secondaryTextColor = theme.textTheme.bodySmall?.color?.withOpacity(0.72);
+    final statusColor = _statusColor(context);
+    final statusBgColor = _statusBackgroundColor(context);
+
+    const addToPlanFillColor = Color(0xFF19D3C5);
+    const addToPlanTextColor = Color(0xFF081217);
+    final secondaryButtonBorderColor = Colors.white.withOpacity(0.82);
+    const secondaryButtonTextColor = Color(0xFF4E8DFF);
 
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Image.asset(
-                      'assets/images/place_placeholder.png',
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  widget.typeLabel,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  widget.candidate.title,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _moderationStatusLabel,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (widget.candidate.cityName.trim().isNotEmpty) ...[
-                  Text(
-                    widget.candidate.cityName,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                if (widget.candidate.address.trim().isNotEmpty) ...[
-                  Text(
-                    widget.candidate.address,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: secondaryTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                Text(
-                  'Голосов: ${widget.candidate.votesCount}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: theme.colorScheme.surface,
+          child: Stack(
+            children: [
+              SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _actionLoading
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        child: const Text('Закрыть'),
+                    AspectRatio(
+                      aspectRatio: 1.35,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            'assets/images/place_placeholder.png',
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.55),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'Плейсхолдер. Фото добавятся позже',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    if (widget.onRemoveFromCurrentPlan != null) ...[
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _actionLoading ? null : _onRemovePressed,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.typeLabel,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                          child: _actionLoading
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  widget.candidate.title,
+                                  style:
+                                      theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                )
-                              : const Text('Удалить из плана'),
-                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusBgColor,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  _moderationStatusLabel,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          if (widget.candidate.cityName.trim().isNotEmpty) ...[
+                            Text(
+                              widget.candidate.cityName,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          if (widget.candidate.address.trim().isNotEmpty)
+                            Text(
+                              widget.candidate.address,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Статус',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _moderationStatusLabel,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: FilledButton(
+                              onPressed:
+                                  (_actionLoading || !_showRemoveFromPlanAction)
+                                      ? null
+                                      : _onPrimaryPressed,
+                              style: FilledButton.styleFrom(
+                                elevation: 0,
+                                backgroundColor: addToPlanFillColor,
+                                foregroundColor: addToPlanTextColor,
+                                disabledBackgroundColor:
+                                    addToPlanFillColor.withOpacity(0.45),
+                                disabledForegroundColor:
+                                    addToPlanTextColor.withOpacity(0.75),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: _actionLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: addToPlanTextColor,
+                                      ),
+                                    )
+                                  : Text(
+                                      _primaryActionLabel,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: OutlinedButton(
+                              onPressed: _actionLoading
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: secondaryButtonTextColor,
+                                side: BorderSide(
+                                  color: secondaryButtonBorderColor,
+                                  width: 1.4,
+                                ),
+                                backgroundColor: Colors.transparent,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Закрыть',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Material(
-              color: Colors.black45,
-              shape: const CircleBorder(),
-              child: IconButton(
-                icon: const Icon(Icons.close),
-                color: Colors.white,
-                onPressed: _actionLoading
-                    ? null
-                    : () => Navigator.of(context).pop(),
               ),
-            ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Material(
+                  color: Colors.black45,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    icon: const Icon(Icons.close),
+                    color: Colors.white,
+                    onPressed: _actionLoading
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1448,7 +1549,6 @@ class _Body extends StatelessWidget {
   final Future<void> Function(DateTime dateAt) onDeleteDate;
   final VoidCallback onAddPlaceCandidate;
   final ValueChanged<PlaceCandidateDto> onOpenPlaceDetails;
-  final ValueChanged<PlaceCandidateDto> onOpenPlaceOnMap;
   final ValueChanged<PlaceCandidateDto> onRemovePlaceCandidate;
   final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
   final Future<void> Function() onClearOwnerPriorityDate;
@@ -1476,7 +1576,6 @@ class _Body extends StatelessWidget {
     required this.onDeleteDate,
     required this.onAddPlaceCandidate,
     required this.onOpenPlaceDetails,
-    required this.onOpenPlaceOnMap,
     required this.onRemovePlaceCandidate,
     required this.onChooseOwnerPriorityDate,
     required this.onClearOwnerPriorityDate,
@@ -1620,7 +1719,8 @@ class _Body extends StatelessWidget {
             onTap: () {
               if (details.ownerMember == null) return;
               final isArchiveReadOnly =
-                  details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+                  details.plan.status.toString().trim().toUpperCase() ==
+                      'CLOSED';
               showDialog(
                 context: context,
                 builder: (dialogContext) => PlanMembersModal(
@@ -1658,9 +1758,10 @@ class _Body extends StatelessWidget {
                     children: [
                       Text(
                         details.plan.membersCount.toString(),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                       ),
                       const SizedBox(width: 6),
                       const Icon(Icons.chevron_right, size: 20),
@@ -1695,13 +1796,13 @@ class _Body extends StatelessWidget {
                 child: Text(
                   'Мест для голосования ${details.placeCandidates.length}/5',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.color
-                        ?.withOpacity(0.88),
-                  ),
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color
+                            ?.withOpacity(0.88),
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1720,7 +1821,6 @@ class _Body extends StatelessWidget {
                         plan.status == 'OPEN' ? onAddPlaceCandidate : null,
                     actionsDisabled: actionsDisabled,
                     onOpenDetails: onOpenPlaceDetails,
-                    onOpenOnMap: onOpenPlaceOnMap,
                     onRemoveCandidate: onRemovePlaceCandidate,
                   ),
                 ),
