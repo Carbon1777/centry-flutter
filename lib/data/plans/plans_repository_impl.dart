@@ -176,6 +176,36 @@ class PlansRepositoryImpl implements PlansRepository {
   }
 
   @override
+  Future<void> votePlanPlaceSubmission({
+    required String appUserId,
+    required String planId,
+    required String placeSubmissionId,
+  }) async {
+    await _client.rpc(
+      'vote_plan_place_submission_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_place_submission_id': placeSubmissionId,
+      },
+    );
+  }
+
+  @override
+  Future<void> unvotePlanPlace({
+    required String appUserId,
+    required String planId,
+  }) async {
+    await _client.rpc(
+      'unvote_plan_place_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+      },
+    );
+  }
+
+  @override
   Future<void> votePlanDate({
     required String appUserId,
     required String planId,
@@ -205,7 +235,7 @@ class PlansRepositoryImpl implements PlansRepository {
     );
   }
 
-  /* ===================== ADD ===================== */
+  /* ===================== ADD / REMOVE ===================== */
 
   @override
   Future<void> addPlanPlace({
@@ -273,6 +303,8 @@ class PlansRepositoryImpl implements PlansRepository {
     );
   }
 
+  /* ===================== OWNER PRIORITY ===================== */
+
   @override
   Future<void> choosePlanDateOwnerPriority({
     required String appUserId,
@@ -296,6 +328,38 @@ class PlansRepositoryImpl implements PlansRepository {
   }) async {
     await _client.rpc(
       'clear_plan_date_owner_priority_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+      },
+    );
+  }
+
+  @override
+  Future<void> choosePlanPlaceOwnerPriority({
+    required String appUserId,
+    required String planId,
+    String? placeId,
+    String? placeSubmissionId,
+  }) async {
+    await _client.rpc(
+      'choose_plan_place_owner_priority_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_place_id': placeId,
+        'p_place_submission_id': placeSubmissionId,
+      },
+    );
+  }
+
+  @override
+  Future<void> clearPlanPlaceOwnerPriority({
+    required String appUserId,
+    required String planId,
+  }) async {
+    await _client.rpc(
+      'clear_plan_place_owner_priority_v1',
       params: {
         'p_app_user_id': appUserId,
         'p_plan_id': planId,
