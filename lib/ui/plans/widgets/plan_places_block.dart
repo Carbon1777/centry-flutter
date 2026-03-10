@@ -169,9 +169,17 @@ class _CoreCandidateCard extends StatelessWidget {
   });
 
   static const double _reservedRightWidth = 132.0;
-  static const double _overlayTop = 4.0;
-  static const double _overlayRight = 0.0;
-  static const double _overlayBoxSize = 34.0;
+  static const double _deleteTop = 4.0;
+  static const double _deleteRight = 0.0;
+  static const double _deleteBoxSize = 34.0;
+
+  static const double _buttonWidth = 102.0;
+  static const double _buttonRight = 10.0;
+  static const double _buttonBottom = 10.0;
+
+  static const double _voteWidth = 38.0;
+  static const double _voteHeight = 34.0;
+  static const double _voteBottom = 48.0;
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -250,16 +258,6 @@ class _CoreCandidateCard extends StatelessWidget {
     return null;
   }
 
-  String _actionLabel() {
-    if (item.canUnvote || item.isUserVotedForThis) return 'Снять';
-    if (item.isLeading && !item.isWinner) return 'Приоритет';
-    return 'Выбрать';
-  }
-
-  bool _isPriorityAction() {
-    return item.isLeading && !item.isWinner && !item.isUserVotedForThis;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -268,6 +266,7 @@ class _CoreCandidateCard extends StatelessWidget {
     final cardRadius = BorderRadius.circular(16);
     final opacity = item.isDimmed ? 0.55 : 1.0;
     final canDeleteTap = onRemove != null && !actionsDisabled;
+    final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
 
     return Opacity(
       opacity: opacity,
@@ -434,11 +433,11 @@ class _CoreCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: _overlayTop,
-            right: _overlayRight,
+            top: _deleteTop,
+            right: _deleteRight,
             child: SizedBox(
-              width: _overlayBoxSize,
-              height: _overlayBoxSize,
+              width: _deleteBoxSize,
+              height: _deleteBoxSize,
               child: Align(
                 alignment: Alignment.centerRight,
                 child: canDeleteTap
@@ -459,15 +458,16 @@ class _CoreCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: 30,
-            right: 46,
+            right: voteRight,
+            bottom: _voteBottom,
             child: SizedBox(
-              width: 38,
-              height: 34,
+              width: _voteWidth,
+              height: _voteHeight,
               child: Align(
                 alignment: Alignment.center,
                 child: Text(
                   '${item.votesCount}',
+                  textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontSize: 30,
                     fontWeight: FontWeight.w900,
@@ -478,14 +478,13 @@ class _CoreCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: 10,
-            bottom: 10,
-            width: 102,
+            right: _buttonRight,
+            bottom: _buttonBottom,
+            width: _buttonWidth,
             child: _PlaceActionChip(
-              label: _actionLabel(),
-              enabled: true,
+              label: 'Выбрать',
+              enabled: !actionsDisabled,
               onTap: null,
-              isPriority: _isPriorityAction(),
             ),
           ),
         ],
@@ -508,9 +507,17 @@ class _SubmissionCandidateCard extends StatelessWidget {
   });
 
   static const double _reservedRightWidth = 144.0;
-  static const double _overlayTop = 4.0;
-  static const double _overlayRight = 0.0;
-  static const double _overlayBoxSize = 34.0;
+  static const double _deleteTop = 4.0;
+  static const double _deleteRight = 0.0;
+  static const double _deleteBoxSize = 34.0;
+
+  static const double _buttonWidth = 102.0;
+  static const double _buttonRight = 10.0;
+  static const double _buttonBottom = 10.0;
+
+  static const double _voteWidth = 38.0;
+  static const double _voteHeight = 34.0;
+  static const double _voteBottom = 48.0;
 
   String _moderationLabel() {
     if (item.isRejected) return 'Отклонено';
@@ -534,22 +541,13 @@ class _SubmissionCandidateCard extends StatelessWidget {
     return const Color(0xFFFFB300);
   }
 
-  String _actionLabel() {
-    if (item.canUnvote || item.isUserVotedForThis) return 'Снять';
-    if (item.isLeading && !item.isWinner) return 'Приоритет';
-    return 'Выбрать';
-  }
-
-  bool _isPriorityAction() {
-    return item.isLeading && !item.isWinner && !item.isUserVotedForThis;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardRadius = BorderRadius.circular(16);
     final opacity = item.isDimmed ? 0.55 : 1.0;
     final canDeleteTap = onRemove != null && !actionsDisabled;
+    final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
 
     return Opacity(
       opacity: opacity,
@@ -652,7 +650,7 @@ class _SubmissionCandidateCard extends StatelessWidget {
           ),
           Positioned(
             top: 10,
-            right: 40,
+            right: 70,
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 12,
@@ -673,11 +671,11 @@ class _SubmissionCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: _overlayTop,
-            right: _overlayRight,
+            top: _deleteTop,
+            right: _deleteRight,
             child: SizedBox(
-              width: _overlayBoxSize,
-              height: _overlayBoxSize,
+              width: _deleteBoxSize,
+              height: _deleteBoxSize,
               child: Align(
                 alignment: Alignment.centerRight,
                 child: canDeleteTap
@@ -698,15 +696,16 @@ class _SubmissionCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: 38,
-            right: 50,
+            right: voteRight,
+            bottom: _voteBottom,
             child: SizedBox(
-              width: 38,
-              height: 34,
+              width: _voteWidth,
+              height: _voteHeight,
               child: Align(
                 alignment: Alignment.center,
                 child: Text(
                   '${item.votesCount}',
+                  textAlign: TextAlign.center,
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontSize: 30,
                     fontWeight: FontWeight.w900,
@@ -717,14 +716,13 @@ class _SubmissionCandidateCard extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: 10,
-            bottom: 10,
-            width: 102,
+            right: _buttonRight,
+            bottom: _buttonBottom,
+            width: _buttonWidth,
             child: _PlaceActionChip(
-              label: _actionLabel(),
-              enabled: true,
+              label: 'Выбрать',
+              enabled: !actionsDisabled,
               onTap: null,
-              isPriority: _isPriorityAction(),
             ),
           ),
         ],
@@ -736,24 +734,22 @@ class _SubmissionCandidateCard extends StatelessWidget {
 class _PlaceActionChip extends StatelessWidget {
   final String label;
   final bool enabled;
-  final VoidCallback? onTap;
-  final bool isPriority;
+  final Future<void> Function()? onTap;
 
   const _PlaceActionChip({
     required this.label,
     required this.enabled,
     required this.onTap,
-    this.isPriority = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final activeColor = isPriority ? Colors.amber : theme.colorScheme.primary;
+    final activeColor = theme.colorScheme.primary;
     final disabledColor = theme.disabledColor;
 
     return InkWell(
-      onTap: (!enabled || onTap == null) ? null : onTap,
+      onTap: (!enabled || onTap == null) ? null : () => onTap!(),
       borderRadius: BorderRadius.circular(999),
       child: Container(
         width: double.infinity,
@@ -763,9 +759,6 @@ class _PlaceActionChip extends StatelessWidget {
           color: enabled
               ? activeColor.withOpacity(0.16)
               : disabledColor.withOpacity(0.12),
-          border: enabled && isPriority
-              ? Border.all(color: Colors.amber.withOpacity(0.65))
-              : null,
         ),
         child: Text(
           label,
