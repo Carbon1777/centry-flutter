@@ -16,7 +16,13 @@ class PlanDetailsDto {
   /// Новый server-first snapshot блока голосования по датам.
   final PlanDateVotingDto dateVoting;
 
+  /// Legacy list: оставляем для обратной совместимости со старым UI.
+  /// Если сервер уже не отдаёт `place_candidates`, наполняем из `place_voting.candidates`.
   final List<PlaceCandidateDto> placeCandidates;
+
+  /// Новый server-first snapshot блока голосования по местам.
+  final PlanPlaceVotingDto placeVoting;
+
   final List<PlanChatMessageDto> chat;
 
   PlanDetailsDto({
@@ -26,6 +32,7 @@ class PlanDetailsDto {
     required this.dateCandidates,
     required this.dateVoting,
     required this.placeCandidates,
+    required this.placeVoting,
     required this.chat,
   });
 
@@ -56,6 +63,29 @@ class PlanDetailsDto {
             .map(DateCandidateDto.fromVotingCandidate)
             .toList();
 
+    final legacyPlaceCandidates =
+        (json['place_candidates'] as List<dynamic>? ?? [])
+            .map((e) => PlaceCandidateDto.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+    final rawPlaceVoting = json['place_voting'];
+    final placeVoting = rawPlaceVoting is Map<String, dynamic>
+        ? PlanPlaceVotingDto.fromJson(rawPlaceVoting)
+        : rawPlaceVoting is Map
+            ? PlanPlaceVotingDto.fromJson(
+                Map<String, dynamic>.from(rawPlaceVoting),
+              )
+            : PlanPlaceVotingDto.fromLegacy(
+                votingDeadlineAt: plan.votingDeadlineAt,
+                decidedPlaceId: plan.decidedPlaceId,
+                decidedPlaceSubmissionId: plan.decidedPlaceSubmissionId,
+                legacyCandidates: legacyPlaceCandidates,
+              );
+
+    final effectivePlaceCandidates = legacyPlaceCandidates.isNotEmpty
+        ? legacyPlaceCandidates
+        : placeVoting.candidates;
+
     return PlanDetailsDto(
       plan: plan,
       members: (json['members'] as List<dynamic>? ?? [])
@@ -70,9 +100,8 @@ class PlanDetailsDto {
               : null),
       dateCandidates: effectiveDateCandidates,
       dateVoting: dateVoting,
-      placeCandidates: (json['place_candidates'] as List<dynamic>? ?? [])
-          .map((e) => PlaceCandidateDto.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      placeCandidates: effectivePlaceCandidates,
+      placeVoting: placeVoting,
       chat: (json['chat'] as List<dynamic>? ?? [])
           .map((e) => PlanChatMessageDto.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -122,6 +151,7 @@ class PlanCoreDto {
   final DateTime? eventAt;
 
   final String? decidedPlaceId;
+  final String? decidedPlaceSubmissionId;
   final DateTime? decidedDateAt;
   final DateTime? tieResolutionDeadlineAt;
 
@@ -153,6 +183,7 @@ class PlanCoreDto {
     required this.votingDeadlineAt,
     required this.eventAt,
     required this.decidedPlaceId,
+    required this.decidedPlaceSubmissionId,
     required this.decidedDateAt,
     required this.tieResolutionDeadlineAt,
     required this.visibleInFeed,
@@ -179,6 +210,7 @@ class PlanCoreDto {
       votingDeadlineAt: _asDateTime(json['voting_deadline_at']),
       eventAt: _asDateTime(json['event_at']),
       decidedPlaceId: json['decided_place_id']?.toString(),
+      decidedPlaceSubmissionId: json['decided_place_submission_id']?.toString(),
       decidedDateAt: _asDateTime(json['decided_date_at']),
       tieResolutionDeadlineAt: _asDateTime(json['tie_resolution_deadline_at']),
       visibleInFeed: _asBool(json['visible_in_feed']),
@@ -439,6 +471,84 @@ class PlanDateVotingCandidateDto {
   }
 }
 
+/* ===================== PLACE VOTING ===================== */
+
+class PlanPlaceVotingDto {
+  final DateTime? votingDeadlineAt;
+  final bool isVotingActive;
+  final bool canAddCandidate;
+  final int freeSlotsCount;
+  final int candidatesCount;
+  final bool ownerChoiceModeActive;
+  final String? finalWinnerCandidateId;
+  final bool noWinnerYet;
+  final int hoursLeftToDeadline;
+  final bool postDeadlineGraceActive;
+  final List<PlaceCandidateDto> candidates;
+
+  PlanPlaceVotingDto({
+    required this.votingDeadlineAt,
+    required this.isVotingActive,
+    required this.canAddCandidate,
+    required this.freeSlotsCount,
+    required this.candidatesCount,
+    required this.ownerChoiceModeActive,
+    required this.finalWinnerCandidateId,
+    required this.noWinnerYet,
+    required this.hoursLeftToDeadline,
+    required this.postDeadlineGraceActive,
+    required this.candidates,
+  });
+
+  factory PlanPlaceVotingDto.fromJson(Map<String, dynamic> json) {
+    return PlanPlaceVotingDto(
+      votingDeadlineAt: _asDateTime(json['voting_deadline_at']),
+      isVotingActive: _asBool(json['is_voting_active']),
+      canAddCandidate: _asBool(json['can_add_candidate']),
+      freeSlotsCount: _asInt(json['free_slots_count']),
+      candidatesCount: _asInt(json['candidates_count']),
+      ownerChoiceModeActive: _asBool(json['owner_choice_mode_active']),
+      finalWinnerCandidateId: json['final_winner_candidate_id']?.toString(),
+      noWinnerYet: _asBool(json['no_winner_yet']),
+      hoursLeftToDeadline: _asInt(json['hours_left_to_deadline']),
+      postDeadlineGraceActive: _asBool(json['post_deadline_grace_active']),
+      candidates: (json['candidates'] as List<dynamic>? ?? [])
+          .map((e) => PlaceCandidateDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  factory PlanPlaceVotingDto.fromLegacy({
+    required DateTime? votingDeadlineAt,
+    required String? decidedPlaceId,
+    required String? decidedPlaceSubmissionId,
+    required List<PlaceCandidateDto> legacyCandidates,
+  }) {
+    String? winnerId;
+    if (decidedPlaceId != null && decidedPlaceId.isNotEmpty) {
+      winnerId = 'CORE:$decidedPlaceId';
+    } else if (decidedPlaceSubmissionId != null &&
+        decidedPlaceSubmissionId.isNotEmpty) {
+      winnerId = 'SUBMISSION:$decidedPlaceSubmissionId';
+    }
+
+    return PlanPlaceVotingDto(
+      votingDeadlineAt: votingDeadlineAt,
+      isVotingActive: false,
+      canAddCandidate: false,
+      freeSlotsCount:
+          legacyCandidates.length >= 5 ? 0 : (5 - legacyCandidates.length),
+      candidatesCount: legacyCandidates.length,
+      ownerChoiceModeActive: false,
+      finalWinnerCandidateId: winnerId,
+      noWinnerYet: winnerId == null,
+      hoursLeftToDeadline: 0,
+      postDeadlineGraceActive: false,
+      candidates: legacyCandidates,
+    );
+  }
+}
+
 /* ===================== LEGACY DATE CANDIDATES ===================== */
 
 class DateCandidateDto {
@@ -511,9 +621,12 @@ class PlaceCandidateDto {
   final bool isLeading;
   final bool isWinner;
   final bool isDimmed;
+  final bool isOwnerPriorityChoice;
+  final bool isAvailableForOwnerChoiceNow;
   final bool canVote;
   final bool canUnvote;
   final bool canDelete;
+  final bool canClearOwnerPriority;
   final int positionIndex;
 
   PlaceCandidateDto({
@@ -550,13 +663,18 @@ class PlaceCandidateDto {
     required this.isLeading,
     required this.isWinner,
     required this.isDimmed,
+    required this.isOwnerPriorityChoice,
+    required this.isAvailableForOwnerChoiceNow,
     required this.canVote,
     required this.canUnvote,
     required this.canDelete,
+    required this.canClearOwnerPriority,
     required this.positionIndex,
   });
 
-  bool get isCorePlace => sourceKind == 'CORE' && placeId != null && lat != null && lng != null;
+  bool get isCorePlace =>
+      sourceKind == 'CORE' && placeId != null && lat != null && lng != null;
+
   bool get isSubmissionPlace => sourceKind == 'SUBMISSION';
 
   PlaceDto? toPlaceDto() {
@@ -602,11 +720,26 @@ class PlaceCandidateDto {
       return null;
     }
 
+    final rawPlaceId = json['place_id']?.toString();
+    final rawSubmissionId = json['place_submission_id']?.toString();
+
+    final resolvedSourceKind = _asString(
+      json['source_kind'],
+      fallback: rawSubmissionId != null && rawSubmissionId.isNotEmpty
+          ? 'SUBMISSION'
+          : 'CORE',
+    );
+
     return PlaceCandidateDto(
-      candidateId: _asString(json['candidate_id']),
-      sourceKind: _asString(json['source_kind']),
-      placeId: json['place_id']?.toString(),
-      placeSubmissionId: json['place_submission_id']?.toString(),
+      candidateId: _asString(
+        json['candidate_id'],
+        fallback: resolvedSourceKind == 'SUBMISSION'
+            ? 'SUBMISSION:${rawSubmissionId ?? ''}'
+            : 'CORE:${rawPlaceId ?? ''}',
+      ),
+      sourceKind: resolvedSourceKind,
+      placeId: rawPlaceId,
+      placeSubmissionId: rawSubmissionId,
       title: _asString(json['title']),
       type: _asString(json['type']),
       address: _asString(json['address']),
@@ -636,9 +769,14 @@ class PlaceCandidateDto {
       isLeading: _asBool(json['is_leading']),
       isWinner: _asBool(json['is_winner']),
       isDimmed: _asBool(json['is_dimmed']),
+      isOwnerPriorityChoice: _asBool(json['is_owner_priority_choice']),
+      isAvailableForOwnerChoiceNow: _asBool(
+        json['is_available_for_owner_choice_now'],
+      ),
       canVote: _asBool(json['can_vote']),
       canUnvote: _asBool(json['can_unvote']),
       canDelete: _asBool(json['can_delete']),
+      canClearOwnerPriority: _asBool(json['can_clear_owner_priority']),
       positionIndex: _asInt(json['position_index']),
     );
   }
