@@ -339,9 +339,11 @@ class _PlaceCandidateCard extends StatelessWidget {
   static const double _deleteTop = 4.0;
   static const double _deleteRight = 4.0;
   static const double _deleteBoxSize = 34.0;
+
   static const double _buttonWidth = 102.0;
   static const double _buttonRight = 10.0;
   static const double _buttonBottom = 10.0;
+
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
   static const double _voteBottom = 50.0;
@@ -456,6 +458,9 @@ class _PlaceCandidateCard extends StatelessWidget {
     final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
     final distanceLabel = _distanceLabel();
     final secondaryLine = _secondaryLine();
+
+    final isPriorityAction =
+        item.canClearOwnerPriority || item.isAvailableForOwnerChoiceNow;
 
     Color borderColor = Colors.white;
     double borderWidth = 1.2;
@@ -673,6 +678,7 @@ class _PlaceCandidateCard extends StatelessWidget {
               label: actionLabel,
               enabled: actionEnabled,
               onTap: onActionTap,
+              isPriority: isPriorityAction,
             ),
           ),
         ],
@@ -721,17 +727,19 @@ class _PlaceActionChip extends StatelessWidget {
   final String label;
   final bool enabled;
   final Future<void> Function()? onTap;
+  final bool isPriority;
 
   const _PlaceActionChip({
     required this.label,
     required this.enabled,
     required this.onTap,
+    this.isPriority = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final activeColor = theme.colorScheme.primary;
+    final activeColor = isPriority ? Colors.amber : theme.colorScheme.primary;
     final disabledColor = theme.disabledColor;
 
     return InkWell(
@@ -745,6 +753,9 @@ class _PlaceActionChip extends StatelessWidget {
           color: enabled
               ? activeColor.withOpacity(0.16)
               : disabledColor.withOpacity(0.12),
+          border: enabled && isPriority
+              ? Border.all(color: Colors.amber.withOpacity(0.65))
+              : null,
         ),
         child: Text(
           label,
