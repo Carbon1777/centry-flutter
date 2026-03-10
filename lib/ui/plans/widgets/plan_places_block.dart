@@ -151,7 +151,7 @@ class _ServerFirstPlanPlacesBlock extends StatelessWidget {
     if (snapshot.postDeadlineGraceActive) {
       helperText = 'Голосование завершено. Победитель пока не определен.';
     } else if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
-      helperText = 'Создатель поставил свой приоритет.';
+      helperText = 'Создатель поставил свой приоритет по месту.';
       helperStyle = theme.textTheme.bodySmall?.copyWith(
         color: Colors.amber,
         fontWeight: FontWeight.w700,
@@ -415,15 +415,17 @@ class _PlaceCandidateCard extends StatelessWidget {
     }
   }
 
-  String? _secondaryLine() {
+  String? _coreSecondaryLine() {
     if (item.metroName != null && item.metroName!.trim().isNotEmpty) {
       return 'м.${item.metroName}'
           '${item.metroDistanceM != null ? ' · ${item.metroDistanceM} м' : ''}';
     }
+    return null;
+  }
 
+  String? _submissionSecondaryLine() {
     final address = item.address.trim();
     if (address.isNotEmpty) return address;
-
     return null;
   }
 
@@ -457,7 +459,8 @@ class _PlaceCandidateCard extends StatelessWidget {
     final canDeleteTap = onRemove != null && !actionsDisabled;
     final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
     final distanceLabel = _distanceLabel();
-    final secondaryLine = _secondaryLine();
+    final coreSecondaryLine = _coreSecondaryLine();
+    final submissionSecondaryLine = _submissionSecondaryLine();
 
     final isPriorityAction =
         item.canClearOwnerPriority || item.isAvailableForOwnerChoiceNow;
@@ -563,35 +566,51 @@ class _PlaceCandidateCard extends StatelessWidget {
                                           ),
                                         ),
                                       ),
+                                    ] else ...[
+                                      if (distanceLabel != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          distanceLabel,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: _distanceColor(),
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.0,
+                                          ),
+                                        ),
+                                      ],
+                                      if (coreSecondaryLine != null) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          coreSecondaryLine,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                    if (!_showModerationBadge &&
-                                        distanceLabel != null) ...[
-                                      const SizedBox(height: 2),
+                                    if (_showModerationBadge &&
+                                        item.cityName.trim().isNotEmpty) ...[
+                                      const SizedBox(height: 4),
                                       Text(
-                                        distanceLabel,
+                                        item.cityName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: _distanceColor(),
-                                          fontWeight: FontWeight.w600,
+                                            theme.textTheme.bodyLarge?.copyWith(
+                                          color: Colors.grey.shade500,
                                           height: 1.0,
                                         ),
                                       ),
                                     ],
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      item.cityName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          theme.textTheme.bodyLarge?.copyWith(
-                                        color: Colors.grey.shade500,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                    if (secondaryLine != null) ...[
+                                    if (_showModerationBadge &&
+                                        submissionSecondaryLine != null) ...[
                                       const SizedBox(height: 4),
                                       Text(
-                                        secondaryLine,
+                                        submissionSecondaryLine,
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style:
