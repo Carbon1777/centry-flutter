@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/geo/geo_service.dart';
 import '../../../data/plans/plan_details_dto.dart';
 
-const double _candidateCardContentLockDelta = 86.0;
 const int _candidateSlotsCount = 5;
 
 class PlanPlacesBlock extends StatelessWidget {
@@ -122,7 +121,7 @@ class _AddCandidateSlot extends StatelessWidget {
         borderRadius: cardRadius,
         onTap: enabled ? onTap : null,
         child: Ink(
-          height: 96,
+          height: 112,
           decoration: BoxDecoration(
             borderRadius: cardRadius,
             border: Border.all(
@@ -168,6 +167,11 @@ class _CoreCandidateCard extends StatelessWidget {
     this.onTap,
     this.onRemove,
   });
+
+  static const double _reservedRightWidth = 132.0;
+  static const double _overlayTop = 4.0;
+  static const double _overlayRight = 0.0;
+  static const double _overlayBoxSize = 34.0;
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -246,201 +250,246 @@ class _CoreCandidateCard extends StatelessWidget {
     return null;
   }
 
+  String _actionLabel() {
+    if (item.canUnvote || item.isUserVotedForThis) return 'Снять';
+    if (item.isLeading && !item.isWinner) return 'Приоритет';
+    return 'Выбрать';
+  }
+
+  bool _isPriorityAction() {
+    return item.isLeading && !item.isWinner && !item.isUserVotedForThis;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final distanceLabel = _distanceLabel();
     final secondaryLine = _secondaryLine();
     final cardRadius = BorderRadius.circular(16);
+    final opacity = item.isDimmed ? 0.55 : 1.0;
+    final canDeleteTap = onRemove != null && !actionsDisabled;
 
-    return Stack(
-      children: [
-        Material(
-          color: Theme.of(context).cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: cardRadius,
-            side: const BorderSide(
-              color: Colors.white,
-              width: 1.2,
-            ),
-          ),
-          child: InkWell(
-            borderRadius: cardRadius,
-            onTap: actionsDisabled ? null : onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 96),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final lockedContentWidth = math.max(
-                      0.0,
-                      constraints.maxWidth - _candidateCardContentLockDelta,
-                    );
-
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: lockedContentWidth,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 72,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Builder(
-                                        builder: (_) {
-                                          final url = item.previewMediaUrl;
-
-                                          if (url != null && url.isNotEmpty) {
-                                            return Image.network(
-                                              url,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) {
-                                                return Image.asset(
-                                                  'assets/images/place_placeholder.png',
-                                                  fit: BoxFit.cover,
-                                                );
-                                              },
-                                            );
-                                          }
-
-                                          final key = item.previewStorageKey;
-                                          if (key != null && key.isNotEmpty) {
-                                            final publicUrl = Supabase
-                                                .instance.client.storage
-                                                .from('brand-media')
-                                                .getPublicUrl(key);
-
-                                            return Image.network(
-                                              publicUrl,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) {
-                                                return Image.asset(
-                                                  'assets/images/place_placeholder.png',
-                                                  fit: BoxFit.cover,
-                                                );
-                                              },
-                                            );
-                                          }
-
-                                          return Image.asset(
-                                            'assets/images/place_placeholder.png',
-                                            fit: BoxFit.cover,
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  if (item.rating != null)
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.star,
-                                          size: 14,
-                                          color: Colors.amber,
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          item.rating!.toStringAsFixed(1),
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    item.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style:
-                                        Theme.of(context).textTheme.titleMedium,
-                                  ),
-                                  if (distanceLabel != null) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      distanceLabel,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: _distanceColor(),
-                                            fontWeight: FontWeight.w600,
-                                            height: 1.0,
-                                          ),
-                                    ),
-                                  ],
-                                  if (secondaryLine != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      secondaryLine,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: Colors.grey.shade500,
-                                          ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+    return Opacity(
+      opacity: opacity,
+      child: Stack(
+        children: [
+          Material(
+            color: theme.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: cardRadius,
+              side: const BorderSide(
+                color: Colors.white,
+                width: 1.2,
               ),
             ),
-          ),
-        ),
-        if (onRemove != null)
-          Positioned(
-            top: 6,
-            right: _candidateCardContentLockDelta + 6,
-            child: Material(
-              color: Colors.red.withOpacity(0.9),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onRemove,
-                child: const Padding(
-                  padding: EdgeInsets.all(6),
-                  child: Icon(
-                    Icons.close,
-                    size: 16,
-                    color: Colors.white,
+            child: InkWell(
+              borderRadius: cardRadius,
+              onTap: actionsDisabled ? null : onTap,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 112),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final contentWidth = math.max(
+                        0.0,
+                        constraints.maxWidth - _reservedRightWidth,
+                      );
+
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: contentWidth,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 72,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 72,
+                                      height: 72,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Builder(
+                                          builder: (_) {
+                                            final url = item.previewMediaUrl;
+
+                                            if (url != null && url.isNotEmpty) {
+                                              return Image.network(
+                                                url,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) {
+                                                  return Image.asset(
+                                                    'assets/images/place_placeholder.png',
+                                                    fit: BoxFit.cover,
+                                                  );
+                                                },
+                                              );
+                                            }
+
+                                            final key = item.previewStorageKey;
+                                            if (key != null && key.isNotEmpty) {
+                                              final publicUrl = Supabase
+                                                  .instance.client.storage
+                                                  .from('brand-media')
+                                                  .getPublicUrl(key);
+
+                                              return Image.network(
+                                                publicUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) {
+                                                  return Image.asset(
+                                                    'assets/images/place_placeholder.png',
+                                                    fit: BoxFit.cover,
+                                                  );
+                                                },
+                                              );
+                                            }
+
+                                            return Image.asset(
+                                              'assets/images/place_placeholder.png',
+                                              fit: BoxFit.cover,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if (item.rating != null)
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.star,
+                                            size: 14,
+                                            color: Colors.amber,
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            item.rating!.toStringAsFixed(1),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      item.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                    if (distanceLabel != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        distanceLabel,
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: _distanceColor(),
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                    ],
+                                    if (secondaryLine != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        secondaryLine,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
             ),
           ),
-      ],
+          Positioned(
+            top: _overlayTop,
+            right: _overlayRight,
+            child: SizedBox(
+              width: _overlayBoxSize,
+              height: _overlayBoxSize,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: canDeleteTap
+                    ? InkWell(
+                        onTap: onRemove,
+                        borderRadius: BorderRadius.circular(999),
+                        child: const Padding(
+                          padding: EdgeInsets.all(1),
+                          child: Icon(
+                            Icons.close,
+                            size: 32,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 30,
+            right: 46,
+            child: SizedBox(
+              width: 38,
+              height: 34,
+              child: Align(
+                alignment: Alignment.center,
+                child: Text(
+                  '${item.votesCount}',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 10,
+            bottom: 10,
+            width: 102,
+            child: _PlaceActionChip(
+              label: _actionLabel(),
+              enabled: true,
+              onTap: null,
+              isPriority: _isPriorityAction(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -457,6 +506,11 @@ class _SubmissionCandidateCard extends StatelessWidget {
     this.onTap,
     this.onRemove,
   });
+
+  static const double _reservedRightWidth = 144.0;
+  static const double _overlayTop = 4.0;
+  static const double _overlayRight = 0.0;
+  static const double _overlayBoxSize = 34.0;
 
   String _moderationLabel() {
     if (item.isRejected) return 'Отклонено';
@@ -480,155 +534,248 @@ class _SubmissionCandidateCard extends StatelessWidget {
     return const Color(0xFFFFB300);
   }
 
+  String _actionLabel() {
+    if (item.canUnvote || item.isUserVotedForThis) return 'Снять';
+    if (item.isLeading && !item.isWinner) return 'Приоритет';
+    return 'Выбрать';
+  }
+
+  bool _isPriorityAction() {
+    return item.isLeading && !item.isWinner && !item.isUserVotedForThis;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final badgeRightOffset =
-        (onRemove != null ? 44.0 : 12.0) + _candidateCardContentLockDelta;
-    final reservedRightWidth = onRemove != null ? 144.0 : 110.0;
     final cardRadius = BorderRadius.circular(16);
+    final opacity = item.isDimmed ? 0.55 : 1.0;
+    final canDeleteTap = onRemove != null && !actionsDisabled;
 
-    return Stack(
-      children: [
-        Material(
-          color: theme.cardColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: cardRadius,
-            side: const BorderSide(
-              color: Colors.white,
-              width: 1.2,
+    return Opacity(
+      opacity: opacity,
+      child: Stack(
+        children: [
+          Material(
+            color: theme.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: cardRadius,
+              side: const BorderSide(
+                color: Colors.white,
+                width: 1.2,
+              ),
             ),
-          ),
-          child: InkWell(
-            borderRadius: cardRadius,
-            onTap: actionsDisabled ? null : onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 96),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final lockedContentWidth = math.max(
-                      0.0,
-                      constraints.maxWidth - _candidateCardContentLockDelta,
-                    );
+            child: InkWell(
+              borderRadius: cardRadius,
+              onTap: actionsDisabled ? null : onTap,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 112),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final contentWidth = math.max(
+                        0.0,
+                        constraints.maxWidth - _reservedRightWidth,
+                      );
 
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: lockedContentWidth,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.asset(
-                                  'assets/images/place_placeholder.png',
-                                  fit: BoxFit.cover,
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: contentWidth,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.asset(
+                                    'assets/images/place_placeholder.png',
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Padding(
-                                    padding: EdgeInsets.only(
-                                      right: reservedRightWidth,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: Text(
+                                        item.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleMedium,
+                                      ),
                                     ),
-                                    child: Text(
-                                      item.title,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.cityName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.titleMedium,
+                                      style:
+                                          theme.textTheme.bodyLarge?.copyWith(
+                                        color: Colors.grey.shade500,
+                                        height: 1.0,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.cityName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyLarge?.copyWith(
-                                      color: Colors.grey.shade500,
-                                      height: 1.0,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.address,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          theme.textTheme.bodyLarge?.copyWith(
+                                        color: Colors.grey.shade500,
+                                        height: 1.0,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.address,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyLarge?.copyWith(
-                                      color: Colors.grey.shade500,
-                                      height: 1.0,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 10,
-          right: badgeRightOffset,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: _moderationBackgroundColor(),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              _moderationLabel(),
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: _moderationTextColor(),
-                fontWeight: FontWeight.w700,
-                height: 1,
-              ),
-            ),
-          ),
-        ),
-        if (onRemove != null)
-          Positioned(
-            top: 6,
-            right: _candidateCardContentLockDelta + 6,
-            child: Material(
-              color: Colors.red.withOpacity(0.9),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onRemove,
-                child: const Padding(
-                  padding: EdgeInsets.all(6),
-                  child: Icon(
-                    Icons.close,
-                    size: 16,
-                    color: Colors.white,
+                      );
+                    },
                   ),
                 ),
               ),
             ),
           ),
-      ],
+          Positioned(
+            top: 10,
+            right: 40,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: _moderationBackgroundColor(),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                _moderationLabel(),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: _moderationTextColor(),
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: _overlayTop,
+            right: _overlayRight,
+            child: SizedBox(
+              width: _overlayBoxSize,
+              height: _overlayBoxSize,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: canDeleteTap
+                    ? InkWell(
+                        onTap: onRemove,
+                        borderRadius: BorderRadius.circular(999),
+                        child: const Padding(
+                          padding: EdgeInsets.all(1),
+                          child: Icon(
+                            Icons.close,
+                            size: 32,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 38,
+            right: 50,
+            child: SizedBox(
+              width: 38,
+              height: 34,
+              child: Align(
+                alignment: Alignment.center,
+                child: Text(
+                  '${item.votesCount}',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 10,
+            bottom: 10,
+            width: 102,
+            child: _PlaceActionChip(
+              label: _actionLabel(),
+              enabled: true,
+              onTap: null,
+              isPriority: _isPriorityAction(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceActionChip extends StatelessWidget {
+  final String label;
+  final bool enabled;
+  final VoidCallback? onTap;
+  final bool isPriority;
+
+  const _PlaceActionChip({
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+    this.isPriority = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final activeColor = isPriority ? Colors.amber : theme.colorScheme.primary;
+    final disabledColor = theme.disabledColor;
+
+    return InkWell(
+      onTap: (!enabled || onTap == null) ? null : onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: enabled
+              ? activeColor.withOpacity(0.16)
+              : disabledColor.withOpacity(0.12),
+          border: enabled && isPriority
+              ? Border.all(color: Colors.amber.withOpacity(0.65))
+              : null,
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: enabled ? activeColor : disabledColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
