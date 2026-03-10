@@ -179,7 +179,7 @@ class _CoreCandidateCard extends StatelessWidget {
 
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
-  static const double _voteBottom = 48.0;
+  static const double _voteBottom = 58.0;
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -517,7 +517,7 @@ class _SubmissionCandidateCard extends StatelessWidget {
 
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
-  static const double _voteBottom = 48.0;
+  static const double _voteBottom = 58.0;
 
   String _moderationLabel() {
     if (item.isRejected) return 'Отклонено';
@@ -650,11 +650,11 @@ class _SubmissionCandidateCard extends StatelessWidget {
           ),
           Positioned(
             top: 10,
-            right: 70,
+            right: 88,
             child: Container(
               padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 6,
+                horizontal: 10,
+                vertical: 5,
               ),
               decoration: BoxDecoration(
                 color: _moderationBackgroundColor(),
@@ -665,6 +665,7 @@ class _SubmissionCandidateCard extends StatelessWidget {
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: _moderationTextColor(),
                   fontWeight: FontWeight.w700,
+                  fontSize: 13,
                   height: 1,
                 ),
               ),
@@ -753,7 +754,7 @@ class _PlaceActionChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: enabled
