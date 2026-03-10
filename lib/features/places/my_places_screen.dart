@@ -25,12 +25,16 @@ class MyPlacesScreen extends StatefulWidget {
   final PlacesRepository repository;
   final String? sourcePlanId;
   final String? sourcePlanTitle;
+  final Set<String> currentPlanPlaceIds;
+  final Set<String> currentPlanSubmissionIds;
 
   const MyPlacesScreen({
     super.key,
     required this.repository,
     this.sourcePlanId,
     this.sourcePlanTitle,
+    this.currentPlanPlaceIds = const <String>{},
+    this.currentPlanSubmissionIds = const <String>{},
   });
 
   @override
@@ -233,7 +237,50 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     }
   }
 
+  Future<void> _removeCorePlaceFromCurrentPlan(String placeId) async {
+    if (!_isPlanFlow) return;
+
+    final appUserId = await _resolveCurrentAppUserId();
+    await PlansRepositoryImpl(Supabase.instance.client).removePlanPlace(
+      appUserId: appUserId,
+      planId: widget.sourcePlanId!.trim(),
+      placeId: placeId,
+      placeSubmissionId: null,
+    );
+  }
+
+  Future<void> _removeSubmissionFromCurrentPlan(String submissionId) async {
+    if (!_isPlanFlow) return;
+
+    final appUserId = await _resolveCurrentAppUserId();
+    await PlansRepositoryImpl(Supabase.instance.client).removePlanPlace(
+      appUserId: appUserId,
+      planId: widget.sourcePlanId!.trim(),
+      placeId: null,
+      placeSubmissionId: submissionId,
+    );
+  }
+
+  Future<void> _handleDialogResult(Object? result) async {
+    if (!mounted || result == null) return;
+
+    if (_isPlanFlow) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+
+    if (result is AddPlaceToPlanResult) {
+      await _openPlanDetails(planId: result.planId);
+      return;
+    }
+
+    await _load();
+  }
+
   Future<void> _openDetails(PlaceUiModel place) async {
+    final isAlreadyInCurrentPlan =
+        widget.currentPlanPlaceIds.contains(place.dto.id);
+
     final result = await showDialog<Object?>(
       context: context,
       builder: (_) => PlaceDetailsDialog(
@@ -252,24 +299,21 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         metroDistanceM: place.dto.metroDistanceM,
         sourcePlanId: widget.sourcePlanId,
         sourcePlanTitle: widget.sourcePlanTitle,
+        isAlreadyInCurrentPlan: isAlreadyInCurrentPlan,
+        onRemoveFromCurrentPlan: isAlreadyInCurrentPlan
+            ? () => _removeCorePlaceFromCurrentPlan(place.dto.id)
+            : null,
       ),
     );
 
     if (!mounted) return;
-
-    if (result is AddPlaceToPlanResult) {
-      if (_isPlanFlow) {
-        Navigator.of(context).pop(result);
-        return;
-      }
-
-      await _openPlanDetails(planId: result.planId);
-    }
-
-    await _load();
+    await _handleDialogResult(result);
   }
 
   Future<void> _openSubmissionDetails(_MyPlaceSubmissionItem submission) async {
+    final isAlreadyInCurrentPlan =
+        widget.currentPlanSubmissionIds.contains(submission.submissionId);
+
     final result = await showDialog<Object?>(
       context: context,
       builder: (_) => _MyPlaceSubmissionDetailsDialog(
@@ -277,21 +321,15 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         resolveCurrentAppUserId: _resolveCurrentAppUserId,
         sourcePlanId: widget.sourcePlanId,
         sourcePlanTitle: widget.sourcePlanTitle,
+        isAlreadyInCurrentPlan: isAlreadyInCurrentPlan,
+        onRemoveFromCurrentPlan: isAlreadyInCurrentPlan
+            ? () => _removeSubmissionFromCurrentPlan(submission.submissionId)
+            : null,
       ),
     );
 
     if (!mounted) return;
-
-    if (result is AddPlaceToPlanResult) {
-      if (_isPlanFlow) {
-        Navigator.of(context).pop(result);
-        return;
-      }
-
-      await _openPlanDetails(planId: result.planId);
-    }
-
-    await _load();
+    await _handleDialogResult(result);
   }
 
   void _openOnMap(PlaceDto place) {
@@ -340,6 +378,12 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
               repository: widget.repository,
               filtersController: _filtersController,
               focusPlace: _mapFocusPlace,
+              sourcePlanId: widget.sourcePlanId,
+              sourcePlanTitle: widget.sourcePlanTitle,
+              currentPlanPlaceIds: widget.currentPlanPlaceIds,
+              onRemoveFromCurrentPlan:
+                  _isPlanFlow ? _removeCorePlaceFromCurrentPlan : null,
+              onPlaceDialogResult: _handleDialogResult,
             )
           : _loading
               ? const Center(child: CircularProgressIndicator())
@@ -703,12 +747,16 @@ class _MyPlaceSubmissionDetailsDialog extends StatefulWidget {
     required this.resolveCurrentAppUserId,
     this.sourcePlanId,
     this.sourcePlanTitle,
+    this.isAlreadyInCurrentPlan = false,
+    this.onRemoveFromCurrentPlan,
   });
 
   final _MyPlaceSubmissionItem submission;
   final Future<String> Function() resolveCurrentAppUserId;
   final String? sourcePlanId;
   final String? sourcePlanTitle;
+  final bool isAlreadyInCurrentPlan;
+  final Future<void> Function()? onRemoveFromCurrentPlan;
 
   @override
   State<_MyPlaceSubmissionDetailsDialog> createState() =>
@@ -729,6 +777,17 @@ class _MyPlaceSubmissionDetailsDialogState
   }
 
   bool get _canAddToPlan => widget.submission.status != 'REJECTED';
+
+  bool get _showRemoveFromPlanAction => widget.isAlreadyInCurrentPlan;
+
+  String get _primaryActionLabel {
+    if (_showRemoveFromPlanAction) {
+      return widget.onRemoveFromCurrentPlan != null
+          ? 'Удалить из плана'
+          : 'В плане';
+    }
+    return 'Добавить в план';
+  }
 
   String _mapPlanPlaceAddError(String message) {
     switch (message) {
@@ -777,7 +836,32 @@ class _MyPlaceSubmissionDetailsDialogState
   }
 
   Future<void> _onAddToPlanPressed() async {
-    if (_addingToPlan || !_canAddToPlan) return;
+    if (_addingToPlan) return;
+    if (!_showRemoveFromPlanAction && !_canAddToPlan) return;
+
+    if (_showRemoveFromPlanAction) {
+      if (widget.onRemoveFromCurrentPlan == null) return;
+
+      setState(() => _addingToPlan = true);
+
+      try {
+        await widget.onRemoveFromCurrentPlan!.call();
+
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+      } catch (e) {
+        if (!mounted) return;
+
+        setState(() => _addingToPlan = false);
+
+        await showCenterToast(
+          context,
+          message: 'Не удалось удалить место из плана',
+          isError: true,
+        );
+      }
+      return;
+    }
 
     setState(() => _addingToPlan = true);
 
@@ -1021,9 +1105,9 @@ class _MyPlaceSubmissionDetailsDialogState
                                         color: addToPlanTextColor,
                                       ),
                                     )
-                                  : const Text(
-                                      'Добавить в план',
-                                      style: TextStyle(
+                                  : Text(
+                                      _primaryActionLabel,
+                                      style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 16,
                                       ),

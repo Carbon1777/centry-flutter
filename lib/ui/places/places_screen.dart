@@ -12,6 +12,7 @@ import '../../data/places/place_dto.dart';
 import '../../data/places/places_feed_result.dart';
 import '../../data/places/places_repository.dart';
 import '../../data/places/places_repository_impl.dart';
+import '../../data/plans/plans_repository_impl.dart';
 import 'package:centry/features/places/geo_info/places_geo_info_controller.dart';
 import 'package:centry/features/places/geo_info/places_geo_info_dialog.dart';
 
@@ -21,9 +22,11 @@ import 'package:centry/features/places/filters/places_filters_dialog.dart';
 
 // КАРТА
 import 'package:centry/features/places/map/places_map.dart';
+import 'package:centry/features/places/details/add_place_to_plan_modal.dart';
 import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/add_place/add_place_dialog.dart';
 import 'package:centry/ui/common/center_toast.dart';
+import '../plans/plan_details_screen.dart';
 
 enum PlacesViewMode {
   list,
@@ -31,14 +34,20 @@ enum PlacesViewMode {
 }
 
 class PlacesScreen extends StatefulWidget {
-  final PlacesViewMode initialViewMode;
-  final PlaceDto? initialFocusPlace;
-
   const PlacesScreen({
     super.key,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
+    this.currentPlanPlaceIds = const <String>{},
     this.initialViewMode = PlacesViewMode.list,
     this.initialFocusPlace,
   });
+
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
+  final Set<String> currentPlanPlaceIds;
+  final PlacesViewMode initialViewMode;
+  final PlaceDto? initialFocusPlace;
 
   @override
   State<PlacesScreen> createState() => _PlacesScreenState();
@@ -56,16 +65,28 @@ class _PlacesScreenState extends State<PlacesScreen> {
   /// 🔴 Live invalidation subscription
   late final StreamSubscription<void> _repoInvalidationSub;
 
-  /// UI-сигнал: сфокусировать карту на конкретном месте (из списка / извне).
+  /// UI-сигнал: сфокусировать карту на конкретном месте (из списка).
   final ValueNotifier<PlaceDto?> _mapFocusPlace =
       ValueNotifier<PlaceDto?>(null);
+
+  bool get _isPlanFlow {
+    final planId = widget.sourcePlanId?.trim();
+    final planTitle = widget.sourcePlanTitle?.trim();
+    return planId != null &&
+        planId.isNotEmpty &&
+        planTitle != null &&
+        planTitle.isNotEmpty;
+  }
 
   @override
   void initState() {
     super.initState();
-
     _viewMode = widget.initialViewMode;
     _repository = PlacesRepositoryImpl(Supabase.instance.client);
+
+    if (widget.initialFocusPlace != null) {
+      _mapFocusPlace.value = widget.initialFocusPlace;
+    }
 
     /// 🔴 Подписка на live invalidation
     _repoInvalidationSub = _repository.invalidations.listen((_) {
@@ -74,14 +95,6 @@ class _PlacesScreenState extends State<PlacesScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowGeoInfo();
-
-      final initialFocusPlace = widget.initialFocusPlace;
-      if (initialFocusPlace != null) {
-        _focusPlaceOnMap(
-          initialFocusPlace,
-          switchToMap: widget.initialViewMode == PlacesViewMode.map,
-        );
-      }
     });
   }
 
@@ -189,14 +202,8 @@ class _PlacesScreenState extends State<PlacesScreen> {
     _reloadSignal.value++;
   }
 
-  void _focusPlaceOnMap(
-    PlaceDto place, {
-    bool switchToMap = true,
-  }) {
-    if (switchToMap) {
-      setState(() => _viewMode = PlacesViewMode.map);
-    }
-
+  void _openPlaceOnMap(PlaceDto place) {
+    setState(() => _viewMode = PlacesViewMode.map);
     _mapFocusPlace.value = place;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -207,8 +214,83 @@ class _PlacesScreenState extends State<PlacesScreen> {
     });
   }
 
-  void _openPlaceOnMap(PlaceDto place) {
-    _focusPlaceOnMap(place, switchToMap: true);
+  Future<String> _resolveCurrentAppUserId() async {
+    const secureStorage = FlutterSecureStorage();
+    final rawSnapshot = await secureStorage.read(key: 'user_snapshot');
+    if (rawSnapshot != null && rawSnapshot.isNotEmpty) {
+      try {
+        final json = jsonDecode(rawSnapshot) as Map<String, dynamic>;
+        final snapshotUserId = json['id']?.toString();
+        if (snapshotUserId != null && snapshotUserId.isNotEmpty) {
+          return snapshotUserId;
+        }
+      } catch (_) {
+        // ignore and fallback below
+      }
+    }
+
+    final authUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (authUserId == null || authUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    final row = await Supabase.instance.client
+        .from('app_users')
+        .select('id')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+
+    final appUserId = row?['id']?.toString();
+    if (appUserId == null || appUserId.isEmpty) {
+      throw Exception('Пользователь не найден');
+    }
+
+    return appUserId;
+  }
+
+  Future<void> _openPlanDetails({required String planId}) async {
+    final appUserId = await _resolveCurrentAppUserId();
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlanDetailsScreen(
+          appUserId: appUserId,
+          planId: planId,
+          repository: PlansRepositoryImpl(Supabase.instance.client),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeFromCurrentPlan(String placeId) async {
+    if (!_isPlanFlow) return;
+
+    final appUserId = await _resolveCurrentAppUserId();
+    final planId = widget.sourcePlanId!.trim();
+
+    await PlansRepositoryImpl(Supabase.instance.client).removePlanPlace(
+      appUserId: appUserId,
+      planId: planId,
+      placeId: placeId,
+      placeSubmissionId: null,
+    );
+  }
+
+  Future<void> _handlePlaceDialogResult(Object? result) async {
+    if (!mounted || result == null) return;
+
+    if (_isPlanFlow) {
+      Navigator.of(context).pop(result);
+      return;
+    }
+
+    if (result is AddPlaceToPlanResult) {
+      await _openPlanDetails(planId: result.planId);
+      return;
+    }
+
+    _reloadSignal.value++;
   }
 
   @override
@@ -233,11 +315,23 @@ class _PlacesScreenState extends State<PlacesScreen> {
               filtersController: _filtersController,
               reloadSignal: _reloadSignal,
               onOpenOnMap: _openPlaceOnMap,
+              sourcePlanId: widget.sourcePlanId,
+              sourcePlanTitle: widget.sourcePlanTitle,
+              currentPlanPlaceIds: widget.currentPlanPlaceIds,
+              onRemoveFromCurrentPlan:
+                  _isPlanFlow ? _removeFromCurrentPlan : null,
+              onPlaceDialogResult: _handlePlaceDialogResult,
             )
           : PlacesMap(
               repository: _repository,
               filtersController: _filtersController,
               focusPlace: _mapFocusPlace,
+              sourcePlanId: widget.sourcePlanId,
+              sourcePlanTitle: widget.sourcePlanTitle,
+              currentPlanPlaceIds: widget.currentPlanPlaceIds,
+              onRemoveFromCurrentPlan:
+                  _isPlanFlow ? _removeFromCurrentPlan : null,
+              onPlaceDialogResult: _handlePlaceDialogResult,
             ),
     );
   }
@@ -253,12 +347,22 @@ class _PlacesList extends StatefulWidget {
     required this.filtersController,
     required this.reloadSignal,
     required this.onOpenOnMap,
+    required this.currentPlanPlaceIds,
+    required this.onPlaceDialogResult,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
+    this.onRemoveFromCurrentPlan,
   });
 
   final PlacesRepository repository;
   final PlacesFiltersController filtersController;
   final ValueListenable<int> reloadSignal;
   final ValueChanged<PlaceDto> onOpenOnMap;
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
+  final Set<String> currentPlanPlaceIds;
+  final Future<void> Function(String placeId)? onRemoveFromCurrentPlan;
+  final Future<void> Function(Object? result) onPlaceDialogResult;
 
   @override
   State<_PlacesList> createState() => _PlacesListState();
@@ -800,8 +904,11 @@ class _PlacesListState extends State<_PlacesList> {
 
                     return PlaceCard(
                       place: place,
-                      onDetailsTap: () {
-                        showDialog<void>(
+                      onDetailsTap: () async {
+                        final isAlreadyInCurrentPlan =
+                            widget.currentPlanPlaceIds.contains(place.dto.id);
+
+                        final result = await showDialog<Object?>(
                           context: context,
                           builder: (_) => PlaceDetailsDialog(
                             repository: widget.repository,
@@ -818,8 +925,20 @@ class _PlacesListState extends State<_PlacesList> {
                             metroName: place.dto.metroName,
                             metroDistanceM: place.dto.metroDistanceM,
                             websiteUrl: place.dto.websiteUrl,
+                            sourcePlanId: widget.sourcePlanId,
+                            sourcePlanTitle: widget.sourcePlanTitle,
+                            isAlreadyInCurrentPlan: isAlreadyInCurrentPlan,
+                            onRemoveFromCurrentPlan: isAlreadyInCurrentPlan &&
+                                    widget.onRemoveFromCurrentPlan != null
+                                ? () => widget.onRemoveFromCurrentPlan!(
+                                      place.dto.id,
+                                    )
+                                : null,
                           ),
                         );
+
+                        if (!mounted || result == null) return;
+                        await widget.onPlaceDialogResult(result);
                       },
                       onMapTap: () {
                         widget.onOpenOnMap(place.dto);
