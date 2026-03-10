@@ -93,86 +93,58 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
     final hasOwnerPriorityChoice = snapshot.candidates.any(
       (c) => c.isOwnerPriorityChoice,
     );
 
-    TextStyle? helperStyle = theme.textTheme.bodySmall;
-    String? helperText;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        final itemWidth = (constraints.maxWidth - gap * 2) / 3;
 
-    if (snapshot.postDeadlineGraceActive) {
-      helperText = 'Голосование завершено. Победитель пока не определен.';
-    } else if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
-      helperText = 'Создатель поставил свой приоритет.';
-      helperStyle = theme.textTheme.bodySmall?.copyWith(
-        color: Colors.amber,
-        fontWeight: FontWeight.w700,
-      );
-    } else if (snapshot.ownerChoiceModeActive) {
-      helperText = 'Доступен приоритетный выбор создателя.';
-    } else if (snapshot.candidatesCount < 2) {
-      helperText =
-          'Голосование станет доступно, когда появится минимум 2 даты.';
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const gap = 8.0;
-            final itemWidth = (constraints.maxWidth - gap * 2) / 3;
-
-            Widget buildSlot(int index) {
-              if (index < snapshot.candidates.length) {
-                final candidate = snapshot.candidates[index];
-                return SizedBox(
-                  width: itemWidth,
-                  child: _DateCandidateCard(
-                    candidate: candidate,
-                    ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
-                    hasOwnerPriorityChoice: hasOwnerPriorityChoice,
-                    isFinalizedWithWinner: isFinalizedWithWinner,
-                    onVote: onVote,
-                    onUnvote: onUnvote,
-                    onDelete: onDelete,
-                    onChooseOwnerPriority: onChooseOwnerPriority,
-                    onClearOwnerPriority: onClearOwnerPriority,
-                    actionsDisabled: actionsDisabled,
-                  ),
-                );
-              }
-
-              return SizedBox(
-                width: itemWidth,
-                child: _EmptyDateSlot(
-                  canAddCandidate: snapshot.canAddCandidate,
-                  onTap: (!actionsDisabled && snapshot.canAddCandidate)
-                      ? onAddCandidate
-                      : null,
-                ),
-              );
-            }
-
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                buildSlot(0),
-                const SizedBox(width: gap),
-                buildSlot(1),
-                const SizedBox(width: gap),
-                buildSlot(2),
-              ],
+        Widget buildSlot(int index) {
+          if (index < snapshot.candidates.length) {
+            final candidate = snapshot.candidates[index];
+            return SizedBox(
+              width: itemWidth,
+              child: _DateCandidateCard(
+                candidate: candidate,
+                ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+                hasOwnerPriorityChoice: hasOwnerPriorityChoice,
+                isFinalizedWithWinner: isFinalizedWithWinner,
+                onVote: onVote,
+                onUnvote: onUnvote,
+                onDelete: onDelete,
+                onChooseOwnerPriority: onChooseOwnerPriority,
+                onClearOwnerPriority: onClearOwnerPriority,
+                actionsDisabled: actionsDisabled,
+              ),
             );
-          },
-        ),
-        if (helperText != null) ...[
-          const SizedBox(height: 10),
-          Text(helperText, style: helperStyle),
-        ],
-      ],
+          }
+
+          return SizedBox(
+            width: itemWidth,
+            child: _EmptyDateSlot(
+              canAddCandidate: snapshot.canAddCandidate,
+              onTap: (!actionsDisabled && snapshot.canAddCandidate)
+                  ? onAddCandidate
+                  : null,
+            ),
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildSlot(0),
+            const SizedBox(width: gap),
+            buildSlot(1),
+            const SizedBox(width: gap),
+            buildSlot(2),
+          ],
+        );
+      },
     );
   }
 }
