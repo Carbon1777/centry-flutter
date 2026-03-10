@@ -1959,7 +1959,7 @@ class _Body extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  'Дат для голосования ${details.dateVoting.candidatesCount}/3',
+                  'Дат ${details.dateVoting.candidatesCount}/3',
                   textAlign: TextAlign.right,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
@@ -1976,13 +1976,13 @@ class _Body extends StatelessWidget {
             ],
           ),
           if (dateVotingHelperText != null) ...[
-            const SizedBox(height: 6),
             Text(
               dateVotingHelperText,
               style: _buildDateVotingHelperStyle(context),
             ),
-          ],
-          const SizedBox(height: 6),
+            const SizedBox(height: 8),
+          ] else
+            const SizedBox(height: 6),
           PlanDatesBlock(
             items: details.dateCandidates,
             dateVoting: details.dateVoting,
@@ -2008,7 +2008,7 @@ class _Body extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  'Мест для голосования ${details.placeVoting.candidatesCount}/5',
+                  'Мест ${details.placeVoting.candidatesCount}/5',
                   textAlign: TextAlign.right,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
