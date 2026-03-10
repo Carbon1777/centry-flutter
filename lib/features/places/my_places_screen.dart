@@ -332,21 +332,6 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     await _handleDialogResult(result);
   }
 
-  void _openOnMap(PlaceDto place) {
-    setState(() {
-      _viewMode = MyPlacesViewMode.map;
-    });
-
-    _mapFocusPlace.value = place;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_mapFocusPlace.value == place) {
-        _mapFocusPlace.value = null;
-      }
-    });
-  }
-
   @override
   void dispose() {
     _sub?.cancel();
@@ -356,11 +341,18 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final scaffoldBackground = theme.scaffoldBackgroundColor;
     final totalItems = _submissions.length + _places.length;
 
     return Scaffold(
+      backgroundColor: scaffoldBackground,
       appBar: AppBar(
+        backgroundColor: scaffoldBackground,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         leading: _viewMode == MyPlacesViewMode.map
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -373,70 +365,76 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
             : null,
         title: const Text('Мои места'),
       ),
-      body: _viewMode == MyPlacesViewMode.map
-          ? PlacesMap(
-              repository: widget.repository,
-              filtersController: _filtersController,
-              focusPlace: _mapFocusPlace,
-              sourcePlanId: widget.sourcePlanId,
-              sourcePlanTitle: widget.sourcePlanTitle,
-              currentPlanPlaceIds: widget.currentPlanPlaceIds,
-              onRemoveFromCurrentPlan:
-                  _isPlanFlow ? _removeCorePlaceFromCurrentPlan : null,
-              onPlaceDialogResult: _handleDialogResult,
-            )
-          : _loading
-              ? const Center(child: CircularProgressIndicator())
-              : totalItems == 0
-                  ? Center(
-                      child: Text(
-                        'Пока пусто',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: colors.onSurface.withOpacity(0.7),
-                            ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: totalItems,
-                      itemBuilder: (context, index) {
-                        if (index < _submissions.length) {
-                          final submission = _submissions[index];
+      body: ColoredBox(
+        color: scaffoldBackground,
+        child: _viewMode == MyPlacesViewMode.map
+            ? PlacesMap(
+                repository: widget.repository,
+                filtersController: _filtersController,
+                focusPlace: _mapFocusPlace,
+                sourcePlanId: widget.sourcePlanId,
+                sourcePlanTitle: widget.sourcePlanTitle,
+                currentPlanPlaceIds: widget.currentPlanPlaceIds,
+                onRemoveFromCurrentPlan:
+                    _isPlanFlow ? _removeCorePlaceFromCurrentPlan : null,
+                onPlaceDialogResult: _handleDialogResult,
+              )
+            : _loading
+                ? const Center(child: CircularProgressIndicator())
+                : totalItems == 0
+                    ? Center(
+                        child: Text(
+                          'Пока пусто',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: totalItems,
+                        itemBuilder: (context, index) {
+                          if (index < _submissions.length) {
+                            final submission = _submissions[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _MyPlaceSubmissionCard(
+                                key: ValueKey(submission.submissionId),
+                                submission: submission,
+                                onDetailsTap: () =>
+                                    _openSubmissionDetails(submission),
+                                onRejectedShown:
+                                    submission.shouldAckRejectedSeen
+                                        ? () => _ackRejectedSubmissionSeen(
+                                              submission,
+                                            )
+                                        : null,
+                              ),
+                            );
+                          }
+
+                          final place = _places[index - _submissions.length];
+
+                          final uiModel = PlaceUiModel(
+                            dto: place,
+                            title: place.title,
+                            type: place.type,
+                            address: place.address,
+                            cityName: place.cityName,
+                            areaName: place.areaName,
+                            distanceM: place.distanceM,
+                          );
+
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
-                            child: _MyPlaceSubmissionCard(
-                              key: ValueKey(submission.submissionId),
-                              submission: submission,
-                              onDetailsTap: () =>
-                                  _openSubmissionDetails(submission),
-                              onRejectedShown: submission.shouldAckRejectedSeen
-                                  ? () => _ackRejectedSubmissionSeen(submission)
-                                  : null,
+                            child: PlaceCard(
+                              place: uiModel,
+                              onDetailsTap: () => _openDetails(uiModel),
                             ),
                           );
-                        }
-
-                        final place = _places[index - _submissions.length];
-
-                        final uiModel = PlaceUiModel(
-                          dto: place,
-                          title: place.title,
-                          type: place.type,
-                          address: place.address,
-                          cityName: place.cityName,
-                          areaName: place.areaName,
-                          distanceM: place.distanceM,
-                        );
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: PlaceCard(
-                            place: uiModel,
-                            onDetailsTap: () => _openDetails(uiModel),
-                          ),
-                        );
-                      },
-                    ),
+                        },
+                      ),
+      ),
     );
   }
 }
@@ -613,127 +611,118 @@ class _MyPlaceSubmissionCardState extends State<_MyPlaceSubmissionCard> {
       });
     }
 
-    final compactTextButtonStyle = TextButton.styleFrom(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-    );
-
     final statusColor = widget.submission.statusColor(context);
     final statusBgColor = widget.submission.statusBackgroundColor(context);
+    final cardRadius = BorderRadius.circular(16);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 96),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 72,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        'assets/images/place_placeholder.png',
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    return Material(
+      color: Theme.of(context).cardColor,
+      borderRadius: cardRadius,
+      child: InkWell(
+        borderRadius: cardRadius,
+        onTap: widget.onDetailsTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 96),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 72,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Text(
-                          widget.submission.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                        width: 72,
+                        height: 72,
                         decoration: BoxDecoration(
-                          color: statusBgColor,
-                          borderRadius: BorderRadius.circular(999),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Text(
-                          widget.submission.statusLabel,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.asset(
+                            'assets/images/place_placeholder.png',
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.submission.typeLabel,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.submission.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusBgColor,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              widget.submission.statusLabel,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.submission.typeLabel,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.submission.city,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey.shade500),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.submission.address,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey.shade500),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.submission.city,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.submission.address,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      style: compactTextButtonStyle,
-                      onPressed: widget.onDetailsTap,
-                      child: const Text('Подробнее'),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
