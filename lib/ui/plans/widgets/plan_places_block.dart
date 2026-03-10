@@ -335,7 +335,7 @@ class _PlaceCandidateCard extends StatelessWidget {
     required this.isFinalizedWithWinner,
   });
 
-  static const double _reservedRightWidth = 144.0;
+  static const double _reservedRightWidth = 80.0;
   static const double _deleteTop = 4.0;
   static const double _deleteRight = 4.0;
   static const double _deleteBoxSize = 34.0;
