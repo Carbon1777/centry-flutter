@@ -1790,11 +1790,18 @@ class _Body extends StatelessWidget {
           const Divider(height: 1, thickness: 1),
           Row(
             children: [
-              const _SectionTitle('Голосование по местам'),
-              const SizedBox(width: 12),
               Expanded(
                 child: Text(
+                  'Голосование по местам',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
                   'Мест для голосования ${details.placeCandidates.length}/5',
+                  textAlign: TextAlign.right,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: Theme.of(context)
@@ -1809,7 +1816,6 @@ class _Body extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
