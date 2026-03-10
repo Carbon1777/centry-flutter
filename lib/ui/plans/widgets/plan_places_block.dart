@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/geo/geo_service.dart';
 import '../../../data/plans/plan_details_dto.dart';
 
+const double _candidateCardContentLockDelta = 86.0;
+
 class PlanPlacesBlock extends StatelessWidget {
   final List<PlaceCandidateDto> items;
   final VoidCallback? onAddCandidate;
@@ -72,12 +74,10 @@ class PlanPlacesBlock extends StatelessWidget {
             ),
           )
         else
-          SizedBox(
-            height: math.min(
-              items.length * 108.0 + ((items.length - 1) * 8.0),
-              560.0,
-            ),
+          Expanded(
             child: ListView.separated(
+              primary: false,
+              physics: const ClampingScrollPhysics(),
               padding: EdgeInsets.zero,
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -134,23 +134,6 @@ class _CoreCandidateCard extends StatelessWidget {
     this.onOpenOnMap,
     this.onRemove,
   });
-
-  String _typeLabel(String type) {
-    switch (type) {
-      case 'restaurant':
-        return 'Ресторан';
-      case 'bar':
-        return 'Бар';
-      case 'nightclub':
-        return 'Ночной клуб';
-      case 'cinema':
-        return 'Кинотеатр';
-      case 'theatre':
-        return 'Театр';
-      default:
-        return 'Место';
-    }
-  }
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -238,179 +221,195 @@ class _CoreCandidateCard extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 96),
           child: Container(
+            width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 72,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Builder(
-                            builder: (_) {
-                              final url = item.previewMediaUrl;
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final lockedContentWidth = math.max(
+                  0.0,
+                  constraints.maxWidth - _candidateCardContentLockDelta,
+                );
 
-                              if (url != null && url.isNotEmpty) {
-                                return Image.network(
-                                  url,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) {
-                                    return Image.asset(
-                                      'assets/images/place_placeholder.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
-                                );
-                              }
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: lockedContentWidth,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 72,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Builder(
+                                    builder: (_) {
+                                      final url = item.previewMediaUrl;
 
-                              final key = item.previewStorageKey;
-                              if (key != null && key.isNotEmpty) {
-                                final publicUrl = Supabase
-                                    .instance.client.storage
-                                    .from('brand-media')
-                                    .getPublicUrl(key);
+                                      if (url != null && url.isNotEmpty) {
+                                        return Image.network(
+                                          url,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) {
+                                            return Image.asset(
+                                              'assets/images/place_placeholder.png',
+                                              fit: BoxFit.cover,
+                                            );
+                                          },
+                                        );
+                                      }
 
-                                return Image.network(
-                                  publicUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) {
-                                    return Image.asset(
-                                      'assets/images/place_placeholder.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
-                                );
-                              }
+                                      final key = item.previewStorageKey;
+                                      if (key != null && key.isNotEmpty) {
+                                        final publicUrl = Supabase
+                                            .instance.client.storage
+                                            .from('brand-media')
+                                            .getPublicUrl(key);
 
-                              return Image.asset(
-                                'assets/images/place_placeholder.png',
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      if (item.rating != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.star,
-                              size: 14,
-                              color: Colors.amber,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              item.rating!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                          ),
-                          TextButton(
-                            style: compactTextButtonStyle,
-                            onPressed: actionsDisabled ? null : onOpenOnMap,
-                            child: Text(
-                              'Посмотреть\nна карте',
-                              textAlign: TextAlign.right,
-                              style: linkStyle,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (distanceLabel != null) ...[
-                        Text(
-                          distanceLabel,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: _distanceColor(),
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.0,
+                                        return Image.network(
+                                          publicUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) {
+                                            return Image.asset(
+                                              'assets/images/place_placeholder.png',
+                                              fit: BoxFit.cover,
+                                            );
+                                          },
+                                        );
+                                      }
+
+                                      return Image.asset(
+                                        'assets/images/place_placeholder.png',
+                                        fit: BoxFit.cover,
+                                      );
+                                    },
                                   ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              if (item.rating != null)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.star,
+                                      size: 14,
+                                      color: Colors.amber,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      item.rating!.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    style: compactTextButtonStyle,
+                                    onPressed:
+                                        actionsDisabled ? null : onOpenOnMap,
+                                    child: Text(
+                                      'Посмотреть\nна карте',
+                                      textAlign: TextAlign.right,
+                                      style: linkStyle,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (distanceLabel != null) ...[
+                                Text(
+                                  distanceLabel,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: _distanceColor(),
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.0,
+                                      ),
+                                ),
+                                const SizedBox(height: 4),
+                              ],
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: item.metroName != null
+                                        ? Text(
+                                            'м.${item.metroName}'
+                                            '${item.metroDistanceM != null ? " · ${item.metroDistanceM} м" : ""}',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Colors.grey.shade500,
+                                                ),
+                                          )
+                                        : const SizedBox.shrink(),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    style: compactTextButtonStyle,
+                                    onPressed:
+                                        actionsDisabled ? null : onOpenDetails,
+                                    child: const Text('Подробнее'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                      Text(
-                        _typeLabel(item.type),
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Colors.grey),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: item.metroName != null
-                                ? Text(
-                                    'м.${item.metroName}'
-                                    '${item.metroDistanceM != null ? " · ${item.metroDistanceM} м" : ""}',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(color: Colors.grey.shade500),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            style: compactTextButtonStyle,
-                            onPressed: actionsDisabled ? null : onOpenDetails,
-                            child: const Text('Подробнее'),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ),
         if (onRemove != null)
           Positioned(
             top: 6,
-            right: 6,
+            right: _candidateCardContentLockDelta + 6,
             child: Material(
               color: Colors.red.withOpacity(0.9),
               shape: const CircleBorder(),
@@ -446,121 +445,185 @@ class _SubmissionCandidateCard extends StatelessWidget {
     this.onRemove,
   });
 
+  String _moderationLabel() {
+    if (item.isRejected) return 'Отклонено';
+    if (item.isPendingModeration) return 'На модерации';
+    final raw = item.moderationStatus?.trim();
+    if (raw == null || raw.isEmpty) return 'На модерации';
+    return raw;
+  }
+
+  Color _moderationBackgroundColor() {
+    if (item.isRejected) {
+      return const Color(0x33FF5252);
+    }
+    return const Color(0x33FFB300);
+  }
+
+  Color _moderationTextColor() {
+    if (item.isRejected) {
+      return const Color(0xFFFF8A80);
+    }
+    return const Color(0xFFFFB300);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compactTextButtonStyle = TextButton.styleFrom(
+      padding: EdgeInsets.zero,
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+    );
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 72,
-            height: 72,
+    final badgeRightOffset =
+        (onRemove != null ? 44.0 : 12.0) + _candidateCardContentLockDelta;
+    final reservedRightWidth = onRemove != null ? 144.0 : 110.0;
+
+    return Stack(
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 96),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(16),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                'assets/images/place_placeholder.png',
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium,
-                      ),
-                    ),
-                    if (onRemove != null)
-                      Material(
-                        color: Colors.red.withOpacity(0.9),
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: onRemove,
-                          child: const Padding(
-                            padding: EdgeInsets.all(6),
-                            child: Icon(
-                              Icons.close,
-                              size: 16,
-                              color: Colors.white,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final lockedContentWidth = math.max(
+                  0.0,
+                  constraints.maxWidth - _candidateCardContentLockDelta,
+                );
+
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: lockedContentWidth,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(
+                              'assets/images/place_placeholder.png',
+                              fit: BoxFit.cover,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.type,
-                  style:
-                      theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.cityName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  item.address,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Голосов: ${item.votesCount}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 72,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      right: reservedRightWidth),
+                                  child: Text(
+                                    item.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.cityName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: Colors.grey.shade500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.address,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: Colors.grey.shade500,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed:
+                                        actionsDisabled ? null : onOpenDetails,
+                                    style: compactTextButtonStyle,
+                                    child: const Text('Подробнее'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: actionsDisabled ? null : onOpenDetails,
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity:
-                            const VisualDensity(horizontal: -2, vertical: -2),
-                      ),
-                      child: const Text('Подробнее'),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                );
+              },
             ),
           ),
-        ],
-      ),
+        ),
+        Positioned(
+          top: 10,
+          right: badgeRightOffset,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 6,
+            ),
+            decoration: BoxDecoration(
+              color: _moderationBackgroundColor(),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              _moderationLabel(),
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: _moderationTextColor(),
+                fontWeight: FontWeight.w700,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
+        if (onRemove != null)
+          Positioned(
+            top: 6,
+            right: _candidateCardContentLockDelta + 6,
+            child: Material(
+              color: Colors.red.withOpacity(0.9),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onRemove,
+                child: const Padding(
+                  padding: EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.close,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

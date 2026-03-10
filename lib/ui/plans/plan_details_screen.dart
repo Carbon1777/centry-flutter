@@ -12,6 +12,8 @@ import '../../data/plans/plan_details_dto.dart';
 import '../../data/places/places_repository_impl.dart';
 
 import '../../features/places/details/place_details_dialog.dart';
+import '../../features/places/add_place/add_place_dialog.dart';
+import '../../features/places/my_places_screen.dart';
 
 import 'widgets/plan_formatters.dart';
 import 'widgets/plan_dates_block.dart';
@@ -101,6 +103,28 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     } catch (_) {
       return false;
     }
+  }
+
+  Set<String> get _currentPlanPlaceIds {
+    final details = _details;
+    if (details == null) return <String>{};
+
+    return details.placeCandidates
+        .map((item) => item.placeId?.trim())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  Set<String> get _currentPlanSubmissionIds {
+    final details = _details;
+    if (details == null) return <String>{};
+
+    return details.placeCandidates
+        .map((item) => item.placeSubmissionId?.trim())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet();
   }
 
   @override
@@ -302,41 +326,50 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
   Future<void> _openPlaceCandidateDetails(PlaceCandidateDto candidate) async {
     final dto = candidate.toPlaceDto();
-    if (dto == null) {
-      await showCenterToast(
-        context,
-        message: 'Для места на модерации карточка деталей пока недоступна.',
-        isError: true,
-      );
-      return;
-    }
 
     final result = await showDialog<Object?>(
       context: context,
-      builder: (_) => PlaceDetailsDialog(
-        repository: PlacesRepositoryImpl(Supabase.instance.client),
-        placeId: dto.id,
-        title: dto.title,
-        typeLabel: _typeLabelFromCategory(dto.type),
-        address: dto.address,
-        lat: dto.lat,
-        lng: dto.lng,
-        websiteUrl: dto.websiteUrl,
-        previewMediaUrl: dto.previewMediaUrl,
-        previewStorageKey: dto.previewStorageKey,
-        previewIsPlaceholder: dto.previewIsPlaceholder,
-        metroName: dto.metroName,
-        metroDistanceM: dto.metroDistanceM,
-        isAlreadyInCurrentPlan: true,
-        onRemoveFromCurrentPlan: candidate.canDelete
-            ? () => widget.repository.removePlanPlace(
-                  appUserId: widget.appUserId,
-                  planId: widget.planId,
-                  placeId: candidate.placeId,
-                  placeSubmissionId: candidate.placeSubmissionId,
-                )
-            : null,
-      ),
+      builder: (_) {
+        if (dto != null) {
+          return PlaceDetailsDialog(
+            repository: PlacesRepositoryImpl(Supabase.instance.client),
+            placeId: dto.id,
+            title: dto.title,
+            typeLabel: _typeLabelFromCategory(dto.type),
+            address: dto.address,
+            lat: dto.lat,
+            lng: dto.lng,
+            websiteUrl: dto.websiteUrl,
+            previewMediaUrl: dto.previewMediaUrl,
+            previewStorageKey: dto.previewStorageKey,
+            previewIsPlaceholder: dto.previewIsPlaceholder,
+            metroName: dto.metroName,
+            metroDistanceM: dto.metroDistanceM,
+            isAlreadyInCurrentPlan: true,
+            onRemoveFromCurrentPlan: candidate.canDelete
+                ? () => widget.repository.removePlanPlace(
+                      appUserId: widget.appUserId,
+                      planId: widget.planId,
+                      placeId: candidate.placeId,
+                      placeSubmissionId: candidate.placeSubmissionId,
+                    )
+                : null,
+          );
+        }
+
+        return _PlanSubmissionCandidateDetailsDialog(
+          candidate: candidate,
+          typeLabel: _typeLabelFromCategory(candidate.type),
+          onRemoveFromCurrentPlan: candidate.canDelete
+              ? () => widget.repository.removePlanPlace(
+                    appUserId: widget.appUserId,
+                    planId: widget.planId,
+                    placeId: candidate.placeId,
+                    placeSubmissionId: candidate.placeSubmissionId,
+                  )
+              : null,
+        );
+      },
     );
 
     if (!mounted) return;
@@ -374,11 +407,22 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const PlacesScreen(),
+    final result = await Navigator.of(context).push<Object?>(
+      MaterialPageRoute<Object?>(
+        builder: (_) => PlacesScreen(
+          sourcePlanId: widget.planId,
+          sourcePlanTitle: _details?.plan.title,
+          currentPlanPlaceIds: _currentPlanPlaceIds,
+          initialViewMode: PlacesViewMode.map,
+          initialFocusPlace: dto,
+        ),
       ),
     );
+
+    if (!mounted) return;
+    if (result != null) {
+      await _load(showSpinner: false);
+    }
   }
 
   Future<void> _onPrimaryAction() async {
@@ -764,6 +808,100 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
+  String _mapDialogTypeToServerCategory(String typeLabel) {
+    switch (typeLabel) {
+      case 'Бар':
+        return 'bar';
+      case 'Ночной клуб':
+        return 'nightclub';
+      case 'Ресторан':
+        return 'restaurant';
+      case 'Кино':
+        return 'cinema';
+      case 'Театр':
+        return 'theatre';
+      default:
+        return 'restaurant';
+    }
+  }
+
+  bool _asBoolValue(dynamic value) {
+    if (value == true) return true;
+    if (value == false) return false;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final lower = value.trim().toLowerCase();
+      return lower == 'true' || lower == '1' || lower == 't';
+    }
+    return false;
+  }
+
+  String _humanizePlanAddError(String message) {
+    switch (message) {
+      case 'Place already added to plan':
+        return 'Место уже добавлено';
+      case 'Plan already has 5 places':
+        return 'В плане уже 5 мест';
+      case 'Plan is not open':
+        return 'План закрыт';
+      case 'Not a member of plan':
+        return 'Нет доступа к плану';
+      case 'Rejected place cannot be added to new plan':
+        return 'Отклонённое место нельзя добавить в новый план';
+      case 'Place not found':
+      case 'Place submission not found':
+        return 'Место не найдено';
+      default:
+        return message.isEmpty ? 'Не удалось добавить место в план' : message;
+    }
+  }
+
+  Future<void> _openCreateOwnPlaceFlow() async {
+    final placesRepository = PlacesRepositoryImpl(Supabase.instance.client);
+
+    final rawResult = await showDialog<Object?>(
+      context: context,
+      builder: (_) => AddPlaceDialog(
+        onSubmit: (form) {
+          return placesRepository.createPlaceSubmissionAndAddToPlan(
+            planId: widget.planId,
+            title: form.name,
+            category: _mapDialogTypeToServerCategory(form.typeLabel),
+            city: form.city,
+            street: form.street,
+            house: form.house,
+            website: form.website,
+          );
+        },
+      ),
+    );
+
+    if (!mounted || rawResult == null) return;
+
+    final result = rawResult is Map<String, dynamic>
+        ? rawResult
+        : rawResult is Map
+            ? Map<String, dynamic>.from(rawResult)
+            : null;
+
+    if (result == null) {
+      return;
+    }
+
+    final addedToPlan = _asBoolValue(result['added_to_plan']);
+    if (addedToPlan) {
+      await _load(showSpinner: false);
+      return;
+    }
+
+    final errorMessage = result['add_to_plan_error']?.toString().trim() ?? '';
+    await showCenterToast(
+      context,
+      message: _humanizePlanAddError(errorMessage),
+      isError: true,
+    );
+  }
+
   Future<void> _openAddPlaceSourceFlow() async {
     if (_details == null || _actionLoading) return;
     if (_details!.plan.status != 'OPEN') return;
@@ -777,28 +915,43 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
     switch (source) {
       case PlanPlaceAddSource.generalList:
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => const PlacesScreen(),
+        final generalResult = await Navigator.of(context).push<Object?>(
+          MaterialPageRoute<Object?>(
+            builder: (_) => PlacesScreen(
+              sourcePlanId: widget.planId,
+              sourcePlanTitle: _details!.plan.title,
+              currentPlanPlaceIds: _currentPlanPlaceIds,
+            ),
           ),
         );
 
         if (!mounted) return;
-        await _load(showSpinner: false);
+        if (generalResult != null) {
+          await _load(showSpinner: false);
+        }
         return;
 
       case PlanPlaceAddSource.myPlaces:
-        await showCenterToast(
-          context,
-          message: 'Список «Мои места» подключим следующим шагом.',
+        final myPlacesResult = await Navigator.of(context).push<Object?>(
+          MaterialPageRoute<Object?>(
+            builder: (_) => MyPlacesScreen(
+              repository: PlacesRepositoryImpl(Supabase.instance.client),
+              sourcePlanId: widget.planId,
+              sourcePlanTitle: _details!.plan.title,
+              currentPlanPlaceIds: _currentPlanPlaceIds,
+              currentPlanSubmissionIds: _currentPlanSubmissionIds,
+            ),
+          ),
         );
+
+        if (!mounted) return;
+        if (myPlacesResult != null) {
+          await _load(showSpinner: false);
+        }
         return;
 
       case PlanPlaceAddSource.createOwnPlace:
-        await showCenterToast(
-          context,
-          message: 'Создание своего места из плана подключим следующим шагом.',
-        );
+        await _openCreateOwnPlaceFlow();
         return;
     }
   }
@@ -1093,6 +1246,189 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   }
 }
 
+
+class _PlanSubmissionCandidateDetailsDialog extends StatefulWidget {
+  const _PlanSubmissionCandidateDetailsDialog({
+    required this.candidate,
+    required this.typeLabel,
+    this.onRemoveFromCurrentPlan,
+  });
+
+  final PlaceCandidateDto candidate;
+  final String typeLabel;
+  final Future<void> Function()? onRemoveFromCurrentPlan;
+
+  @override
+  State<_PlanSubmissionCandidateDetailsDialog> createState() =>
+      _PlanSubmissionCandidateDetailsDialogState();
+}
+
+class _PlanSubmissionCandidateDetailsDialogState
+    extends State<_PlanSubmissionCandidateDetailsDialog> {
+  bool _actionLoading = false;
+
+  String get _moderationStatusLabel {
+    if (widget.candidate.isRejected) return 'Отклонено';
+    if (widget.candidate.isPendingModeration) return 'На модерации';
+    final raw = widget.candidate.moderationStatus?.trim();
+    if (raw == null || raw.isEmpty) return 'На модерации';
+    return raw;
+  }
+
+  Future<void> _onRemovePressed() async {
+    if (_actionLoading || widget.onRemoveFromCurrentPlan == null) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.onRemoveFromCurrentPlan!.call();
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _actionLoading = false);
+      await showCenterToast(
+        context,
+        message: 'Не удалось удалить место из плана',
+        isError: true,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final secondaryTextColor = theme.textTheme.bodySmall?.color?.withOpacity(0.72);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.asset(
+                      'assets/images/place_placeholder.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  widget.typeLabel,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.candidate.title,
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _moderationStatusLabel,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (widget.candidate.cityName.trim().isNotEmpty) ...[
+                  Text(
+                    widget.candidate.cityName,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                if (widget.candidate.address.trim().isNotEmpty) ...[
+                  Text(
+                    widget.candidate.address,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: secondaryTextColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                Text(
+                  'Голосов: ${widget.candidate.votesCount}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _actionLoading
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Закрыть'),
+                      ),
+                    ),
+                    if (widget.onRemoveFromCurrentPlan != null) ...[
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _actionLoading ? null : _onRemovePressed,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: _actionLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Удалить из плана'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Material(
+              color: Colors.black45,
+              shape: const CircleBorder(),
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                color: Colors.white,
+                onPressed: _actionLoading
+                    ? null
+                    : () => Navigator.of(context).pop(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Body extends StatelessWidget {
   final PlanDetailsDto details;
   final String appUserId;
@@ -1196,175 +1532,208 @@ class _Body extends StatelessWidget {
 
     final descValueColor = Theme.of(context).textTheme.bodyMedium?.color;
 
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Text(plan.title, style: titleStyle)),
-            if (canEditTitle)
-              _EditPencilButton(
-                onPressed: onEditTitle,
-                tooltip: 'Редактировать название',
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white.withOpacity(0.18)),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-          child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    children: [
-                      const TextSpan(
-                        text: 'Описание: ',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      TextSpan(
-                        text: (plan.description ?? '').trim(),
-                        style: TextStyle(color: descValueColor),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (canEditDescription)
+              Expanded(child: Text(plan.title, style: titleStyle)),
+              if (canEditTitle)
                 _EditPencilButton(
-                  onPressed: onEditDescription,
-                  tooltip: 'Редактировать описание',
+                  onPressed: onEditTitle,
+                  tooltip: 'Редактировать название',
                 ),
             ],
           ),
-        ),
-        const SizedBox(height: 10),
-        _KeyValueLine(
-          label: 'Роль',
-          value: roleLabel,
-          valueColor: _roleColor(plan.role),
-        ),
-        _KeyValueLine(
-          label: 'Статус',
-          value: statusLabel,
-          valueColor: _statusColor(plan.status),
-        ),
-        if (plan.votingDeadlineAt != null)
-          _KeyValueLine(
-            label: 'Дедлайн голосования',
-            value: formatPlanDateTime(plan.votingDeadlineAt),
-            valueColor: _deadlineColor(plan.votingDeadlineAt, plan.status),
-            trailing: canEditDeadline
-                ? _EditPencilButton(
-                    onPressed: onEditDeadline,
-                    tooltip: 'Редактировать дедлайн',
-                  )
-                : null,
-          ),
-        if (plan.eventAt != null)
-          _HighlightedEventLine(
-            label: 'Событие',
-            value: formatPlanDateTime(plan.eventAt),
-          ),
-        const SizedBox(height: 10),
-        const Divider(height: 1, thickness: 1),
-        InkWell(
-          onTap: () {
-            if (details.ownerMember == null) return;
-            final isArchiveReadOnly =
-                details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
-            showDialog(
-              context: context,
-              builder: (dialogContext) => PlanMembersModal(
-                appUserId: appUserId,
-                planId: details.plan.id,
-                ownerMember: details.ownerMember!,
-                members: details.members,
-                canAddMembers: details.plan.canAddMembers,
-                isReadOnly: isArchiveReadOnly,
-                onRemoveMember: (memberAppUserId) async {
-                  await onRemoveMember(memberAppUserId);
-                },
-                onCreateInvite: () async {
-                  return await onCreateInvite();
-                },
-                onAddByPublicId: (publicId) async {
-                  await onAddByPublicId(publicId);
-                },
-                onReloadDetails: onReloadDetails,
-              ),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white.withOpacity(0.18)),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Участники',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      details.plan.membersCount.toString(),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      children: [
+                        const TextSpan(
+                          text: 'Описание: ',
+                          style: TextStyle(
+                            color: Colors.white,
                             fontWeight: FontWeight.w600,
                           ),
+                        ),
+                        TextSpan(
+                          text: (plan.description ?? '').trim(),
+                          style: TextStyle(color: descValueColor),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.chevron_right, size: 20),
-                  ],
+                  ),
                 ),
+                if (canEditDescription)
+                  _EditPencilButton(
+                    onPressed: onEditDescription,
+                    tooltip: 'Редактировать описание',
+                  ),
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        const Divider(height: 1, thickness: 1),
-        const _SectionTitle('Голосование по датам'),
-        const SizedBox(height: 6),
-        PlanDatesBlock(
-          items: details.dateCandidates,
-          dateVoting: details.dateVoting,
-          onAddCandidate: onAddDateCandidate,
-          onVote: onVoteDate,
-          onUnvote: onUnvoteDate,
-          onDelete: onDeleteDate,
-          onChooseOwnerPriority: onChooseOwnerPriorityDate,
-          onClearOwnerPriority: onClearOwnerPriorityDate,
-          actionsDisabled: actionsDisabled,
-        ),
-        const SizedBox(height: 10),
-        const Divider(height: 1, thickness: 1),
-        const _SectionTitle('Голосование по местам'),
-        const SizedBox(height: 6),
-        PlanPlacesBlock(
-          items: details.placeCandidates,
-          onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
-          actionsDisabled: actionsDisabled,
-          onOpenDetails: onOpenPlaceDetails,
-          onOpenOnMap: onOpenPlaceOnMap,
-          onRemoveCandidate: onRemovePlaceCandidate,
-        ),
-        const SizedBox(height: 10),
-        const Divider(height: 1, thickness: 1),
-        const _SectionTitle('Чат'),
-        const SizedBox(height: 6),
-        PlanChatBlock(items: details.chat),
-      ],
+          const SizedBox(height: 10),
+          _KeyValueLine(
+            label: 'Роль',
+            value: roleLabel,
+            valueColor: _roleColor(plan.role),
+          ),
+          _KeyValueLine(
+            label: 'Статус',
+            value: statusLabel,
+            valueColor: _statusColor(plan.status),
+          ),
+          if (plan.votingDeadlineAt != null)
+            _KeyValueLine(
+              label: 'Дедлайн голосования',
+              value: formatPlanDateTime(plan.votingDeadlineAt),
+              valueColor: _deadlineColor(plan.votingDeadlineAt, plan.status),
+              trailing: canEditDeadline
+                  ? _EditPencilButton(
+                      onPressed: onEditDeadline,
+                      tooltip: 'Редактировать дедлайн',
+                    )
+                  : null,
+            ),
+          if (plan.eventAt != null)
+            _HighlightedEventLine(
+              label: 'Событие',
+              value: formatPlanDateTime(plan.eventAt),
+            ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 1),
+          InkWell(
+            onTap: () {
+              if (details.ownerMember == null) return;
+              final isArchiveReadOnly =
+                  details.plan.status.toString().trim().toUpperCase() == 'CLOSED';
+              showDialog(
+                context: context,
+                builder: (dialogContext) => PlanMembersModal(
+                  appUserId: appUserId,
+                  planId: details.plan.id,
+                  ownerMember: details.ownerMember!,
+                  members: details.members,
+                  canAddMembers: details.plan.canAddMembers,
+                  isReadOnly: isArchiveReadOnly,
+                  onRemoveMember: (memberAppUserId) async {
+                    await onRemoveMember(memberAppUserId);
+                  },
+                  onCreateInvite: () async {
+                    return await onCreateInvite();
+                  },
+                  onAddByPublicId: (publicId) async {
+                    await onAddByPublicId(publicId);
+                  },
+                  onReloadDetails: onReloadDetails,
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Участники',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        details.plan.membersCount.toString(),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.chevron_right, size: 20),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Divider(height: 1, thickness: 1),
+          const _SectionTitle('Голосование по датам'),
+          const SizedBox(height: 6),
+          PlanDatesBlock(
+            items: details.dateCandidates,
+            dateVoting: details.dateVoting,
+            onAddCandidate: onAddDateCandidate,
+            onVote: onVoteDate,
+            onUnvote: onUnvoteDate,
+            onDelete: onDeleteDate,
+            onChooseOwnerPriority: onChooseOwnerPriorityDate,
+            onClearOwnerPriority: onClearOwnerPriorityDate,
+            actionsDisabled: actionsDisabled,
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, thickness: 1),
+          Row(
+            children: [
+              const _SectionTitle('Голосование по местам'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Мест для голосования ${details.placeCandidates.length}/5',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withOpacity(0.88),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: PlanPlacesBlock(
+                    items: details.placeCandidates,
+                    onAddCandidate:
+                        plan.status == 'OPEN' ? onAddPlaceCandidate : null,
+                    actionsDisabled: actionsDisabled,
+                    onOpenDetails: onOpenPlaceDetails,
+                    onOpenOnMap: onOpenPlaceOnMap,
+                    onRemoveCandidate: onRemovePlaceCandidate,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1, thickness: 1),
+                const _SectionTitle('Чат'),
+                const SizedBox(height: 6),
+                PlanChatBlock(items: details.chat),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

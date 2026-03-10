@@ -18,12 +18,22 @@ class PlacesMap extends StatefulWidget {
   final PlacesFiltersController filtersController;
 
   final ValueListenable<PlaceDto?>? focusPlace;
+  final String? sourcePlanId;
+  final String? sourcePlanTitle;
+  final Set<String> currentPlanPlaceIds;
+  final Future<void> Function(String placeId)? onRemoveFromCurrentPlan;
+  final Future<void> Function(Object? result)? onPlaceDialogResult;
 
   const PlacesMap({
     super.key,
     required this.repository,
     required this.filtersController,
     this.focusPlace,
+    this.sourcePlanId,
+    this.sourcePlanTitle,
+    this.currentPlanPlaceIds = const <String>{},
+    this.onRemoveFromCurrentPlan,
+    this.onPlaceDialogResult,
   });
 
   @override
@@ -305,10 +315,11 @@ class _PlacesMapState extends State<PlacesMap> {
         );
 
     final double effectiveRating = place.rating ?? 3.0;
+    final isAlreadyInCurrentPlan = widget.currentPlanPlaceIds.contains(place.id);
 
     return GestureDetector(
-      onTap: () {
-        showDialog<void>(
+      onTap: () async {
+        final result = await showDialog<Object?>(
           context: context,
           builder: (_) => PlaceDetailsDialog(
             repository: widget.repository,
@@ -320,9 +331,26 @@ class _PlacesMapState extends State<PlacesMap> {
             lat: place.lat,
             lng: place.lng,
             previewMediaUrl: place.previewMediaUrl,
+            previewStorageKey: place.previewStorageKey,
+            previewIsPlaceholder: place.previewIsPlaceholder,
+            metroName: place.metroName,
+            metroDistanceM: place.metroDistanceM,
             websiteUrl: place.websiteUrl,
+            sourcePlanId: widget.sourcePlanId,
+            sourcePlanTitle: widget.sourcePlanTitle,
+            isAlreadyInCurrentPlan: isAlreadyInCurrentPlan,
+            onRemoveFromCurrentPlan:
+                isAlreadyInCurrentPlan && widget.onRemoveFromCurrentPlan != null
+                    ? () => widget.onRemoveFromCurrentPlan!(place.id)
+                    : null,
           ),
         );
+
+        if (!mounted) return;
+
+        if (result != null && widget.onPlaceDialogResult != null) {
+          await widget.onPlaceDialogResult!(result);
+        }
       },
       child: Container(
         constraints: const BoxConstraints(maxWidth: _labelMaxWidth),
