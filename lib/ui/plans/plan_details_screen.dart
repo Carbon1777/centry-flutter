@@ -1953,7 +1953,7 @@ class _Body extends StatelessWidget {
                 child: Text(
                   'Голосование по датам',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 20,
+                        fontSize: 19,
                         height: 1.0,
                       ),
                 ),
@@ -2006,7 +2006,7 @@ class _Body extends StatelessWidget {
                 child: Text(
                   'Голосование по местам',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 20,
+                        fontSize: 19,
                         height: 1.0,
                       ),
                 ),
