@@ -1,28 +1,24 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
-
-import 'plan_members_modal.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../data/plans/plans_repository.dart';
+
 import '../../data/plans/plan_details_dto.dart';
+import '../../data/plans/plans_repository.dart';
 import '../../data/places/places_repository_impl.dart';
-
-import '../../features/places/details/place_details_dialog.dart';
 import '../../features/places/add_place/add_place_dialog.dart';
+import '../../features/places/details/place_details_dialog.dart';
 import '../../features/places/my_places_screen.dart';
-
-import 'widgets/plan_formatters.dart';
-import 'widgets/plan_dates_block.dart';
-import 'widgets/plan_places_block.dart';
-import 'widgets/plan_chat_block.dart';
-import 'widgets/add_place_source_modal.dart';
-
 import '../common/center_toast.dart';
 import '../places/places_screen.dart';
+import 'plan_members_modal.dart';
+import 'widgets/add_place_source_modal.dart';
+import 'widgets/plan_chat_block.dart';
+import 'widgets/plan_dates_block.dart';
+import 'widgets/plan_formatters.dart';
+import 'widgets/plan_places_block.dart';
 
 class PlanDetailsScreen extends StatefulWidget {
   final String appUserId;
@@ -109,7 +105,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     final details = _details;
     if (details == null) return <String>{};
 
-    return details.placeCandidates
+    return details.placeVoting.candidates
         .map((item) => item.placeId?.trim())
         .whereType<String>()
         .where((id) => id.isNotEmpty)
@@ -120,7 +116,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     final details = _details;
     if (details == null) return <String>{};
 
-    return details.placeCandidates
+    return details.placeVoting.candidates
         .map((item) => item.placeSubmissionId?.trim())
         .whereType<String>()
         .where((id) => id.isNotEmpty)
@@ -782,6 +778,127 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
+  Future<void> _votePlanPlaceCandidate(PlaceCandidateDto candidate) async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      if (candidate.isSubmissionPlace) {
+        final submissionId = candidate.placeSubmissionId;
+        if (submissionId == null || submissionId.isEmpty) {
+          throw Exception('Некорректный кандидат места');
+        }
+        await widget.repository.votePlanPlaceSubmission(
+          appUserId: widget.appUserId,
+          planId: widget.planId,
+          placeSubmissionId: submissionId,
+        );
+      } else {
+        final placeId = candidate.placeId;
+        if (placeId == null || placeId.isEmpty) {
+          throw Exception('Некорректный кандидат места');
+        }
+        await widget.repository.votePlanPlace(
+          appUserId: widget.appUserId,
+          planId: widget.planId,
+          placeId: placeId,
+        );
+      }
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _unvotePlanPlaceCandidate(PlaceCandidateDto _) async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.unvotePlanPlace(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _choosePlanPlaceOwnerPriority(
+    PlaceCandidateDto candidate,
+  ) async {
+    if (_details == null || _actionLoading) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Подтвердите выбор'),
+        content: Text(candidate.title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Подтвердить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.choosePlanPlaceOwnerPriority(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+        placeId: candidate.placeId,
+        placeSubmissionId: candidate.placeSubmissionId,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
+  Future<void> _clearPlanPlaceOwnerPriority() async {
+    if (_details == null || _actionLoading) return;
+
+    setState(() => _actionLoading = true);
+    try {
+      await widget.repository.clearPlanPlaceOwnerPriority(
+        appUserId: widget.appUserId,
+        planId: widget.planId,
+      );
+      await _load(showSpinner: false);
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(context, message: _humanizeError(e), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _actionLoading = false);
+      }
+    }
+  }
+
   String _mapDialogTypeToServerCategory(String typeLabel) {
     switch (typeLabel) {
       case 'Бар':
@@ -1208,6 +1325,10 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   onAddPlaceCandidate: _openAddPlaceSourceFlow,
                   onOpenPlaceDetails: _openPlaceCandidateDetails,
                   onRemovePlaceCandidate: _removePlaceCandidate,
+                  onVotePlace: _votePlanPlaceCandidate,
+                  onUnvotePlace: _unvotePlanPlaceCandidate,
+                  onChooseOwnerPriorityPlace: _choosePlanPlaceOwnerPriority,
+                  onClearOwnerPriorityPlace: _clearPlanPlaceOwnerPriority,
                   onChooseOwnerPriorityDate: _choosePlanDateOwnerPriority,
                   onClearOwnerPriorityDate: _clearPlanDateOwnerPriority,
                   onRemoveMember: _removeMemberDirect,
@@ -1547,9 +1668,14 @@ class _Body extends StatelessWidget {
   final Future<void> Function(DateTime dateAt) onVoteDate;
   final Future<void> Function(DateTime dateAt) onUnvoteDate;
   final Future<void> Function(DateTime dateAt) onDeleteDate;
-  final VoidCallback onAddPlaceCandidate;
+  final Future<void> Function() onAddPlaceCandidate;
   final ValueChanged<PlaceCandidateDto> onOpenPlaceDetails;
   final ValueChanged<PlaceCandidateDto> onRemovePlaceCandidate;
+  final Future<void> Function(PlaceCandidateDto candidate) onVotePlace;
+  final Future<void> Function(PlaceCandidateDto candidate) onUnvotePlace;
+  final Future<void> Function(PlaceCandidateDto candidate)
+      onChooseOwnerPriorityPlace;
+  final Future<void> Function() onClearOwnerPriorityPlace;
   final Future<void> Function(DateTime dateAt) onChooseOwnerPriorityDate;
   final Future<void> Function() onClearOwnerPriorityDate;
   final Future<void> Function(String memberAppUserId) onRemoveMember;
@@ -1577,6 +1703,10 @@ class _Body extends StatelessWidget {
     required this.onAddPlaceCandidate,
     required this.onOpenPlaceDetails,
     required this.onRemovePlaceCandidate,
+    required this.onVotePlace,
+    required this.onUnvotePlace,
+    required this.onChooseOwnerPriorityPlace,
+    required this.onClearOwnerPriorityPlace,
     required this.onChooseOwnerPriorityDate,
     required this.onClearOwnerPriorityDate,
     required this.onRemoveMember,
@@ -1800,7 +1930,7 @@ class _Body extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: Text(
-                  'Мест для голосования ${details.placeCandidates.length}/5',
+                  'Мест для голосования ${details.placeVoting.candidatesCount}/5',
                   textAlign: TextAlign.right,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
@@ -1823,11 +1953,16 @@ class _Body extends StatelessWidget {
                 Expanded(
                   child: PlanPlacesBlock(
                     items: details.placeCandidates,
+                    placeVoting: details.placeVoting,
                     onAddCandidate:
                         plan.status == 'OPEN' ? onAddPlaceCandidate : null,
                     actionsDisabled: actionsDisabled,
                     onOpenDetails: onOpenPlaceDetails,
                     onRemoveCandidate: onRemovePlaceCandidate,
+                    onVote: onVotePlace,
+                    onUnvote: onUnvotePlace,
+                    onChooseOwnerPriority: onChooseOwnerPriorityPlace,
+                    onClearOwnerPriority: onClearOwnerPriorityPlace,
                   ),
                 ),
                 const SizedBox(height: 10),

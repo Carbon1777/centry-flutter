@@ -62,6 +62,17 @@ abstract class PlansRepository {
     required String placeId,
   });
 
+  Future<void> votePlanPlaceSubmission({
+    required String appUserId,
+    required String planId,
+    required String placeSubmissionId,
+  });
+
+  Future<void> unvotePlanPlace({
+    required String appUserId,
+    required String planId,
+  });
+
   /// Голосование по дате
   Future<void> votePlanDate({
     required String appUserId,
@@ -81,7 +92,6 @@ abstract class PlansRepository {
     required String planId,
     required String placeId,
   });
-
 
   /// Удалить место из плана
   Future<void> removePlanPlace({
@@ -114,6 +124,18 @@ abstract class PlansRepository {
 
   /// Снять приоритет даты от создателя
   Future<void> clearPlanDateOwnerPriority({
+    required String appUserId,
+    required String planId,
+  });
+
+  Future<void> choosePlanPlaceOwnerPriority({
+    required String appUserId,
+    required String planId,
+    String? placeId,
+    String? placeSubmissionId,
+  });
+
+  Future<void> clearPlanPlaceOwnerPriority({
     required String appUserId,
     required String planId,
   });
