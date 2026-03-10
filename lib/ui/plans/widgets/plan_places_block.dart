@@ -10,22 +10,48 @@ const int _candidateSlotsCount = 5;
 
 class PlanPlacesBlock extends StatelessWidget {
   final List<PlaceCandidateDto> items;
-  final VoidCallback? onAddCandidate;
+  final PlanPlaceVotingDto? placeVoting;
+  final Future<void> Function()? onAddCandidate;
   final bool actionsDisabled;
   final ValueChanged<PlaceCandidateDto>? onOpenDetails;
   final ValueChanged<PlaceCandidateDto>? onRemoveCandidate;
+  final Future<void> Function(PlaceCandidateDto candidate)? onVote;
+  final Future<void> Function(PlaceCandidateDto candidate)? onUnvote;
+  final Future<void> Function(PlaceCandidateDto candidate)?
+      onChooseOwnerPriority;
+  final Future<void> Function()? onClearOwnerPriority;
 
   const PlanPlacesBlock({
     super.key,
     required this.items,
+    this.placeVoting,
     this.onAddCandidate,
     this.actionsDisabled = false,
     this.onOpenDetails,
     this.onRemoveCandidate,
+    this.onVote,
+    this.onUnvote,
+    this.onChooseOwnerPriority,
+    this.onClearOwnerPriority,
   });
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = placeVoting;
+    if (snapshot != null) {
+      return _ServerFirstPlanPlacesBlock(
+        snapshot: snapshot,
+        onAddCandidate: onAddCandidate,
+        actionsDisabled: actionsDisabled,
+        onOpenDetails: onOpenDetails,
+        onRemoveCandidate: onRemoveCandidate,
+        onVote: onVote,
+        onUnvote: onUnvote,
+        onChooseOwnerPriority: onChooseOwnerPriority,
+        onClearOwnerPriority: onClearOwnerPriority,
+      );
+    }
+
     final visibleItems = items.take(_candidateSlotsCount).toList();
     final canAdd = onAddCandidate != null && !actionsDisabled;
     final showVotingHint = visibleItems.length < 2;
@@ -62,22 +88,7 @@ class PlanPlacesBlock extends StatelessWidget {
               }
 
               final item = visibleItems[index];
-
-              if (item.isCorePlace) {
-                return _CoreCandidateCard(
-                  item: item,
-                  actionsDisabled: actionsDisabled,
-                  onTap:
-                      onOpenDetails == null ? null : () => onOpenDetails!(item),
-                  onRemove: item.canDelete &&
-                          onRemoveCandidate != null &&
-                          !actionsDisabled
-                      ? () => onRemoveCandidate!(item)
-                      : null,
-                );
-              }
-
-              return _SubmissionCandidateCard(
+              return _PlaceCandidateCard(
                 item: item,
                 actionsDisabled: actionsDisabled,
                 onTap:
@@ -87,6 +98,12 @@ class PlanPlacesBlock extends StatelessWidget {
                         !actionsDisabled
                     ? () => onRemoveCandidate!(item)
                     : null,
+                onActionTap: null,
+                actionLabel: 'Недоступно',
+                actionEnabled: false,
+                ownerChoiceModeActive: false,
+                hasOwnerPriorityChoice: false,
+                isFinalizedWithWinner: false,
               );
             },
           ),
@@ -96,9 +113,147 @@ class PlanPlacesBlock extends StatelessWidget {
   }
 }
 
+class _ServerFirstPlanPlacesBlock extends StatelessWidget {
+  final PlanPlaceVotingDto snapshot;
+  final Future<void> Function()? onAddCandidate;
+  final bool actionsDisabled;
+  final ValueChanged<PlaceCandidateDto>? onOpenDetails;
+  final ValueChanged<PlaceCandidateDto>? onRemoveCandidate;
+  final Future<void> Function(PlaceCandidateDto candidate)? onVote;
+  final Future<void> Function(PlaceCandidateDto candidate)? onUnvote;
+  final Future<void> Function(PlaceCandidateDto candidate)?
+      onChooseOwnerPriority;
+  final Future<void> Function()? onClearOwnerPriority;
+
+  const _ServerFirstPlanPlacesBlock({
+    required this.snapshot,
+    required this.onAddCandidate,
+    required this.actionsDisabled,
+    required this.onOpenDetails,
+    required this.onRemoveCandidate,
+    required this.onVote,
+    required this.onUnvote,
+    required this.onChooseOwnerPriority,
+    required this.onClearOwnerPriority,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
+    final hasOwnerPriorityChoice = snapshot.candidates.any(
+      (c) => c.isOwnerPriorityChoice,
+    );
+
+    TextStyle? helperStyle = theme.textTheme.bodySmall;
+    String? helperText;
+
+    if (snapshot.postDeadlineGraceActive) {
+      helperText = 'Голосование завершено. Победитель пока не определен.';
+    } else if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
+      helperText = 'Создатель поставил свой приоритет.';
+      helperStyle = theme.textTheme.bodySmall?.copyWith(
+        color: Colors.amber,
+        fontWeight: FontWeight.w700,
+      );
+    } else if (snapshot.ownerChoiceModeActive) {
+      helperText = 'Доступен приоритетный выбор создателя.';
+    } else if (snapshot.candidatesCount < 2) {
+      helperText =
+          'Голосование станет доступно, когда появится минимум 2 места.';
+    }
+
+    final visibleItems =
+        snapshot.candidates.take(_candidateSlotsCount).toList();
+    final canAdd =
+        snapshot.canAddCandidate && !actionsDisabled && onAddCandidate != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (helperText != null) ...[
+          Text(helperText, style: helperStyle),
+          const SizedBox(height: 8),
+        ],
+        Expanded(
+          child: ListView.separated(
+            primary: false,
+            physics: const ClampingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: _candidateSlotsCount,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              if (index >= visibleItems.length) {
+                return _AddCandidateSlot(
+                  enabled: canAdd,
+                  onTap: canAdd ? onAddCandidate : null,
+                );
+              }
+
+              final item = visibleItems[index];
+              final actionTap =
+                  !actionsDisabled ? _resolvePrimaryAction(item) : null;
+              final actionLabel = _buildActionLabel(item);
+
+              return _PlaceCandidateCard(
+                item: item,
+                actionsDisabled: actionsDisabled,
+                onTap:
+                    onOpenDetails == null ? null : () => onOpenDetails!(item),
+                onRemove: item.canDelete &&
+                        onRemoveCandidate != null &&
+                        !actionsDisabled
+                    ? () => onRemoveCandidate!(item)
+                    : null,
+                onActionTap: actionTap,
+                actionLabel: actionLabel,
+                actionEnabled: actionTap != null,
+                ownerChoiceModeActive: snapshot.ownerChoiceModeActive,
+                hasOwnerPriorityChoice: hasOwnerPriorityChoice,
+                isFinalizedWithWinner: isFinalizedWithWinner,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> Function()? _resolvePrimaryAction(PlaceCandidateDto candidate) {
+    if (candidate.isWinner) return null;
+
+    if (candidate.canClearOwnerPriority && onClearOwnerPriority != null) {
+      return () => onClearOwnerPriority!();
+    }
+
+    if (candidate.isAvailableForOwnerChoiceNow &&
+        onChooseOwnerPriority != null) {
+      return () => onChooseOwnerPriority!(candidate);
+    }
+
+    if (candidate.canUnvote && onUnvote != null) {
+      return () => onUnvote!(candidate);
+    }
+
+    if (candidate.canVote && onVote != null) {
+      return () => onVote!(candidate);
+    }
+
+    return null;
+  }
+
+  String _buildActionLabel(PlaceCandidateDto candidate) {
+    if (candidate.canClearOwnerPriority) return 'Снять';
+    if (candidate.isAvailableForOwnerChoiceNow) return 'Приоритет';
+    if (candidate.canUnvote) return 'Снять';
+    if (candidate.canVote) return 'Выбрать';
+    return 'Недоступно';
+  }
+}
+
 class _AddCandidateSlot extends StatelessWidget {
   final bool enabled;
-  final VoidCallback? onTap;
+  final Future<void> Function()? onTap;
 
   const _AddCandidateSlot({
     required this.enabled,
@@ -119,7 +274,7 @@ class _AddCandidateSlot extends StatelessWidget {
       borderRadius: cardRadius,
       child: InkWell(
         borderRadius: cardRadius,
-        onTap: enabled ? onTap : null,
+        onTap: enabled && onTap != null ? () => onTap!() : null,
         child: Ink(
           height: 112,
           decoration: BoxDecoration(
@@ -155,31 +310,43 @@ class _AddCandidateSlot extends StatelessWidget {
   }
 }
 
-class _CoreCandidateCard extends StatelessWidget {
+class _PlaceCandidateCard extends StatelessWidget {
   final PlaceCandidateDto item;
   final bool actionsDisabled;
   final VoidCallback? onTap;
   final VoidCallback? onRemove;
+  final Future<void> Function()? onActionTap;
+  final String actionLabel;
+  final bool actionEnabled;
+  final bool ownerChoiceModeActive;
+  final bool hasOwnerPriorityChoice;
+  final bool isFinalizedWithWinner;
 
-  const _CoreCandidateCard({
+  const _PlaceCandidateCard({
     required this.item,
     required this.actionsDisabled,
-    this.onTap,
-    this.onRemove,
+    required this.onTap,
+    required this.onRemove,
+    required this.onActionTap,
+    required this.actionLabel,
+    required this.actionEnabled,
+    required this.ownerChoiceModeActive,
+    required this.hasOwnerPriorityChoice,
+    required this.isFinalizedWithWinner,
   });
 
-  static const double _reservedRightWidth = 132.0;
+  static const double _reservedRightWidth = 144.0;
   static const double _deleteTop = 4.0;
   static const double _deleteRight = 4.0;
   static const double _deleteBoxSize = 34.0;
-
   static const double _buttonWidth = 102.0;
   static const double _buttonRight = 10.0;
   static const double _buttonBottom = 10.0;
-
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
   static const double _voteBottom = 50.0;
+
+  bool get _showModerationBadge => item.isSubmissionPlace;
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -258,15 +425,54 @@ class _CoreCandidateCard extends StatelessWidget {
     return null;
   }
 
+  String _moderationLabel() {
+    if (item.isRejected) return 'Отклонено';
+    if (item.isPendingModeration) return 'На модерации';
+    final raw = item.moderationStatus?.trim();
+    if (raw == null || raw.isEmpty) return 'На модерации';
+    return raw;
+  }
+
+  Color _moderationBackgroundColor() {
+    if (item.isRejected) {
+      return const Color(0x33FF5252);
+    }
+    return const Color(0x33FFB300);
+  }
+
+  Color _moderationTextColor() {
+    if (item.isRejected) {
+      return const Color(0xFFFF8A80);
+    }
+    return const Color(0xFFFFB300);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final distanceLabel = _distanceLabel();
-    final secondaryLine = _secondaryLine();
     final cardRadius = BorderRadius.circular(16);
     final opacity = item.isDimmed ? 0.55 : 1.0;
     final canDeleteTap = onRemove != null && !actionsDisabled;
     final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
+    final distanceLabel = _distanceLabel();
+    final secondaryLine = _secondaryLine();
+
+    Color borderColor = Colors.white;
+    double borderWidth = 1.2;
+
+    if (item.isWinner) {
+      borderColor = Colors.green;
+      borderWidth = 2;
+    } else if (item.isAvailableForOwnerChoiceNow) {
+      borderColor = Colors.amber;
+      borderWidth = 2;
+    } else if (!isFinalizedWithWinner &&
+        !ownerChoiceModeActive &&
+        !hasOwnerPriorityChoice &&
+        item.isUserVotedForThis) {
+      borderColor = theme.colorScheme.primary;
+      borderWidth = 2;
+    }
 
     return Opacity(
       opacity: opacity,
@@ -276,9 +482,9 @@ class _CoreCandidateCard extends StatelessWidget {
             color: theme.cardColor,
             shape: RoundedRectangleBorder(
               borderRadius: cardRadius,
-              side: const BorderSide(
-                color: Colors.white,
-                width: 1.2,
+              side: BorderSide(
+                color: borderColor,
+                width: borderWidth,
               ),
             ),
             child: InkWell(
@@ -302,85 +508,16 @@ class _CoreCandidateCard extends StatelessWidget {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SizedBox(
+                              Container(
                                 width: 72,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 72,
-                                      height: 72,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: Builder(
-                                          builder: (_) {
-                                            final url = item.previewMediaUrl;
-
-                                            if (url != null && url.isNotEmpty) {
-                                              return Image.network(
-                                                url,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) {
-                                                  return Image.asset(
-                                                    'assets/images/place_placeholder.png',
-                                                    fit: BoxFit.cover,
-                                                  );
-                                                },
-                                              );
-                                            }
-
-                                            final key = item.previewStorageKey;
-                                            if (key != null && key.isNotEmpty) {
-                                              final publicUrl = Supabase
-                                                  .instance.client.storage
-                                                  .from('brand-media')
-                                                  .getPublicUrl(key);
-
-                                              return Image.network(
-                                                publicUrl,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) {
-                                                  return Image.asset(
-                                                    'assets/images/place_placeholder.png',
-                                                    fit: BoxFit.cover,
-                                                  );
-                                                },
-                                              );
-                                            }
-
-                                            return Image.asset(
-                                              'assets/images/place_placeholder.png',
-                                              fit: BoxFit.cover,
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    if (item.rating != null)
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.star,
-                                            size: 14,
-                                            color: Colors.amber,
-                                          ),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            item.rating!.toStringAsFixed(1),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                  ],
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: _buildPreview(),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -389,13 +526,41 @@ class _CoreCandidateCard extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Text(
-                                      item.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.titleMedium,
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8),
+                                      child: Text(
+                                        item.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleMedium,
+                                      ),
                                     ),
-                                    if (distanceLabel != null) ...[
+                                    if (_showModerationBadge) ...[
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _moderationBackgroundColor(),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _moderationLabel(),
+                                          style: theme.textTheme.labelLarge
+                                              ?.copyWith(
+                                            color: _moderationTextColor(),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13,
+                                            height: 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    if (!_showModerationBadge &&
+                                        distanceLabel != null) ...[
                                       const SizedBox(height: 2),
                                       Text(
                                         distanceLabel,
@@ -407,6 +572,17 @@ class _CoreCandidateCard extends StatelessWidget {
                                         ),
                                       ),
                                     ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.cityName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          theme.textTheme.bodyLarge?.copyWith(
+                                        color: Colors.grey.shade500,
+                                        height: 1.0,
+                                      ),
+                                    ),
                                     if (secondaryLine != null) ...[
                                       const SizedBox(height: 4),
                                       Text(
@@ -440,20 +616,32 @@ class _CoreCandidateCard extends StatelessWidget {
               height: _deleteBoxSize,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: canDeleteTap
-                    ? InkWell(
-                        onTap: onRemove,
-                        borderRadius: BorderRadius.circular(999),
-                        child: const Padding(
-                          padding: EdgeInsets.all(1),
-                          child: Icon(
-                            Icons.close,
-                            size: 32,
-                            color: Colors.redAccent,
-                          ),
-                        ),
+                child: item.isWinner
+                    ? const Icon(
+                        Icons.emoji_events_outlined,
+                        size: 28,
+                        color: Colors.amber,
                       )
-                    : null,
+                    : item.isOwnerPriorityChoice
+                        ? const Icon(
+                            Icons.flag_rounded,
+                            size: 26,
+                            color: Colors.amber,
+                          )
+                        : canDeleteTap
+                            ? InkWell(
+                                onTap: onRemove,
+                                borderRadius: BorderRadius.circular(999),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(1),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 32,
+                                    color: Colors.redAccent,
+                                  ),
+                                ),
+                              )
+                            : null,
               ),
             ),
           ),
@@ -482,252 +670,49 @@ class _CoreCandidateCard extends StatelessWidget {
             bottom: _buttonBottom,
             width: _buttonWidth,
             child: _PlaceActionChip(
-              label: 'Выбрать',
-              enabled: !actionsDisabled,
-              onTap: null,
+              label: actionLabel,
+              enabled: actionEnabled,
+              onTap: onActionTap,
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _SubmissionCandidateCard extends StatelessWidget {
-  final PlaceCandidateDto item;
-  final bool actionsDisabled;
-  final VoidCallback? onTap;
-  final VoidCallback? onRemove;
+  Widget _buildPreview() {
+    if (item.isCorePlace) {
+      final url = item.previewMediaUrl;
+      if (url != null && url.isNotEmpty) {
+        return Image.network(
+          url,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Image.asset(
+            'assets/images/place_placeholder.png',
+            fit: BoxFit.cover,
+          ),
+        );
+      }
 
-  const _SubmissionCandidateCard({
-    required this.item,
-    required this.actionsDisabled,
-    this.onTap,
-    this.onRemove,
-  });
-
-  static const double _reservedRightWidth = 144.0;
-  static const double _deleteTop = 4.0;
-  static const double _deleteRight = 4.0;
-  static const double _deleteBoxSize = 34.0;
-
-  static const double _buttonWidth = 102.0;
-  static const double _buttonRight = 10.0;
-  static const double _buttonBottom = 10.0;
-
-  static const double _voteWidth = 38.0;
-  static const double _voteHeight = 34.0;
-  static const double _voteBottom = 50.0;
-
-  String _moderationLabel() {
-    if (item.isRejected) return 'Отклонено';
-    if (item.isPendingModeration) return 'На модерации';
-    final raw = item.moderationStatus?.trim();
-    if (raw == null || raw.isEmpty) return 'На модерации';
-    return raw;
-  }
-
-  Color _moderationBackgroundColor() {
-    if (item.isRejected) {
-      return const Color(0x33FF5252);
+      final key = item.previewStorageKey;
+      if (key != null && key.isNotEmpty) {
+        final publicUrl = Supabase.instance.client.storage
+            .from('brand-media')
+            .getPublicUrl(key);
+        return Image.network(
+          publicUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Image.asset(
+            'assets/images/place_placeholder.png',
+            fit: BoxFit.cover,
+          ),
+        );
+      }
     }
-    return const Color(0x33FFB300);
-  }
 
-  Color _moderationTextColor() {
-    if (item.isRejected) {
-      return const Color(0xFFFF8A80);
-    }
-    return const Color(0xFFFFB300);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cardRadius = BorderRadius.circular(16);
-    final opacity = item.isDimmed ? 0.55 : 1.0;
-    final canDeleteTap = onRemove != null && !actionsDisabled;
-    final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
-
-    return Opacity(
-      opacity: opacity,
-      child: Stack(
-        children: [
-          Material(
-            color: theme.cardColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: cardRadius,
-              side: const BorderSide(
-                color: Colors.white,
-                width: 1.2,
-              ),
-            ),
-            child: InkWell(
-              borderRadius: cardRadius,
-              onTap: actionsDisabled ? null : onTap,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 112),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final contentWidth = math.max(
-                        0.0,
-                        constraints.maxWidth - _reservedRightWidth,
-                      );
-
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: contentWidth,
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.asset(
-                                    'assets/images/place_placeholder.png',
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: Text(
-                                        item.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.titleMedium,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      item.cityName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          theme.textTheme.bodyLarge?.copyWith(
-                                        color: Colors.grey.shade500,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      item.address,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style:
-                                          theme.textTheme.bodyLarge?.copyWith(
-                                        color: Colors.grey.shade500,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            right: 88,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 5,
-              ),
-              decoration: BoxDecoration(
-                color: _moderationBackgroundColor(),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _moderationLabel(),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: _moderationTextColor(),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  height: 1,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: _deleteTop,
-            right: _deleteRight,
-            child: SizedBox(
-              width: _deleteBoxSize,
-              height: _deleteBoxSize,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: canDeleteTap
-                    ? InkWell(
-                        onTap: onRemove,
-                        borderRadius: BorderRadius.circular(999),
-                        child: const Padding(
-                          padding: EdgeInsets.all(1),
-                          child: Icon(
-                            Icons.close,
-                            size: 32,
-                            color: Colors.redAccent,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-          ),
-          Positioned(
-            right: voteRight,
-            bottom: _voteBottom,
-            child: SizedBox(
-              width: _voteWidth,
-              height: _voteHeight,
-              child: Align(
-                alignment: Alignment.center,
-                child: Text(
-                  '${item.votesCount}',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: _buttonRight,
-            bottom: _buttonBottom,
-            width: _buttonWidth,
-            child: _PlaceActionChip(
-              label: 'Выбрать',
-              enabled: !actionsDisabled,
-              onTap: null,
-            ),
-          ),
-        ],
-      ),
+    return Image.asset(
+      'assets/images/place_placeholder.png',
+      fit: BoxFit.cover,
     );
   }
 }
