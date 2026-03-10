@@ -940,9 +940,6 @@ class _PlacesListState extends State<_PlacesList> {
                         if (!mounted || result == null) return;
                         await widget.onPlaceDialogResult(result);
                       },
-                      onMapTap: () {
-                        widget.onOpenOnMap(place.dto);
-                      },
                     );
                   },
                 ),
@@ -975,206 +972,172 @@ class _PlacesListState extends State<_PlacesList> {
 class PlaceCard extends StatelessWidget {
   final PlaceUiModel place;
   final VoidCallback onDetailsTap;
-  final VoidCallback onMapTap;
 
   const PlaceCard({
     super.key,
     required this.place,
     required this.onDetailsTap,
-    required this.onMapTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final compactTextButtonStyle = TextButton.styleFrom(
-      padding: EdgeInsets.zero,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-    );
+    final cardRadius = BorderRadius.circular(16);
 
-    final linkStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-          height: 1.05,
-        );
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 96),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 72,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Builder(
-                        builder: (_) {
-                          final url = place.dto.previewMediaUrl;
-
-                          if (url != null && url.isNotEmpty) {
-                            return Image.network(
-                              url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) {
-                                return Image.asset(
-                                  'assets/images/place_placeholder.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            );
-                          }
-
-                          final key = place.dto.previewStorageKey;
-                          if (key != null && key.isNotEmpty) {
-                            final publicUrl = Supabase.instance.client.storage
-                                .from('brand-media')
-                                .getPublicUrl(key);
-
-                            return Image.network(
-                              publicUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) {
-                                return Image.asset(
-                                  'assets/images/place_placeholder.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            );
-                          }
-
-                          return Image.asset(
-                            'assets/images/place_placeholder.png',
-                            fit: BoxFit.cover,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  if (place.dto.rating != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          size: 14,
-                          color: Colors.amber,
+    return Material(
+      color: Theme.of(context).cardColor,
+      borderRadius: cardRadius,
+      child: InkWell(
+        borderRadius: cardRadius,
+        onTap: onDetailsTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 96),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 72,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(width: 2),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Builder(
+                            builder: (_) {
+                              final url = place.dto.previewMediaUrl;
+
+                              if (url != null && url.isNotEmpty) {
+                                return Image.network(
+                                  url,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) {
+                                    return Image.asset(
+                                      'assets/images/place_placeholder.png',
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                );
+                              }
+
+                              final key = place.dto.previewStorageKey;
+                              if (key != null && key.isNotEmpty) {
+                                final publicUrl = Supabase
+                                    .instance.client.storage
+                                    .from('brand-media')
+                                    .getPublicUrl(key);
+
+                                return Image.network(
+                                  publicUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) {
+                                    return Image.asset(
+                                      'assets/images/place_placeholder.png',
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                );
+                              }
+
+                              return Image.asset(
+                                'assets/images/place_placeholder.png',
+                                fit: BoxFit.cover,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (place.dto.rating != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              size: 14,
+                              color: Colors.amber,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              place.dto.rating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        place.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      if (place.distanceLabel != null) ...[
+                        const SizedBox(height: 2),
                         Text(
-                          place.dto.rating!.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontSize: 12,
+                          place.distanceLabel!,
+                          style: TextStyle(
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
+                            color: place.distanceColor,
+                            height: 1.0,
                           ),
                         ),
                       ],
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          place.title,
-                          maxLines: 1,
+                      const SizedBox(height: 4),
+                      Text(
+                        place.typeLabel,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        place.areaName != null
+                            ? '${place.cityName} · ${place.areaName}'
+                            : place.cityName,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Colors.grey.shade500),
+                      ),
+                      if (place.metroName != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'м.${place.metroName}'
+                          '${place.metroDistanceM != null ? " · ${place.metroDistanceM} м" : ""}',
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.grey.shade500),
                         ),
-                      ),
-                      TextButton(
-                        style: compactTextButtonStyle,
-                        onPressed: onMapTap,
-                        child: Text(
-                          'Посмотреть\nна карте',
-                          textAlign: TextAlign.right,
-                          style: linkStyle,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
-                  if (place.distanceLabel != null)
-                    Text(
-                      place.distanceLabel!,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: place.distanceColor,
-                        height: 1.0,
-                      ),
-                    ),
-                  const SizedBox(height: 2),
-                  Text(
-                    place.typeLabel,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    place.areaName != null
-                        ? '${place.cityName} · ${place.areaName}'
-                        : place.cityName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: place.metroName != null
-                            ? Text(
-                                'м.${place.metroName}'
-                                '${place.metroDistanceM != null ? " · ${place.metroDistanceM} м" : ""}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.copyWith(color: Colors.grey.shade500),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton(
-                        style: compactTextButtonStyle,
-                        onPressed: onDetailsTap,
-                        child: const Text('Подробнее'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -433,7 +433,6 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
                           child: PlaceCard(
                             place: uiModel,
                             onDetailsTap: () => _openDetails(uiModel),
-                            onMapTap: () => _openOnMap(place),
                           ),
                         );
                       },
