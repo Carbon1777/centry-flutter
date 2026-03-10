@@ -451,6 +451,31 @@ class _PlaceCandidateCard extends StatelessWidget {
     return const Color(0xFFFFB300);
   }
 
+  Widget _buildModerationBadge(ThemeData theme) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 150),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: _moderationBackgroundColor(),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        _moderationLabel(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: _moderationTextColor(),
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          height: 1,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -534,39 +559,28 @@ class _PlaceCandidateCard extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: Text(
-                                        item.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.titleMedium,
-                                      ),
-                                    ),
-                                    if (_showModerationBadge) ...[
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 5,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _moderationBackgroundColor(),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          _moderationLabel(),
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                            color: _moderationTextColor(),
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 13,
-                                            height: 1,
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Padding(
+                                            padding:
+                                                const EdgeInsets.only(right: 8),
+                                            child: Text(
+                                              item.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style:
+                                                  theme.textTheme.titleMedium,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ] else ...[
+                                        if (_showModerationBadge)
+                                          _buildModerationBadge(theme),
+                                      ],
+                                    ),
+                                    if (!_showModerationBadge) ...[
                                       if (distanceLabel != null) ...[
                                         const SizedBox(height: 2),
                                         Text(
