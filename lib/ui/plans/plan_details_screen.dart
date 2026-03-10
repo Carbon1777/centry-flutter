@@ -1799,14 +1799,14 @@ class _Body extends StatelessWidget {
     final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
           fontSize: 22,
           fontWeight: FontWeight.w800,
-          height: 1.0,
+          height: 1.1,
         );
 
     final descValueColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dateVotingHelperText = _buildDateVotingHelperText();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1821,13 +1821,13 @@ class _Body extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.white.withOpacity(0.18)),
               borderRadius: BorderRadius.circular(14),
             ),
-            padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1859,7 +1859,7 @@ class _Body extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           _KeyValueLine(
             label: 'Роль',
             value: roleLabel,
@@ -1887,7 +1887,7 @@ class _Body extends StatelessWidget {
               label: 'Событие',
               value: formatPlanDateTime(plan.eventAt),
             ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           const Divider(height: 1, thickness: 1),
           InkWell(
             onTap: () {
@@ -1918,7 +1918,7 @@ class _Body extends StatelessWidget {
               );
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1945,7 +1945,7 @@ class _Body extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 1),
+          const SizedBox(height: 2),
           const Divider(height: 1, thickness: 1),
           Row(
             children: [
@@ -1953,7 +1953,7 @@ class _Body extends StatelessWidget {
                 child: Text(
                   'Голосование по датам',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 21,
+                        fontSize: 20,
                         height: 1.0,
                       ),
                 ),
@@ -2006,7 +2006,7 @@ class _Body extends StatelessWidget {
                 child: Text(
                   'Голосование по местам',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 21,
+                        fontSize: 20,
                         height: 1.0,
                       ),
                 ),
@@ -2032,6 +2032,7 @@ class _Body extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2109,7 +2110,7 @@ class _KeyValueLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 0),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Row(
         children: [
           Expanded(
@@ -2153,8 +2154,8 @@ class _HighlightedEventLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final valueStyle = Theme.of(context).textTheme.bodySmall;
     return Container(
-      margin: const EdgeInsets.only(bottom: 0),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      margin: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.green, width: 2),
         borderRadius: BorderRadius.circular(14),
