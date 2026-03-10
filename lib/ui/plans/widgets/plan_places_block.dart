@@ -179,7 +179,7 @@ class _CoreCandidateCard extends StatelessWidget {
 
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
-  static const double _voteBottom = 58.0;
+  static const double _voteBottom = 50.0;
 
   double? _resolveDistanceM() {
     if (item.distanceM != null) return item.distanceM;
@@ -517,7 +517,7 @@ class _SubmissionCandidateCard extends StatelessWidget {
 
   static const double _voteWidth = 38.0;
   static const double _voteHeight = 34.0;
-  static const double _voteBottom = 58.0;
+  static const double _voteBottom = 50.0;
 
   String _moderationLabel() {
     if (item.isRejected) return 'Отклонено';
