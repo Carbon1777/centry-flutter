@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../data/places/place_dto.dart';
 import '../../../data/places/places_repository.dart';
+import '../../../ui/places/places_screen.dart';
 import '../../profile/profile_email_modal.dart';
 import 'add_place_to_plan_modal.dart';
 
@@ -443,6 +445,67 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   }
 
   bool get _canTapVote => !_loading && !_voting;
+
+  String _canonicalTypeFromLabel(String label) {
+    switch (label.trim()) {
+      case 'Ресторан':
+        return 'restaurant';
+      case 'Бар':
+        return 'bar';
+      case 'Ночной клуб':
+        return 'nightclub';
+      case 'Кинотеатр':
+      case 'Кино':
+        return 'cinema';
+      case 'Театр':
+        return 'theatre';
+      default:
+        return 'bar';
+    }
+  }
+
+  PlaceDto _buildMapFocusPlace() {
+    return PlaceDto(
+      id: widget.placeId,
+      title: widget.title,
+      type: _canonicalTypeFromLabel(widget.typeLabel),
+      address: _effectiveAddress,
+      cityId: '',
+      cityName: _effectiveCityName ?? '',
+      areaId: null,
+      areaName: _effectiveAreaName,
+      lat: widget.lat,
+      lng: widget.lng,
+      distanceM: null,
+      previewMediaUrl: _effectivePreviewMediaUrl,
+      previewStorageKey: _effectivePreviewStorageKey,
+      previewIsPlaceholder: _effectivePreviewIsPlaceholder,
+      metroName: _effectiveMetroName,
+      metroDistanceM: _effectiveMetroDistanceM,
+      rating: _rating,
+      likesCount: _likes,
+      dislikesCount: _dislikes,
+      websiteUrl: _effectiveWebsiteUrl,
+    );
+  }
+
+  Future<void> _openOnMapInApp() async {
+    final focusPlace = _buildMapFocusPlace();
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlacesScreen(
+          sourcePlanId: widget.sourcePlanId,
+          sourcePlanTitle: widget.sourcePlanTitle,
+          currentPlanPlaceIds: widget.isAlreadyInCurrentPlan
+              ? <String>{widget.placeId}
+              : const <String>{},
+          initialViewMode: PlacesViewMode.map,
+          initialFocusPlace: focusPlace,
+        ),
+      ),
+    );
+  }
 
   Future<void> _openRoute() async {
     final uri = Uri.parse(
@@ -966,7 +1029,25 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: OutlinedButton.icon(
+                                onPressed: _openOnMapInApp,
+                                icon: const Icon(Icons.map_outlined, size: 18),
+                                label: const Text('Посмотреть на карте'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
@@ -1005,7 +1086,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                       ),
                               ),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 8),
                             Row(
                               children: [
                                 Expanded(
