@@ -1749,6 +1749,49 @@ class _Body extends StatelessWidget {
     return const Color(0xFFEF4444);
   }
 
+  String? _buildDateVotingHelperText() {
+    final snapshot = details.dateVoting;
+    final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
+    final hasOwnerPriorityChoice = snapshot.candidates.any(
+      (c) => c.isOwnerPriorityChoice,
+    );
+
+    if (snapshot.postDeadlineGraceActive) {
+      return 'Голосование завершено. Победитель пока не определен.';
+    }
+
+    if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
+      return 'Создатель поставил свой приоритет по дате.';
+    }
+
+    if (snapshot.ownerChoiceModeActive) {
+      return 'Доступен приоритетный выбор создателя.';
+    }
+
+    if (snapshot.candidatesCount < 2) {
+      return 'Голосование станет доступно, когда появится минимум 2 даты.';
+    }
+
+    return null;
+  }
+
+  TextStyle? _buildDateVotingHelperStyle(BuildContext context) {
+    final snapshot = details.dateVoting;
+    final isFinalizedWithWinner = snapshot.finalWinnerCandidateId != null;
+    final hasOwnerPriorityChoice = snapshot.candidates.any(
+      (c) => c.isOwnerPriorityChoice,
+    );
+
+    if (hasOwnerPriorityChoice && !isFinalizedWithWinner) {
+      return Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Colors.amber,
+            fontWeight: FontWeight.w700,
+          );
+    }
+
+    return Theme.of(context).textTheme.bodySmall;
+  }
+
   @override
   Widget build(BuildContext context) {
     final plan = details.plan;
@@ -1760,6 +1803,7 @@ class _Body extends StatelessWidget {
         );
 
     final descValueColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final dateVotingHelperText = _buildDateVotingHelperText();
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -1903,7 +1947,41 @@ class _Body extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Divider(height: 1, thickness: 1),
-          const _SectionTitle('Голосование по датам'),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Голосование по датам',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  'Дат для голосования ${details.dateVoting.candidatesCount}/3',
+                  textAlign: TextAlign.right,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color
+                            ?.withOpacity(0.88),
+                      ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          if (dateVotingHelperText != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              dateVotingHelperText,
+              style: _buildDateVotingHelperStyle(context),
+            ),
+          ],
           const SizedBox(height: 6),
           PlanDatesBlock(
             items: details.dateCandidates,
