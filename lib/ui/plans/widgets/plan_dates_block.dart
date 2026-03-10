@@ -237,7 +237,7 @@ class _DateCandidateCard extends StatelessWidget {
 
     const overlayLeftInset = 6.0;
     const overlayRightInset = 0.0;
-    const overlayTop = 4.0;
+    const overlayTop = 2.0;
     const overlayBoxSize = 34.0;
 
     return Opacity(
