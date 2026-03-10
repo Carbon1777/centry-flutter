@@ -170,7 +170,7 @@ class _CoreCandidateCard extends StatelessWidget {
 
   static const double _reservedRightWidth = 132.0;
   static const double _deleteTop = 4.0;
-  static const double _deleteRight = 0.0;
+  static const double _deleteRight = 4.0;
   static const double _deleteBoxSize = 34.0;
 
   static const double _buttonWidth = 102.0;
@@ -508,7 +508,7 @@ class _SubmissionCandidateCard extends StatelessWidget {
 
   static const double _reservedRightWidth = 144.0;
   static const double _deleteTop = 4.0;
-  static const double _deleteRight = 0.0;
+  static const double _deleteRight = 4.0;
   static const double _deleteBoxSize = 34.0;
 
   static const double _buttonWidth = 102.0;
