@@ -784,6 +784,14 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
+    final outlinedActionStyle = OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      minimumSize: const Size(0, 36),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -894,13 +902,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                   onPressed: (_loading || _savingSaved)
                                       ? null
                                       : _onSavedPressed,
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 8,
-                                    ),
-                                    minimumSize: const Size(160, 36),
-                                  ),
+                                  style: outlinedActionStyle,
                                   child: _savingSaved
                                       ? const SizedBox(
                                           width: 18,
@@ -994,60 +996,64 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                               ),
                             ],
                             const SizedBox(height: 6),
-                            Text(
-                              'Рейтинг',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _rating != null
-                                  ? _rating!.toStringAsFixed(1)
-                                  : '—',
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: 6),
                             Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                _Vote(
-                                  icon: Icons.thumb_up_alt_rounded,
-                                  count: _likes,
-                                  active: _myVote == 1,
-                                  activeColor: Colors.green,
-                                  onTap: _canTapVote
-                                      ? () => _vote(_myVote == 1 ? 0 : 1)
-                                      : null,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Рейтинг',
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _rating != null
+                                            ? _rating!.toStringAsFixed(1)
+                                            : '—',
+                                        style: theme.textTheme.titleSmall,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          _Vote(
+                                            icon: Icons.thumb_up_alt_rounded,
+                                            count: _likes,
+                                            active: _myVote == 1,
+                                            activeColor: Colors.green,
+                                            onTap: _canTapVote
+                                                ? () =>
+                                                    _vote(_myVote == 1 ? 0 : 1)
+                                                : null,
+                                          ),
+                                          const SizedBox(width: 16),
+                                          _Vote(
+                                            icon: Icons.thumb_down_alt_rounded,
+                                            count: _dislikes,
+                                            active: _myVote == -1,
+                                            activeColor: Colors.redAccent,
+                                            onTap: _canTapVote
+                                                ? () => _vote(
+                                                      _myVote == -1 ? 0 : -1,
+                                                    )
+                                                : null,
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(width: 16),
-                                _Vote(
-                                  icon: Icons.thumb_down_alt_rounded,
-                                  count: _dislikes,
-                                  active: _myVote == -1,
-                                  activeColor: Colors.redAccent,
-                                  onTap: _canTapVote
-                                      ? () => _vote(_myVote == -1 ? 0 : -1)
-                                      : null,
+                                const SizedBox(width: 12),
+                                OutlinedButton(
+                                  onPressed: _openOnMapInApp,
+                                  style: outlinedActionStyle,
+                                  child: const Text('Посмотреть на карте'),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: OutlinedButton.icon(
-                                onPressed: _openOnMapInApp,
-                                icon: const Icon(Icons.map_outlined, size: 18),
-                                label: const Text('Посмотреть на карте'),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 12),
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
