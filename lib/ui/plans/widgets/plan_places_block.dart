@@ -7,6 +7,7 @@ import '../../../core/geo/geo_service.dart';
 import '../../../data/plans/plan_details_dto.dart';
 
 const double _candidateCardContentLockDelta = 86.0;
+const int _candidateSlotsCount = 5;
 
 class PlanPlacesBlock extends StatelessWidget {
   final List<PlaceCandidateDto> items;
@@ -26,78 +27,38 @@ class PlanPlacesBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final visibleItems = items.take(_candidateSlotsCount).toList();
     final canAdd = onAddCandidate != null && !actionsDisabled;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Кандидаты',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+        Text(
+          'Кандидаты',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
-            ),
-            SizedBox(
-              width: 36,
-              height: 36,
-              child: IconButton(
-                onPressed: canAdd ? onAddCandidate : null,
-                tooltip: 'Добавить место',
-                icon: const Icon(Icons.add),
-              ),
-            ),
-          ],
         ),
         const SizedBox(height: 8),
-        if (items.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: theme.dividerColor.withOpacity(0.22),
-              ),
-            ),
-            child: Text(
-              'Нет мест',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.separated(
-              primary: false,
-              physics: const ClampingScrollPhysics(),
-              padding: EdgeInsets.zero,
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final item = items[index];
+        Expanded(
+          child: ListView.separated(
+            primary: false,
+            physics: const ClampingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: _candidateSlotsCount,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              if (index >= visibleItems.length) {
+                return _AddCandidateSlot(
+                  enabled: canAdd,
+                  onTap: canAdd ? onAddCandidate : null,
+                );
+              }
 
-                if (item.isCorePlace) {
-                  return _CoreCandidateCard(
-                    item: item,
-                    actionsDisabled: actionsDisabled,
-                    onTap: onOpenDetails == null
-                        ? null
-                        : () => onOpenDetails!(item),
-                    onRemove: item.canDelete &&
-                            onRemoveCandidate != null &&
-                            !actionsDisabled
-                        ? () => onRemoveCandidate!(item)
-                        : null,
-                  );
-                }
+              final item = visibleItems[index];
 
-                return _SubmissionCandidateCard(
+              if (item.isCorePlace) {
+                return _CoreCandidateCard(
                   item: item,
                   actionsDisabled: actionsDisabled,
                   onTap:
@@ -108,10 +69,82 @@ class PlanPlacesBlock extends StatelessWidget {
                       ? () => onRemoveCandidate!(item)
                       : null,
                 );
-              },
+              }
+
+              return _SubmissionCandidateCard(
+                item: item,
+                actionsDisabled: actionsDisabled,
+                onTap:
+                    onOpenDetails == null ? null : () => onOpenDetails!(item),
+                onRemove: item.canDelete &&
+                        onRemoveCandidate != null &&
+                        !actionsDisabled
+                    ? () => onRemoveCandidate!(item)
+                    : null,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddCandidateSlot extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _AddCandidateSlot({
+    required this.enabled,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardRadius = BorderRadius.circular(16);
+    final borderColor = Colors.grey.withOpacity(0.55);
+    final iconColor =
+        enabled ? const Color(0xFF3B82F6) : Colors.grey.withOpacity(0.7);
+    final textColor =
+        enabled ? Colors.grey.shade400 : Colors.grey.withOpacity(0.7);
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: cardRadius,
+      child: InkWell(
+        borderRadius: cardRadius,
+        onTap: enabled ? onTap : null,
+        child: Ink(
+          height: 96,
+          decoration: BoxDecoration(
+            borderRadius: cardRadius,
+            border: Border.all(
+              color: borderColor,
+              width: 1.2,
             ),
           ),
-      ],
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.add_circle_outline,
+                  size: 28,
+                  color: iconColor,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Добавить место',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: textColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -216,7 +249,13 @@ class _CoreCandidateCard extends StatelessWidget {
       children: [
         Material(
           color: Theme.of(context).cardColor,
-          borderRadius: cardRadius,
+          shape: RoundedRectangleBorder(
+            borderRadius: cardRadius,
+            side: const BorderSide(
+              color: Colors.white,
+              width: 1.2,
+            ),
+          ),
           child: InkWell(
             borderRadius: cardRadius,
             onTap: actionsDisabled ? null : onTap,
@@ -446,7 +485,13 @@ class _SubmissionCandidateCard extends StatelessWidget {
       children: [
         Material(
           color: theme.cardColor,
-          borderRadius: cardRadius,
+          shape: RoundedRectangleBorder(
+            borderRadius: cardRadius,
+            side: const BorderSide(
+              color: Colors.white,
+              width: 1.2,
+            ),
+          ),
           child: InkWell(
             borderRadius: cardRadius,
             onTap: actionsDisabled ? null : onTap,
