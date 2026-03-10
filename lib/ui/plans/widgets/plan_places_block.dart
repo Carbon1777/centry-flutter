@@ -29,17 +29,24 @@ class PlanPlacesBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final visibleItems = items.take(_candidateSlotsCount).toList();
     final canAdd = onAddCandidate != null && !actionsDisabled;
+    final showVotingHint = visibleItems.length < 2;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Кандидаты',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 8),
+        if (showVotingHint) ...[
+          Text(
+            'Голосование станет доступно, когда появится минимум 2 места.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.color
+                      ?.withOpacity(0.8),
+                ),
+          ),
+          const SizedBox(height: 8),
+        ],
         Expanded(
           child: ListView.separated(
             primary: false,
