@@ -29,6 +29,7 @@ import 'plan_member_left_ui_coordinator.dart';
 import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_deleted_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
+import 'plan_scheduled_notification_ui_coordinator.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
@@ -192,6 +193,10 @@ class _BootstrapGateState extends State<BootstrapGate>
         .attachNavigatorKey(App.navigatorKey);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(false);
 
+    PlanScheduledNotificationUiCoordinator.instance
+        .attachNavigatorKey(App.navigatorKey);
+    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
+
     unawaited(GeoService.instance.refresh());
 
     _initAuthListener();
@@ -262,14 +267,20 @@ class _BootstrapGateState extends State<BootstrapGate>
                 '')
             .toString()
             .trim();
-        final planId =
-            (payload['plan_id'] ?? payload['planId'] ?? extras['plan_id'] ?? extras['planId'] ?? '')
-                .toString()
-                .trim();
-        final inviteId =
-            (payload['invite_id'] ?? payload['inviteId'] ?? extras['invite_id'] ?? extras['inviteId'] ?? '')
-                .toString()
-                .trim();
+        final planId = (payload['plan_id'] ??
+                payload['planId'] ??
+                extras['plan_id'] ??
+                extras['planId'] ??
+                '')
+            .toString()
+            .trim();
+        final inviteId = (payload['invite_id'] ??
+                payload['inviteId'] ??
+                extras['invite_id'] ??
+                extras['inviteId'] ??
+                '')
+            .toString()
+            .trim();
         final title =
             (payload['title'] ?? extras['title'] ?? '').toString().trim();
         final body =
@@ -287,9 +298,8 @@ class _BootstrapGateState extends State<BootstrapGate>
                       '')
                   .toString()
                   .trim(),
-              kindHint: (payload['kind'] ?? extras['kind'] ?? '')
-                  .toString()
-                  .trim(),
+              kindHint:
+                  (payload['kind'] ?? extras['kind'] ?? '').toString().trim(),
               actionHint: (payload['action'] ?? extras['action'] ?? '')
                   .toString()
                   .trim(),
@@ -298,6 +308,64 @@ class _BootstrapGateState extends State<BootstrapGate>
               openSource: 'intent_bridge',
             );
             return;
+          }
+
+          const scheduledTypes = <String>{
+            'PLAN_VOTING_REMINDER_DATE',
+            'PLAN_VOTING_REMINDER_PLACE',
+            'PLAN_VOTING_REMINDER_BOTH',
+            'PLAN_OWNER_PRIORITY_DATE',
+            'PLAN_OWNER_PRIORITY_PLACE',
+            'PLAN_OWNER_PRIORITY_BOTH',
+            'PLAN_EVENT_REMINDER_24H',
+          };
+
+          if (scheduledTypes.contains(effectiveType)) {
+            if (planId.isNotEmpty) {
+              await _handlePlanScheduledNotificationOpenFromNotificationTap(
+                type: effectiveType,
+                planId: planId,
+                eventId: (payload['event_id'] ??
+                        payload['eventId'] ??
+                        extras['event_id'] ??
+                        extras['eventId'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                planTitle: (payload['plan_title'] ??
+                        payload['planTitle'] ??
+                        extras['plan_title'] ??
+                        extras['planTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventAt: (payload['event_at'] ??
+                        payload['eventAt'] ??
+                        extras['event_at'] ??
+                        extras['eventAt'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                eventDatetimeLabel: (payload['event_datetime_label'] ??
+                        payload['eventDatetimeLabel'] ??
+                        extras['event_datetime_label'] ??
+                        extras['eventDatetimeLabel'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                placeTitle: (payload['place_title'] ??
+                        payload['placeTitle'] ??
+                        extras['place_title'] ??
+                        extras['placeTitle'] ??
+                        '')
+                    .toString()
+                    .trim(),
+                title: title,
+                body: body,
+                openSource: 'intent_bridge',
+              );
+              return;
+            }
           }
 
           if (effectiveType == 'PLAN_MEMBER_LEFT') {
@@ -624,6 +692,30 @@ class _BootstrapGateState extends State<BootstrapGate>
           openSource: 'local_notification',
         );
       },
+      onPlanScheduledNotificationOpen: ({
+        required String type,
+        required String planId,
+        String? eventId,
+        String? planTitle,
+        String? eventAt,
+        String? eventDatetimeLabel,
+        String? placeTitle,
+        String? title,
+        String? body,
+      }) async {
+        await _handlePlanScheduledNotificationOpenFromNotificationTap(
+          type: type,
+          planId: planId,
+          eventId: (eventId ?? '').trim(),
+          planTitle: (planTitle ?? '').trim(),
+          eventAt: (eventAt ?? '').trim(),
+          eventDatetimeLabel: (eventDatetimeLabel ?? '').trim(),
+          placeTitle: (placeTitle ?? '').trim(),
+          title: (title ?? '').trim(),
+          body: (body ?? '').trim(),
+          openSource: 'local_notification',
+        );
+      },
     );
   }
 
@@ -632,7 +724,6 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     _fcmMessageSub?.cancel();
 
-    // Foreground: show local notification (system tray) + in-app modal (canonical UX)
     if (kDebugMode) {
       debugPrint('[FCM] installing onMessage listener');
     }
@@ -641,22 +732,18 @@ class _BootstrapGateState extends State<BootstrapGate>
         debugPrint('[FCM] onMessage data=${m.data}');
       }
 
-      // Keep system notification for consistency (buttons live there too)
+      // Existing working flows: keep unchanged.
       await PushNotifications.showInternalInvite(m);
-
-      // Friend requests: keep same canon as invites (data-only push -> local tray + in-app modal)
       await PushNotifications.showFriendRequest(m);
-
-      // In-app modal for invites/plan events must come from canonical INBOX realtime,
-      // not from raw FCM payload. Friends keep their existing path.
       _queueFriendRequestDialogFromRemoteMessage(m);
+
+      // New scheduled/voting notifications are routed in foreground only via
+      // canonical INBOX realtime path. No extra local notification here.
     });
   }
 
   bool _canResolveNotificationOpenFromInbox() {
-    return !_restoring &&
-        _appShellReady &&
-        (_userId ?? '').trim().isNotEmpty;
+    return !_restoring && _appShellReady && (_userId ?? '').trim().isNotEmpty;
   }
 
   void _enqueueNotificationOpenIntent(Map<String, dynamic> intent) {
@@ -719,8 +806,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     if (type == 'PLAN_MEMBER_REMOVED') {
       final planId = (intent['plan_id'] ?? '').toString().trim();
-      final removedUserId =
-          (intent['removed_user_id'] ?? '').toString().trim();
+      final removedUserId = (intent['removed_user_id'] ?? '').toString().trim();
       final ownerUserId = (intent['owner_user_id'] ?? '').toString().trim();
       if (planId.isEmpty || removedUserId.isEmpty || ownerUserId.isEmpty) {
         return;
@@ -743,8 +829,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     if (type == 'PLAN_MEMBER_JOINED_BY_INVITE') {
       final planId = (intent['plan_id'] ?? '').toString().trim();
-      final joinedUserId =
-          (intent['joined_user_id'] ?? '').toString().trim();
+      final joinedUserId = (intent['joined_user_id'] ?? '').toString().trim();
       if (planId.isEmpty || joinedUserId.isEmpty) return;
       await _handlePlanMemberJoinedByInviteOpenFromNotificationTap(
         planId: planId,
@@ -761,10 +846,40 @@ class _BootstrapGateState extends State<BootstrapGate>
       return;
     }
 
+    const scheduledTypes = <String>{
+      'PLAN_VOTING_REMINDER_DATE',
+      'PLAN_VOTING_REMINDER_PLACE',
+      'PLAN_VOTING_REMINDER_BOTH',
+      'PLAN_OWNER_PRIORITY_DATE',
+      'PLAN_OWNER_PRIORITY_PLACE',
+      'PLAN_OWNER_PRIORITY_BOTH',
+      'PLAN_EVENT_REMINDER_24H',
+    };
+
+    if (scheduledTypes.contains(type)) {
+      final planId = (intent['plan_id'] ?? '').toString().trim();
+      if (planId.isEmpty) return;
+      await _handlePlanScheduledNotificationOpenFromNotificationTap(
+        type: type,
+        planId: planId,
+        eventId: (intent['event_id'] ?? '').toString().trim(),
+        planTitle: (intent['plan_title'] ?? '').toString().trim(),
+        eventAt: (intent['event_at'] ?? '').toString().trim(),
+        eventDatetimeLabel:
+            (intent['event_datetime_label'] ?? '').toString().trim(),
+        placeTitle: (intent['place_title'] ?? '').toString().trim(),
+        title: (intent['title'] ?? '').toString().trim(),
+        body: (intent['body'] ?? '').toString().trim(),
+        openSource: (intent['open_source'] ?? '').toString().trim().isEmpty
+            ? 'pending_notification'
+            : (intent['open_source'] ?? '').toString().trim(),
+      );
+      return;
+    }
+
     if (type == 'PLAN_DELETED') {
       final planId = (intent['plan_id'] ?? '').toString().trim();
-      final ownerUserId =
-          (intent['owner_user_id'] ?? '').toString().trim();
+      final ownerUserId = (intent['owner_user_id'] ?? '').toString().trim();
       if (planId.isEmpty || ownerUserId.isEmpty) return;
       await _handlePlanDeletedOpenFromNotificationTap(
         planId: planId,
@@ -798,7 +913,9 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (type == 'PLAN_INTERNAL_INVITE' && inviteId.isNotEmpty) {
       return '$type:invite:$inviteId';
     }
-    if (type == 'PLAN_MEMBER_LEFT' && planId.isNotEmpty && leftUserId.isNotEmpty) {
+    if (type == 'PLAN_MEMBER_LEFT' &&
+        planId.isNotEmpty &&
+        leftUserId.isNotEmpty) {
       return '$type:$planId:$leftUserId';
     }
     if (type == 'PLAN_MEMBER_REMOVED' &&
@@ -815,6 +932,25 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (type == 'PLAN_DELETED' && planId.isNotEmpty && ownerUserId.isNotEmpty) {
       return '$type:$planId:$ownerUserId';
     }
+
+    const scheduledTypes = <String>{
+      'PLAN_VOTING_REMINDER_DATE',
+      'PLAN_VOTING_REMINDER_PLACE',
+      'PLAN_VOTING_REMINDER_BOTH',
+      'PLAN_OWNER_PRIORITY_DATE',
+      'PLAN_OWNER_PRIORITY_PLACE',
+      'PLAN_OWNER_PRIORITY_BOTH',
+      'PLAN_EVENT_REMINDER_24H',
+    };
+
+    if (scheduledTypes.contains(type) && planId.isNotEmpty) {
+      final eventAt = (data['event_at'] ?? '').toString().trim();
+      final eventDatetimeLabel =
+          (data['event_datetime_label'] ?? '').toString().trim();
+      final placeTitle = (data['place_title'] ?? '').toString().trim();
+      return '$type:$planId:$eventAt:$eventDatetimeLabel:$placeTitle';
+    }
+
     return '';
   }
 
@@ -905,9 +1041,10 @@ class _BootstrapGateState extends State<BootstrapGate>
     payload['delivery_id'] = id;
     payload['delivery_status'] = status;
 
-    final eventId = (raw['event_id'] ?? payload['event_id'] ?? payload['eventId'] ?? '')
-        .toString()
-        .trim();
+    final eventId =
+        (raw['event_id'] ?? payload['event_id'] ?? payload['eventId'] ?? '')
+            .toString()
+            .trim();
     if (eventId.isNotEmpty) {
       payload['event_id'] = eventId;
     }
@@ -1014,18 +1151,18 @@ class _BootstrapGateState extends State<BootstrapGate>
           continue;
         }
 
-        if ((_isOwnerResultPayload(payload) || _isInviteeInvitePayload(payload))) {
+        if ((_isOwnerResultPayload(payload) ||
+            _isInviteeInvitePayload(payload))) {
           if ((payload['action'] == null ||
                   payload['action'].toString().trim().isEmpty) &&
               ((payload['type'] ?? '').toString().trim() ==
                       'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                   (payload['type'] ?? '').toString().trim() ==
                       'PLAN_INTERNAL_INVITE_DECLINED')) {
-            payload['action'] =
-                (payload['type'] ?? '').toString().trim() ==
-                        'PLAN_INTERNAL_INVITE_ACCEPTED'
-                    ? 'ACCEPT'
-                    : 'DECLINE';
+            payload['action'] = (payload['type'] ?? '').toString().trim() ==
+                    'PLAN_INTERNAL_INVITE_ACCEPTED'
+                ? 'ACCEPT'
+                : 'DECLINE';
           }
           return payload;
         }
@@ -1217,6 +1354,221 @@ class _BootstrapGateState extends State<BootstrapGate>
     return null;
   }
 
+  Future<Map<String, dynamic>?> _loadPlanScheduledNotificationInboxDelivery({
+    required String type,
+    required String planId,
+    String? eventId,
+    String? eventAt,
+    String? eventDatetimeLabel,
+    String? placeTitle,
+  }) async {
+    final eid = (eventId ?? '').trim();
+    if (eid.isNotEmpty) {
+      final resolved = await _loadInboxDeliveryByEventId(
+        eventId: eid,
+        expectedType: type.trim(),
+      );
+      if (resolved != null) return resolved;
+    }
+
+    try {
+      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
+      for (final payload in rows) {
+        final payloadType = (payload['type'] ?? '').toString().trim();
+        if (payloadType != type.trim()) continue;
+
+        final payloadPlanId =
+            (payload['plan_id'] ?? payload['planId'] ?? '').toString().trim();
+        if (payloadPlanId != planId.trim()) continue;
+
+        final requestedEventAt = (eventAt ?? '').trim();
+        final payloadEventAt =
+            (payload['event_at'] ?? payload['eventAt'] ?? '').toString().trim();
+        if (requestedEventAt.isNotEmpty &&
+            payloadEventAt.isNotEmpty &&
+            payloadEventAt != requestedEventAt) {
+          continue;
+        }
+
+        final requestedEventDatetimeLabel = (eventDatetimeLabel ?? '').trim();
+        final payloadEventDatetimeLabel = (payload['event_datetime_label'] ??
+                payload['eventDatetimeLabel'] ??
+                '')
+            .toString()
+            .trim();
+        if (requestedEventDatetimeLabel.isNotEmpty &&
+            payloadEventDatetimeLabel.isNotEmpty &&
+            payloadEventDatetimeLabel != requestedEventDatetimeLabel) {
+          continue;
+        }
+
+        final requestedPlaceTitle = (placeTitle ?? '').trim();
+        final payloadPlaceTitle =
+            (payload['place_title'] ?? payload['placeTitle'] ?? '')
+                .toString()
+                .trim();
+        if (requestedPlaceTitle.isNotEmpty &&
+            payloadPlaceTitle.isNotEmpty &&
+            payloadPlaceTitle != requestedPlaceTitle) {
+          continue;
+        }
+
+        return payload;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }
+
+  Future<void> _handlePlanScheduledNotificationOpenFromNotificationTap({
+    required String type,
+    required String planId,
+    String? eventId,
+    String? planTitle,
+    String? eventAt,
+    String? eventDatetimeLabel,
+    String? placeTitle,
+    String? title,
+    String? body,
+    required String openSource,
+  }) async {
+    final trimmedType = type.trim();
+    final trimmedPlanId = planId.trim();
+    if (trimmedType.isEmpty || trimmedPlanId.isEmpty) return;
+
+    if (!_canResolveNotificationOpenFromInbox()) {
+      _enqueueNotificationOpenIntent(<String, dynamic>{
+        'type': trimmedType,
+        'plan_id': trimmedPlanId,
+        if ((eventId ?? '').trim().isNotEmpty)
+          'event_id': (eventId ?? '').trim(),
+        if ((planTitle ?? '').trim().isNotEmpty)
+          'plan_title': (planTitle ?? '').trim(),
+        if ((eventAt ?? '').trim().isNotEmpty)
+          'event_at': (eventAt ?? '').trim(),
+        if ((eventDatetimeLabel ?? '').trim().isNotEmpty)
+          'event_datetime_label': (eventDatetimeLabel ?? '').trim(),
+        if ((placeTitle ?? '').trim().isNotEmpty)
+          'place_title': (placeTitle ?? '').trim(),
+        if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+        if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        'open_source': openSource,
+      });
+      return;
+    }
+
+    final dedupKey = _buildNotificationOpenDedupKey(<String, dynamic>{
+      'type': trimmedType,
+      'event_id': (eventId ?? '').trim(),
+      'plan_id': trimmedPlanId,
+      'event_at': (eventAt ?? '').trim(),
+      'event_datetime_label': (eventDatetimeLabel ?? '').trim(),
+      'place_title': (placeTitle ?? '').trim(),
+    });
+    if (_shouldSkipDuplicateNotificationOpen(dedupKey)) {
+      return;
+    }
+
+    final resolved = await _loadPlanScheduledNotificationInboxDelivery(
+      type: trimmedType,
+      planId: trimmedPlanId,
+      eventId: eventId,
+      eventAt: eventAt,
+      eventDatetimeLabel: eventDatetimeLabel,
+      placeTitle: placeTitle,
+    );
+    _logResolvedInboxOpen(
+      label:
+          'plan_scheduled type=$trimmedType plan_id=$trimmedPlanId source=$openSource',
+      payload: resolved,
+    );
+
+    final effective = resolved ??
+        <String, dynamic>{
+          'type': trimmedType,
+          'plan_id': trimmedPlanId,
+          if ((eventId ?? '').trim().isNotEmpty)
+            'event_id': (eventId ?? '').trim(),
+          if ((planTitle ?? '').trim().isNotEmpty)
+            'plan_title': (planTitle ?? '').trim(),
+          if ((eventAt ?? '').trim().isNotEmpty)
+            'event_at': (eventAt ?? '').trim(),
+          if ((eventDatetimeLabel ?? '').trim().isNotEmpty)
+            'event_datetime_label': (eventDatetimeLabel ?? '').trim(),
+          if ((placeTitle ?? '').trim().isNotEmpty)
+            'place_title': (placeTitle ?? '').trim(),
+          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        };
+
+    PlanScheduledNotificationUiCoordinator.instance.enqueue(
+      PlanScheduledNotificationUiRequest(
+        type: (effective['type'] ?? trimmedType).toString().trim(),
+        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
+            .toString()
+            .trim(),
+        eventId: (effective['event_id'] ?? effective['eventId'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['event_id'] ?? effective['eventId'] ?? '')
+                .toString()
+                .trim(),
+        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim(),
+        eventAt: (effective['event_at'] ?? effective['eventAt'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['event_at'] ?? effective['eventAt'] ?? '')
+                .toString()
+                .trim(),
+        eventDatetimeLabel: (effective['event_datetime_label'] ??
+                    effective['eventDatetimeLabel'] ??
+                    '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['event_datetime_label'] ??
+                    effective['eventDatetimeLabel'] ??
+                    '')
+                .toString()
+                .trim(),
+        placeTitle: (effective['place_title'] ?? effective['placeTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
+            ? null
+            : (effective['place_title'] ?? effective['placeTitle'] ?? '')
+                .toString()
+                .trim(),
+        title: (effective['title'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['title'] ?? '').toString().trim(),
+        body: (effective['body'] ?? '').toString().trim().isEmpty
+            ? null
+            : (effective['body'] ?? '').toString().trim(),
+        source: openSource == 'local_notification' ||
+                openSource == 'intent_bridge' ||
+                openSource == 'pending_notification'
+            ? PlanScheduledNotificationUiSource.backgroundIntent
+            : PlanScheduledNotificationUiSource.foreground,
+      ),
+    );
+
+    _scheduleConsumeInboxDeliveryIfPending(effective);
+  }
+
   Future<void> _handleInviteOpenFromNotificationTap({
     required String inviteId,
     required String planId,
@@ -1263,7 +1615,8 @@ class _BootstrapGateState extends State<BootstrapGate>
       planId: trimmedPlanId,
     );
     _logResolvedInboxOpen(
-      label: 'invite open invite_id=$trimmedInviteId plan_id=$trimmedPlanId source=$openSource',
+      label:
+          'invite open invite_id=$trimmedInviteId plan_id=$trimmedPlanId source=$openSource',
       payload: resolved,
     );
 
@@ -1321,8 +1674,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         InviteUiRequest(
           inviteId: trimmedInviteId,
           planId: resolvedPlanId,
-          actionToken:
-              resolvedActionToken.isEmpty ? null : resolvedActionToken,
+          actionToken: resolvedActionToken.isEmpty ? null : resolvedActionToken,
           title: resolvedTitleRaw.trim().isEmpty
               ? kInviteDialogDefaultTitle
               : resolvedTitleRaw,
@@ -1378,7 +1730,9 @@ class _BootstrapGateState extends State<BootstrapGate>
         actionToken: (actionToken ?? '').trim().isEmpty
             ? null
             : (actionToken ?? '').trim(),
-        title: normalizedTitle.isEmpty ? kInviteDialogDefaultTitle : normalizedTitle,
+        title: normalizedTitle.isEmpty
+            ? kInviteDialogDefaultTitle
+            : normalizedTitle,
         body: normalizedBody,
         source: InviteUiSource.backgroundIntent,
       ),
@@ -1408,7 +1762,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           'left_nickname': (leftNickname ?? '').trim(),
         if ((planTitle ?? '').trim().isNotEmpty)
           'plan_title': (planTitle ?? '').trim(),
-        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty)
+          'event_id': (eventId ?? '').trim(),
         if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
         if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
         'open_source': openSource,
@@ -1432,20 +1787,22 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
     _logResolvedInboxOpen(
-      label: 'plan_member_left plan_id=$trimmedPlanId left_user_id=$trimmedLeftUserId source=$openSource',
+      label:
+          'plan_member_left plan_id=$trimmedPlanId left_user_id=$trimmedLeftUserId source=$openSource',
       payload: resolved,
     );
 
-    final effective = resolved ?? <String, dynamic>{
-      'plan_id': trimmedPlanId,
-      'left_user_id': trimmedLeftUserId,
-      if ((leftNickname ?? '').trim().isNotEmpty)
-        'left_nickname': (leftNickname ?? '').trim(),
-      if ((planTitle ?? '').trim().isNotEmpty)
-        'plan_title': (planTitle ?? '').trim(),
-      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-    };
+    final effective = resolved ??
+        <String, dynamic>{
+          'plan_id': trimmedPlanId,
+          'left_user_id': trimmedLeftUserId,
+          if ((leftNickname ?? '').trim().isNotEmpty)
+            'left_nickname': (leftNickname ?? '').trim(),
+          if ((planTitle ?? '').trim().isNotEmpty)
+            'plan_title': (planTitle ?? '').trim(),
+          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        };
 
     final cleanLeftNickname =
         (effective['left_nickname'] ?? effective['leftNickname'] ?? '')
@@ -1457,9 +1814,14 @@ class _BootstrapGateState extends State<BootstrapGate>
                 .toString()
                 .trim();
     final cleanPlanTitle =
-        (effective['plan_title'] ?? effective['planTitle'] ?? '').toString().trim().isEmpty
+        (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim()
+                .isEmpty
             ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '').toString().trim();
+            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
+                .toString()
+                .trim();
     final cleanTitle = (effective['title'] ?? '').toString().trim().isEmpty
         ? null
         : (effective['title'] ?? '').toString().trim();
@@ -1473,7 +1835,10 @@ class _BootstrapGateState extends State<BootstrapGate>
                 effective['leftUserId'] ??
                 trimmedLeftUserId)
             .toString(),
-        eventId: (effective['event_id'] ?? effective['eventId'] ?? eventId ?? '')
+        eventId: (effective['event_id'] ??
+                    effective['eventId'] ??
+                    eventId ??
+                    '')
                 .toString()
                 .trim()
                 .isEmpty
@@ -1527,7 +1892,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           'owner_nickname': (ownerNickname ?? '').trim(),
         if ((planTitle ?? '').trim().isNotEmpty)
           'plan_title': (planTitle ?? '').trim(),
-        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty)
+          'event_id': (eventId ?? '').trim(),
         if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
         if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
         'open_source': openSource,
@@ -1553,21 +1919,23 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
     _logResolvedInboxOpen(
-      label: 'plan_member_removed plan_id=$trimmedPlanId removed_user_id=$trimmedRemovedUserId owner_user_id=$trimmedOwnerUserId source=$openSource',
+      label:
+          'plan_member_removed plan_id=$trimmedPlanId removed_user_id=$trimmedRemovedUserId owner_user_id=$trimmedOwnerUserId source=$openSource',
       payload: resolved,
     );
 
-    final effective = resolved ?? <String, dynamic>{
-      'plan_id': trimmedPlanId,
-      'removed_user_id': trimmedRemovedUserId,
-      'owner_user_id': trimmedOwnerUserId,
-      if ((ownerNickname ?? '').trim().isNotEmpty)
-        'owner_nickname': (ownerNickname ?? '').trim(),
-      if ((planTitle ?? '').trim().isNotEmpty)
-        'plan_title': (planTitle ?? '').trim(),
-      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-    };
+    final effective = resolved ??
+        <String, dynamic>{
+          'plan_id': trimmedPlanId,
+          'removed_user_id': trimmedRemovedUserId,
+          'owner_user_id': trimmedOwnerUserId,
+          if ((ownerNickname ?? '').trim().isNotEmpty)
+            'owner_nickname': (ownerNickname ?? '').trim(),
+          if ((planTitle ?? '').trim().isNotEmpty)
+            'plan_title': (planTitle ?? '').trim(),
+          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        };
 
     PlanMemberRemovedUiCoordinator.instance.enqueue(
       PlanMemberRemovedUiRequest(
@@ -1581,7 +1949,9 @@ class _BootstrapGateState extends State<BootstrapGate>
                 effective['ownerUserId'] ??
                 trimmedOwnerUserId)
             .toString(),
-        ownerNickname: (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+        ownerNickname: (effective['owner_nickname'] ??
+                    effective['ownerNickname'] ??
+                    '')
                 .toString()
                 .trim()
                 .isEmpty
@@ -1635,7 +2005,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           'joined_nickname': (joinedNickname ?? '').trim(),
         if ((planTitle ?? '').trim().isNotEmpty)
           'plan_title': (planTitle ?? '').trim(),
-        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty)
+          'event_id': (eventId ?? '').trim(),
         if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
         if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
         'open_source': openSource,
@@ -1659,20 +2030,22 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
     _logResolvedInboxOpen(
-      label: 'plan_member_joined_by_invite plan_id=$trimmedPlanId joined_user_id=$trimmedJoinedUserId source=$openSource',
+      label:
+          'plan_member_joined_by_invite plan_id=$trimmedPlanId joined_user_id=$trimmedJoinedUserId source=$openSource',
       payload: resolved,
     );
 
-    final effective = resolved ?? <String, dynamic>{
-      'plan_id': trimmedPlanId,
-      'joined_user_id': trimmedJoinedUserId,
-      if ((joinedNickname ?? '').trim().isNotEmpty)
-        'joined_nickname': (joinedNickname ?? '').trim(),
-      if ((planTitle ?? '').trim().isNotEmpty)
-        'plan_title': (planTitle ?? '').trim(),
-      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-    };
+    final effective = resolved ??
+        <String, dynamic>{
+          'plan_id': trimmedPlanId,
+          'joined_user_id': trimmedJoinedUserId,
+          if ((joinedNickname ?? '').trim().isNotEmpty)
+            'joined_nickname': (joinedNickname ?? '').trim(),
+          if ((planTitle ?? '').trim().isNotEmpty)
+            'plan_title': (planTitle ?? '').trim(),
+          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        };
 
     PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
       PlanMemberJoinedByInviteUiRequest(
@@ -1682,14 +2055,17 @@ class _BootstrapGateState extends State<BootstrapGate>
                 effective['joinedUserId'] ??
                 trimmedJoinedUserId)
             .toString(),
-        joinedNickname: (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
-                .toString()
-                .trim(),
+        joinedNickname:
+            (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
+                    .toString()
+                    .trim()
+                    .isEmpty
+                ? null
+                : (effective['joined_nickname'] ??
+                        effective['joinedNickname'] ??
+                        '')
+                    .toString()
+                    .trim(),
         planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
                 .toString()
                 .trim()
@@ -1736,7 +2112,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           'owner_nickname': (ownerNickname ?? '').trim(),
         if ((planTitle ?? '').trim().isNotEmpty)
           'plan_title': (planTitle ?? '').trim(),
-        if ((eventId ?? '').trim().isNotEmpty) 'event_id': (eventId ?? '').trim(),
+        if ((eventId ?? '').trim().isNotEmpty)
+          'event_id': (eventId ?? '').trim(),
         if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
         if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
         'open_source': openSource,
@@ -1760,20 +2137,22 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
     _logResolvedInboxOpen(
-      label: 'plan_deleted plan_id=$trimmedPlanId owner_user_id=$trimmedOwnerUserId source=$openSource',
+      label:
+          'plan_deleted plan_id=$trimmedPlanId owner_user_id=$trimmedOwnerUserId source=$openSource',
       payload: resolved,
     );
 
-    final effective = resolved ?? <String, dynamic>{
-      'plan_id': trimmedPlanId,
-      'owner_app_user_id': trimmedOwnerUserId,
-      if ((ownerNickname ?? '').trim().isNotEmpty)
-        'owner_nickname': (ownerNickname ?? '').trim(),
-      if ((planTitle ?? '').trim().isNotEmpty)
-        'plan_title': (planTitle ?? '').trim(),
-      if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-      if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-    };
+    final effective = resolved ??
+        <String, dynamic>{
+          'plan_id': trimmedPlanId,
+          'owner_app_user_id': trimmedOwnerUserId,
+          if ((ownerNickname ?? '').trim().isNotEmpty)
+            'owner_nickname': (ownerNickname ?? '').trim(),
+          if ((planTitle ?? '').trim().isNotEmpty)
+            'plan_title': (planTitle ?? '').trim(),
+          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
+          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
+        };
 
     PlanDeletedUiCoordinator.instance.enqueue(
       PlanDeletedUiRequest(
@@ -1784,7 +2163,9 @@ class _BootstrapGateState extends State<BootstrapGate>
                 effective['ownerUserId'] ??
                 trimmedOwnerUserId)
             .toString(),
-        ownerNickname: (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
+        ownerNickname: (effective['owner_nickname'] ??
+                    effective['ownerNickname'] ??
+                    '')
                 .toString()
                 .trim()
                 .isEmpty
@@ -2755,7 +3136,6 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-            
             // ✅ Separate layer: PLAN_DELETED -> in-app info modal (foreground).
             if (payloadType == 'PLAN_DELETED') {
               final planId = (payloadMap['plan_id'] ??
@@ -2791,7 +3171,8 @@ class _BootstrapGateState extends State<BootstrapGate>
                       '')
                   .toString();
               final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '').toString();
+                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
+                      .toString();
 
               if (kDebugMode) {
                 debugPrint(
@@ -2803,8 +3184,9 @@ class _BootstrapGateState extends State<BootstrapGate>
                 PlanDeletedUiRequest(
                   planId: planId,
                   ownerUserId: ownerUserId,
-                  ownerNickname:
-                      ownerNickname.trim().isEmpty ? null : ownerNickname.trim(),
+                  ownerNickname: ownerNickname.trim().isEmpty
+                      ? null
+                      : ownerNickname.trim(),
                   planTitle: planTitle.trim().isEmpty ? null : planTitle.trim(),
                   title: title.trim().isEmpty ? null : title.trim(),
                   body: body.trim().isEmpty ? null : body.trim(),
@@ -2817,7 +3199,7 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
+            if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 payloadType == 'PLAN_INTERNAL_INVITE_DECLINED') {
               final inviteId =
                   (payloadMap['invite_id'] ?? payloadMap['inviteId'] ?? '')
