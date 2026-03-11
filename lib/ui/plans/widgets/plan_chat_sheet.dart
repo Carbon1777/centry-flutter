@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -35,6 +36,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
   bool _expanded = false;
   int _unreadCount = 0;
   int? _unreadStartIndex;
+  double _dragOffsetY = 0;
 
   @override
   void initState() {
@@ -146,7 +148,32 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     unawaited(_scrollToBottom());
   }
 
+  void _handleVerticalDragStart(DragStartDetails details) {
+    _dragOffsetY = 0;
+  }
+
+  void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    _dragOffsetY += details.delta.dy;
+
+    if (!_expanded && _dragOffsetY <= -10) {
+      setState(() => _expanded = true);
+      _dragOffsetY = 0;
+      unawaited(_scrollToBottom());
+      return;
+    }
+
+    final canCollapseFromTop = _expanded &&
+        _scrollController.hasClients &&
+        _scrollController.offset <= 0.5;
+    if (canCollapseFromTop && _dragOffsetY >= 12) {
+      setState(() => _expanded = false);
+      _dragOffsetY = 0;
+    }
+  }
+
   void _handleVerticalDragEnd(DragEndDetails details) {
+    _dragOffsetY = 0;
+
     final velocity = details.primaryVelocity ?? 0;
     if (velocity < -220) {
       if (!_expanded) {
@@ -156,7 +183,10 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       return;
     }
     if (velocity > 220) {
-      if (_expanded) {
+      final canCollapseFromTop = _expanded &&
+          _scrollController.hasClients &&
+          _scrollController.offset <= 0.5;
+      if (canCollapseFromTop) {
         setState(() => _expanded = false);
       }
     }
@@ -221,6 +251,8 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       alignment: Alignment.bottomCenter,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        onVerticalDragStart: _handleVerticalDragStart,
+        onVerticalDragUpdate: _handleVerticalDragUpdate,
         onVerticalDragEnd: _handleVerticalDragEnd,
         child: AnimatedContainer(
           duration: _kAnimationDuration,
@@ -228,17 +260,25 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
           width: double.infinity,
           height: targetHeight,
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1F27),
+            color: const Color(0xB8181E27),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: Colors.white.withOpacity(0.07)),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.white.withOpacity(0.055),
+                Colors.white.withOpacity(0.015),
+              ],
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.34),
-                blurRadius: 26,
+                color: Colors.black.withOpacity(0.28),
+                blurRadius: 28,
                 offset: const Offset(0, -8),
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.18),
+                color: Colors.black.withOpacity(0.14),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
@@ -246,62 +286,66 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
           ),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: Column(
-              children: [
-                _PlanChatHeader(
-                  unreadCount: _unreadCount,
-                  onTap: _toggleExpanded,
-                ),
-                if (_expanded)
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: NotificationListener<ScrollNotification>(
-                            onNotification: (notification) {
-                              if (notification is ScrollUpdateNotification ||
-                                  notification is UserScrollNotification) {
-                                _markUnreadAsRead();
-                              }
-                              return false;
-                            },
-                            child: ListView.separated(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-                              itemCount: _messages.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                final showUnreadDivider =
-                                    _unreadStartIndex != null &&
-                                        _unreadCount > 0 &&
-                                        index == _unreadStartIndex;
-                                final message = _messages[index];
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    if (showUnreadDivider)
-                                      const _UnreadMessagesDivider(),
-                                    if (showUnreadDivider)
-                                      const SizedBox(height: 10),
-                                    PlanChatMessageBubble(message: message),
-                                  ],
-                                );
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Column(
+                children: [
+                  _PlanChatHeader(
+                    unreadCount: _unreadCount,
+                    onTap: _toggleExpanded,
+                  ),
+                  if (_expanded)
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: NotificationListener<ScrollNotification>(
+                              onNotification: (notification) {
+                                if (_unreadCount > 0 &&
+                                    notification is ScrollUpdateNotification) {
+                                  _markUnreadAsRead();
+                                }
+                                return false;
                               },
+                              child: ListView.separated(
+                                controller: _scrollController,
+                                padding:
+                                    const EdgeInsets.fromLTRB(14, 8, 14, 14),
+                                itemCount: _messages.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final showUnreadDivider =
+                                      _unreadStartIndex != null &&
+                                          _unreadCount > 0 &&
+                                          index == _unreadStartIndex;
+                                  final message = _messages[index];
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (showUnreadDivider)
+                                        const _UnreadMessagesDivider(),
+                                      if (showUnreadDivider)
+                                        const SizedBox(height: 10),
+                                      PlanChatMessageBubble(message: message),
+                                    ],
+                                  );
+                                },
+                              ),
                             ),
                           ),
-                        ),
-                        _PlanChatComposer(
-                          controller: _composerController,
-                          onChanged: () => setState(() {}),
-                          onSend: _sendPreviewMessage,
-                          onTapInside: _markUnreadAsRead,
-                        ),
-                      ],
+                          _PlanChatComposer(
+                            controller: _composerController,
+                            onChanged: () => setState(() {}),
+                            onSend: _sendPreviewMessage,
+                            onTapInside: _markUnreadAsRead,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -335,57 +379,61 @@ class _PlanChatHeader extends StatelessWidget {
                 width: 72,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.38),
+                  color: Colors.white.withOpacity(0.40),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
             ),
             const SizedBox(height: 8),
             SizedBox(
-              height: 34,
+              height: 36,
               child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    if (unreadCount > 0) ...[
-                      Container(
-                        constraints: const BoxConstraints(
-                          minWidth: 22,
-                          minHeight: 22,
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEF4444),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: const Color(0xFF1A1F27),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: Text(
-                          unreadCount > 99 ? '99+' : unreadCount.toString(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
                     Text(
                       'Чат',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
-                        fontSize: 22,
+                        fontSize: 23,
                         letterSpacing: 0.1,
-                        color: Colors.white.withOpacity(0.95),
+                        color: Colors.white.withOpacity(0.96),
                       ),
                     ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        right: -20,
+                        top: -4,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF445A),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: const Color(0xB8181E27),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            unreadCount > 99 ? '99+' : unreadCount.toString(),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -464,7 +512,7 @@ class _PlanChatComposer extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.10),
+          color: Colors.black.withOpacity(0.08),
           border: Border(
             top: BorderSide(color: Colors.white.withOpacity(0.08)),
           ),
@@ -483,7 +531,7 @@ class _PlanChatComposer extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Напишите сообщение…',
                   filled: true,
-                  fillColor: theme.colorScheme.surface.withOpacity(0.92),
+                  fillColor: theme.colorScheme.surface.withOpacity(0.90),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,
