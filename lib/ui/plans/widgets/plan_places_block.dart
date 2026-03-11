@@ -483,7 +483,11 @@ class _PlaceCandidateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cardRadius = BorderRadius.circular(16);
-    final opacity = item.isDimmed ? 0.55 : 1.0;
+    final isOwnerPriorityCandidate = !isFinalizedWithWinner &&
+        ownerChoiceModeActive &&
+        item.isAvailableForOwnerChoiceNow;
+    final opacity =
+        isOwnerPriorityCandidate ? 1.0 : (item.isDimmed ? 0.55 : 1.0);
     final canDeleteTap = onRemove != null && !actionsDisabled;
     final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
     final distanceLabel = _distanceLabel();
