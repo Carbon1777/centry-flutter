@@ -1247,6 +1247,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     );
   }
 
+
   @override
   Widget build(BuildContext context) {
     final plan = _details?.plan;
@@ -1792,6 +1793,54 @@ class _Body extends StatelessWidget {
     return Theme.of(context).textTheme.bodySmall;
   }
 
+
+
+  dynamic _tryReadMemberValue(dynamic member, List<String> keys) {
+    for (final key in keys) {
+      try {
+        final value = (member as dynamic);
+        switch (key) {
+          case 'appUserId':
+            return value.appUserId;
+          case 'userId':
+            return value.userId;
+          case 'id':
+            return value.id;
+          case 'nickname':
+            return value.nickname;
+          case 'displayName':
+            return value.displayName;
+          case 'name':
+            return value.name;
+        }
+      } catch (_) {
+        // ignore and try next key
+      }
+    }
+    return null;
+  }
+
+  String _memberAppUserId(dynamic member) {
+    final raw = _tryReadMemberValue(member, const ['appUserId', 'userId', 'id']);
+    return (raw ?? '').toString().trim();
+  }
+
+  String _memberNickname(dynamic member) {
+    final raw = _tryReadMemberValue(member, const ['nickname', 'displayName', 'name']);
+    return (raw ?? '').toString().trim();
+  }
+
+  Map<String, String> _buildChatNicknamesByUserId() {
+    final result = <String, String>{};
+    for (final member in details.members) {
+      final id = _memberAppUserId(member);
+      final nickname = _memberNickname(member);
+      if (id.isEmpty || nickname.isEmpty) continue;
+      result[id] = nickname;
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final plan = details.plan;
@@ -1804,10 +1853,15 @@ class _Body extends StatelessWidget {
 
     final descValueColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dateVotingHelperText = _buildDateVotingHelperText();
+    final chatNicknamesByUserId = _buildChatNicknamesByUserId();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-      child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 92),
+              child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -2034,34 +2088,36 @@ class _Body extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: PlanPlacesBlock(
-                    items: details.placeCandidates,
-                    placeVoting: details.placeVoting,
-                    onAddCandidate:
-                        plan.status == 'OPEN' ? onAddPlaceCandidate : null,
-                    actionsDisabled: actionsDisabled,
-                    onOpenDetails: onOpenPlaceDetails,
-                    onRemoveCandidate: onRemovePlaceCandidate,
-                    onVote: onVotePlace,
-                    onUnvote: onUnvotePlace,
-                    onChooseOwnerPriority: onChooseOwnerPriorityPlace,
-                    onClearOwnerPriority: onClearOwnerPriorityPlace,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Divider(height: 1, thickness: 1),
-                const _SectionTitle('Чат'),
-                const SizedBox(height: 6),
-                PlanChatBlock(items: details.chat),
-              ],
+            child: PlanPlacesBlock(
+              items: details.placeCandidates,
+              placeVoting: details.placeVoting,
+              onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
+              actionsDisabled: actionsDisabled,
+              onOpenDetails: onOpenPlaceDetails,
+              onRemoveCandidate: onRemovePlaceCandidate,
+              onVote: onVotePlace,
+              onUnvote: onUnvotePlace,
+              onChooseOwnerPriority: onChooseOwnerPriorityPlace,
+              onClearOwnerPriority: onClearOwnerPriorityPlace,
             ),
           ),
         ],
       ),
+    ),
+    Positioned.fill(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: PlanChatBlock(
+          items: details.chat,
+          currentUserId: appUserId,
+          nicknamesByUserId: chatNicknamesByUserId,
+          availableHeight: constraints.maxHeight,
+        ),
+      ),
+    ),
+  ],
+);
+      },
     );
   }
 }
@@ -2181,16 +2237,6 @@ class _HighlightedEventLine extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(text, style: Theme.of(context).textTheme.titleMedium);
   }
 }
 
