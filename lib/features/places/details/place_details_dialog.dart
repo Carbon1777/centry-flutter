@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/places/place_dto.dart';
 import '../../../data/places/places_repository.dart';
+import '../../../ui/common/center_toast.dart';
 import '../../../ui/places/places_screen.dart';
 import '../../profile/profile_email_modal.dart';
 import 'add_place_to_plan_modal.dart';
@@ -218,10 +219,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       final s = snapshot;
       if (s == null) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Не удалось открыть регистрацию: нет snapshot'),
-          ),
+        await showCenterToast(
+          context,
+          message: 'Не удалось открыть регистрацию: нет snapshot',
+          isError: true,
         );
         return;
       }
@@ -243,8 +244,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       if (!mounted) return;
 
       if (updated == null || updated.state != 'USER') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Регистрация не завершена')),
+        await showCenterToast(
+          context,
+          message: 'Регистрация не завершена',
+          isError: true,
         );
         return;
       }
@@ -288,8 +291,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       setState(() {
         _savingSaved = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось сохранить место')),
+      await showCenterToast(
+        context,
+        message: 'Не удалось сохранить место',
+        isError: true,
       );
     }
   }
@@ -521,11 +526,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  void _copyAddress() {
-    Clipboard.setData(ClipboardData(text: _effectiveAddress));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Адрес скопирован')),
-    );
+  Future<void> _copyAddress() async {
+    await Clipboard.setData(ClipboardData(text: _effectiveAddress));
+    if (!mounted) return;
+    await showCenterToast(context, message: 'Адрес скопирован');
   }
 
   Future<String> _resolveCurrentAppUserId() async {
@@ -685,8 +689,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         _addingToPlan = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_humanizeAddToPlanError(e))),
+      await showCenterToast(
+        context,
+        message: _humanizeAddToPlanError(e),
+        isError: true,
       );
     }
   }
@@ -724,8 +730,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
           _addingToPlan = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось удалить место из плана')),
+        await showCenterToast(
+          context,
+          message: 'Не удалось удалить место из плана',
+          isError: true,
         );
       }
       return;
