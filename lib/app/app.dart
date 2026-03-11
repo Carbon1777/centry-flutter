@@ -2938,10 +2938,92 @@ class _BootstrapGateState extends State<BootstrapGate>
                 payloadType != 'PLAN_MEMBER_REMOVED' &&
                 payloadType != 'PLAN_MEMBER_JOINED_BY_INVITE' &&
                 payloadType != 'PLAN_DELETED' &&
+                payloadType != 'PLAN_VOTING_REMINDER_DATE' &&
+                payloadType != 'PLAN_VOTING_REMINDER_PLACE' &&
+                payloadType != 'PLAN_VOTING_REMINDER_BOTH' &&
+                payloadType != 'PLAN_OWNER_PRIORITY_DATE' &&
+                payloadType != 'PLAN_OWNER_PRIORITY_PLACE' &&
+                payloadType != 'PLAN_OWNER_PRIORITY_BOTH' &&
+                payloadType != 'PLAN_EVENT_REMINDER_24H' &&
                 payloadType != 'FRIEND_REQUEST_RECEIVED' &&
                 payloadType != 'FRIEND_REQUEST_ACCEPTED' &&
                 payloadType != 'FRIEND_REQUEST_DECLINED' &&
                 payloadType != 'FRIEND_REMOVED') {
+              return;
+            }
+
+            const scheduledTypes = <String>{
+              'PLAN_VOTING_REMINDER_DATE',
+              'PLAN_VOTING_REMINDER_PLACE',
+              'PLAN_VOTING_REMINDER_BOTH',
+              'PLAN_OWNER_PRIORITY_DATE',
+              'PLAN_OWNER_PRIORITY_PLACE',
+              'PLAN_OWNER_PRIORITY_BOTH',
+              'PLAN_EVENT_REMINDER_24H',
+            };
+
+            if (scheduledTypes.contains(payloadType)) {
+              final planId = (payloadMap['plan_id'] ??
+                      payloadMap['planId'] ??
+                      newRow['plan_id'] ??
+                      newRow['planId'] ??
+                      '')
+                  .toString()
+                  .trim();
+              if (planId.isEmpty) return;
+
+              final requestType = payloadType.trim();
+              final title = (payloadMap['title'] ?? '').toString().trim();
+              final body = (payloadMap['body'] ?? '').toString().trim();
+              final planTitle =
+                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
+                      .toString()
+                      .trim();
+              final eventId = (payloadMap['event_id'] ??
+                      payloadMap['eventId'] ??
+                      newRow['event_id'] ??
+                      newRow['eventId'] ??
+                      '')
+                  .toString()
+                  .trim();
+              final eventAt =
+                  (payloadMap['event_at'] ?? payloadMap['eventAt'] ?? '')
+                      .toString()
+                      .trim();
+              final eventDatetimeLabel =
+                  (payloadMap['event_datetime_label'] ??
+                          payloadMap['eventDatetimeLabel'] ??
+                          '')
+                      .toString()
+                      .trim();
+              final placeTitle =
+                  (payloadMap['place_title'] ?? payloadMap['placeTitle'] ?? '')
+                      .toString()
+                      .trim();
+
+              if (kDebugMode) {
+                debugPrint(
+                  '[INBOX] plan-scheduled insert type=$requestType planId=$planId eventId=$eventId',
+                );
+              }
+
+              PlanScheduledNotificationUiCoordinator.instance.enqueue(
+                PlanScheduledNotificationUiRequest(
+                  type: requestType,
+                  planId: planId,
+                  eventId: eventId.isEmpty ? null : eventId,
+                  planTitle: planTitle.isEmpty ? null : planTitle,
+                  eventAt: eventAt.isEmpty ? null : eventAt,
+                  eventDatetimeLabel: eventDatetimeLabel.isEmpty
+                      ? null
+                      : eventDatetimeLabel,
+                  placeTitle: placeTitle.isEmpty ? null : placeTitle,
+                  title: title.isEmpty ? null : title,
+                  body: body.isEmpty ? null : body,
+                  source: PlanScheduledNotificationUiSource.foreground,
+                ),
+              );
+              consumeIfReady();
               return;
             }
 
@@ -3952,6 +4034,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         });
         InviteUiCoordinator.instance.setRootUiReady(false);
         PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+        PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
         _runPostIdentityFlows();
         return;
@@ -3980,6 +4063,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       });
       InviteUiCoordinator.instance.setRootUiReady(false);
       PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+      PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
       _runPostIdentityFlows();
       return;
@@ -4000,6 +4084,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
   }
 
   void _finishOnboarding(Map<String, dynamic> result) {
@@ -4040,6 +4125,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
+    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
     _runPostIdentityFlows();
   }
@@ -4057,6 +4143,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
     PlanDeletedUiCoordinator.instance.setRootUiReady(true);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
+    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(true);
     _flushPendingFriendRequestsIfAny();
     _ensureInboxInvitesRealtimeSubscribed();
 
