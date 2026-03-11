@@ -184,6 +184,19 @@ function isPlanDeleted(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_DELETED";
 }
 
+// NEW: strict data-only types for voting / owner-priority / event reminder.
+// Important: this is intentionally isolated and does NOT change any existing working flows.
+function isPlanVotingOrEventReminder(payload: Record<string, unknown>): boolean {
+  const t = String(payload["type"] ?? "");
+  return t === "PLAN_VOTING_REMINDER_DATE"
+    || t === "PLAN_VOTING_REMINDER_PLACE"
+    || t === "PLAN_VOTING_REMINDER_BOTH"
+    || t === "PLAN_OWNER_PRIORITY_DATE"
+    || t === "PLAN_OWNER_PRIORITY_PLACE"
+    || t === "PLAN_OWNER_PRIORITY_BOTH"
+    || t === "PLAN_EVENT_REMINDER_24H";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -291,16 +304,24 @@ serve(async () => {
     const isInviteeInteractiveInvite = internalInvite && !inviteResultForOwner;
 
     const friendEvent = isFriendEvent(payload);
+    const votingOrEventReminder = isPlanVotingOrEventReminder(payload);
 
     // ✅ Canon (server-first UX):
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
     // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
     // - PLAN_MEMBER_REMOVED: STRICT DATA-ONLY.
     // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY.
+    // - PLAN_VOTING_REMINDER_* / PLAN_OWNER_PRIORITY_* / PLAN_EVENT_REMINDER_24H: STRICT DATA-ONLY.
     // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
     // - Other notification types may include OS notification.
     const shouldIncludeNotification =
-      !(internalInvite || memberLeft || memberRemoved || memberJoinedByInvite || planDeleted || friendEvent);
+      !(internalInvite
+        || memberLeft
+        || memberRemoved
+        || memberJoinedByInvite
+        || planDeleted
+        || friendEvent
+        || votingOrEventReminder);
 
     let anyOk = false;
     let lastErr = "";
@@ -470,6 +491,7 @@ serve(async () => {
         invitee_interactive: isInviteeInteractiveInvite,
         plan_deleted: planDeleted,
         friend_event: friendEvent,
+        voting_or_event_reminder: votingOrEventReminder,
         include_notification: shouldIncludeNotification,
       },
       attempts: debugAttempts,
