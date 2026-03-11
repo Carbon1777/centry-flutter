@@ -275,6 +275,22 @@ class PushNotifications {
       String? title,
       String? body,
     })? onPlanDeletedOpen,
+
+    /// New isolated OPEN callback for scheduled plan notifications:
+    /// - PLAN_VOTING_REMINDER_*
+    /// - PLAN_OWNER_PRIORITY_*
+    /// - PLAN_EVENT_REMINDER_24H
+    Future<void> Function({
+      required String type,
+      required String planId,
+      String? eventId,
+      String? planTitle,
+      String? eventAt,
+      String? eventDatetimeLabel,
+      String? placeTitle,
+      String? title,
+      String? body,
+    })? onPlanScheduledNotificationOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -437,6 +453,51 @@ class PushNotifications {
         return;
       }
 
+      const scheduledKinds = <String>{
+        'PLAN_VOTING_REMINDER_DATE',
+        'PLAN_VOTING_REMINDER_PLACE',
+        'PLAN_VOTING_REMINDER_BOTH',
+        'PLAN_OWNER_PRIORITY_DATE',
+        'PLAN_OWNER_PRIORITY_PLACE',
+        'PLAN_OWNER_PRIORITY_BOTH',
+        'PLAN_EVENT_REMINDER_24H',
+      };
+
+      if (scheduledKinds.contains(kind)) {
+        final cb = onPlanScheduledNotificationOpen;
+        if (cb == null) return;
+
+        final eventId =
+            (map['event_id'] ?? map['eventId'] ?? '').toString().trim();
+        final planTitle = (map['plan_title'] ?? '').toString().trim();
+        final eventAt = (map['event_at'] ?? '').toString().trim();
+        final eventDatetimeLabel =
+            (map['event_datetime_label'] ?? '').toString().trim();
+        final placeTitle = (map['place_title'] ?? '').toString().trim();
+
+        if (planId.isEmpty) return;
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PushNotifications] open scheduled kind=$kind event_id=$eventId plan_id=$planId',
+          );
+        }
+
+        await cb(
+          type: kind,
+          planId: planId,
+          eventId: eventId.isEmpty ? null : eventId,
+          planTitle: planTitle.isEmpty ? null : planTitle,
+          eventAt: eventAt.isEmpty ? null : eventAt,
+          eventDatetimeLabel:
+              eventDatetimeLabel.isEmpty ? null : eventDatetimeLabel,
+          placeTitle: placeTitle.isEmpty ? null : placeTitle,
+          title: notifTitle.isEmpty ? null : notifTitle,
+          body: notifBody.isEmpty ? null : notifBody,
+        );
+        return;
+      }
+
       // Friends notifications: route OPEN to app-level handler (INBOX is source of truth).
       if (kind.startsWith('FRIEND_')) {
         final cb = onFriendOpen;
@@ -572,7 +633,8 @@ class PushNotifications {
     // which would incorrectly route the same FCM into PLAN_DELETED and
     // create a second local notification with the wrong modal path.
     final planId = (m.data['plan_id'] ?? '').toString().trim();
-    final ownerAppUserId = (m.data['owner_app_user_id'] ?? '').toString().trim();
+    final ownerAppUserId =
+        (m.data['owner_app_user_id'] ?? '').toString().trim();
     return planId.isNotEmpty && ownerAppUserId.isNotEmpty;
   }
 
@@ -593,6 +655,127 @@ class PushNotifications {
   static bool isFriendRequestDeclined(RemoteMessage m) {
     final t = (m.data['type'] ?? '').toString();
     return t == 'FRIEND_REQUEST_DECLINED';
+  }
+
+  static bool isPlanScheduledNotification(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString().trim();
+    switch (t) {
+      case 'PLAN_VOTING_REMINDER_DATE':
+      case 'PLAN_VOTING_REMINDER_PLACE':
+      case 'PLAN_VOTING_REMINDER_BOTH':
+      case 'PLAN_OWNER_PRIORITY_DATE':
+      case 'PLAN_OWNER_PRIORITY_PLACE':
+      case 'PLAN_OWNER_PRIORITY_BOTH':
+      case 'PLAN_EVENT_REMINDER_24H':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static Future<void> showPlanScheduledNotification(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showPlanScheduledNotification id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint(
+        '[PushNotifications] showPlanScheduledNotification data=${m.data}',
+      );
+      debugPrint(
+        '[PushNotifications] showPlanScheduledNotification notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
+      );
+    }
+
+    if (!isPlanScheduledNotification(m)) return;
+
+    final type = (m.data['type'] ?? '').toString().trim();
+    final planId = (m.data['plan_id'] ?? '').toString().trim();
+    if (type.isEmpty || planId.isEmpty) return;
+
+    final title = (m.data['title'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['title'] ?? '').toString().trim()
+        : 'Уведомление';
+
+    final body = (m.data['body'] ?? '').toString().trim().isNotEmpty
+        ? (m.data['body'] ?? '').toString().trim()
+        : 'Откройте приложение, чтобы посмотреть.';
+
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+    final planTitle = (m.data['plan_title'] ?? '').toString().trim();
+    final eventAt = (m.data['event_at'] ?? '').toString().trim();
+    final eventDatetimeLabel =
+        (m.data['event_datetime_label'] ?? '').toString().trim();
+    final placeTitle = (m.data['place_title'] ?? '').toString().trim();
+
+    final payload = jsonEncode({
+      ...m.data,
+      'kind': type,
+      'type': type,
+      'plan_id': planId,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
+      if (planTitle.isNotEmpty) 'plan_title': planTitle,
+      if (eventAt.isNotEmpty) 'event_at': eventAt,
+      if (eventDatetimeLabel.isNotEmpty)
+        'event_datetime_label': eventDatetimeLabel,
+      if (placeTitle.isNotEmpty) 'place_title': placeTitle,
+      'title': title,
+      'body': body,
+    });
+
+    final msgId = (m.messageId ?? '').toString().trim();
+    final idSeed = eventId.isNotEmpty
+        ? 'scheduled:$type:$eventId'
+        : (msgId.isNotEmpty
+            ? 'scheduled:$type:$planId:$msgId'
+            : 'scheduled:$type:$planId:$eventAt:$eventDatetimeLabel:$placeTitle');
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    await _local.cancel(id);
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] local.cancel($id) then show($id) kind=$type planId=$planId eventId=$eventId',
+      );
+    }
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+    if (kDebugMode) {
+      debugPrint('[PushNotifications] local.show done id=$id kind=$type');
+    }
   }
 
   static Future<void> showInternalInvite(RemoteMessage m) async {
@@ -1329,6 +1512,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showPlanMemberRemoved(message);
     await PushNotifications.showPlanMemberJoinedByInvite(message);
     await PushNotifications.showPlanDeleted(message);
+    await PushNotifications.showPlanScheduledNotification(message);
     await PushNotifications.showFriendRequest(message);
     await PushNotifications.showFriendRemoved(message);
   } catch (e) {
