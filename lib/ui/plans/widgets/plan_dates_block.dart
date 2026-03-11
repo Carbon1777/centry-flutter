@@ -198,7 +198,9 @@ class _DateCandidateCard extends StatelessWidget {
       borderWidth = 2;
     }
 
-    final opacity = candidate.isDimmed ? 0.55 : 1.0;
+    final opacity =
+        isOwnerPriorityCandidate ? 1.0 : (candidate.isDimmed ? 0.55 : 1.0);
+
     final canDeleteTap =
         candidate.canDelete && !actionsDisabled && onDelete != null;
     final actionTap = !actionsDisabled ? _resolvePrimaryAction() : null;
