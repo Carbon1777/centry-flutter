@@ -25,7 +25,7 @@ class PlanChatSheet extends StatefulWidget {
 
 class _PlanChatSheetState extends State<PlanChatSheet> {
   static const double _kCollapsedHeight = 76;
-  static const double _kHeaderHeight = 70;
+  static const double _kHeaderHeight = 72;
   static const Duration _kAnimationDuration = Duration(milliseconds: 240);
 
   final TextEditingController _composerController = TextEditingController();
@@ -212,11 +212,6 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final sheetBackground = Color.alphaBlend(
-      Colors.white.withOpacity(0.03),
-      theme.colorScheme.surface,
-    );
     final maxHeight = ((widget.availableHeight - 6)
             .clamp(_kCollapsedHeight, widget.availableHeight) as num)
         .toDouble();
@@ -233,14 +228,19 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
           width: double.infinity,
           height: targetHeight,
           decoration: BoxDecoration(
-            color: sheetBackground,
+            color: const Color(0xFF1A1F27),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withOpacity(0.07)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.24),
-                blurRadius: 18,
-                offset: const Offset(0, -4),
+                color: Colors.black.withOpacity(0.34),
+                blurRadius: 26,
+                offset: const Offset(0, -8),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
@@ -259,8 +259,8 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
                         Expanded(
                           child: NotificationListener<ScrollNotification>(
                             onNotification: (notification) {
-                              if (_unreadCount > 0 &&
-                                  notification is ScrollUpdateNotification) {
+                              if (notification is ScrollUpdateNotification ||
+                                  notification is UserScrollNotification) {
                                 _markUnreadAsRead();
                               }
                               return false;
@@ -329,61 +329,63 @@ class _PlanChatHeader extends StatelessWidget {
         height: _PlanChatSheetState._kHeaderHeight,
         child: Column(
           children: [
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Center(
               child: Container(
-                width: 44,
+                width: 72,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: theme.dividerColor.withOpacity(0.45),
+                  color: Colors.white.withOpacity(0.38),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             SizedBox(
-              height: 28,
+              height: 34,
               child: Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.only(left: unreadCount > 0 ? 16 : 0),
-                      child: Text(
-                        'Чат',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 18,
+                    if (unreadCount > 0) ...[
+                      Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 22,
+                          minHeight: 22,
                         ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: const Color(0xFF1A1F27),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Text(
+                          unreadCount > 99 ? '99+' : unreadCount.toString(),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(
+                      'Чат',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 22,
+                        letterSpacing: 0.1,
+                        color: Colors.white.withOpacity(0.95),
                       ),
                     ),
-                    if (unreadCount > 0)
-                      Positioned(
-                        left: 0,
-                        top: -4,
-                        child: Container(
-                          constraints:
-                              const BoxConstraints(minWidth: 22, minHeight: 22),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: theme.colorScheme.surface,
-                              width: 1.2,
-                            ),
-                          ),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : unreadCount.toString(),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -462,7 +464,7 @@ class _PlanChatComposer extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.08),
+          color: Colors.black.withOpacity(0.10),
           border: Border(
             top: BorderSide(color: Colors.white.withOpacity(0.08)),
           ),
@@ -481,7 +483,7 @@ class _PlanChatComposer extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Напишите сообщение…',
                   filled: true,
-                  fillColor: theme.colorScheme.surface.withOpacity(0.9),
+                  fillColor: theme.colorScheme.surface.withOpacity(0.92),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,
