@@ -49,8 +49,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
         final authorUserId = item.authorAppUserId.trim();
         final authorNickname = widget.nicknamesByUserId[authorUserId]?.trim();
         return PlanChatPresentationMessage(
-          id:
-              '${authorUserId}_${item.createdAt.toIso8601String()}_${item.text.hashCode}',
+          id: '${authorUserId}_${item.createdAt.toIso8601String()}_${item.text.hashCode}',
           authorUserId: authorUserId,
           authorNickname: (authorNickname == null || authorNickname.isEmpty)
               ? 'Участник'
@@ -209,8 +208,6 @@ class _PlanChatFullscreenDialog extends StatefulWidget {
 }
 
 class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
-  static const double _kHeaderHeight = 72;
-
   final TextEditingController _composerController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -222,7 +219,8 @@ class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
   @override
   void initState() {
     super.initState();
-    _messages = List<PlanChatPresentationMessage>.from(widget.initialState.messages);
+    _messages =
+        List<PlanChatPresentationMessage>.from(widget.initialState.messages);
     _unreadCount = widget.initialState.unreadCount;
     _unreadStartIndex = widget.initialState.unreadStartIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
