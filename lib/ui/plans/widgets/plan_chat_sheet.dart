@@ -386,7 +386,7 @@ class _PlanChatHeader extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             SizedBox(
-              height: 36,
+              height: 40,
               child: Center(
                 child: Stack(
                   clipBehavior: Clip.none,
@@ -395,22 +395,22 @@ class _PlanChatHeader extends StatelessWidget {
                       'Чат',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
-                        fontSize: 23,
+                        fontSize: 28,
                         letterSpacing: 0.1,
                         color: Colors.white.withOpacity(0.96),
                       ),
                     ),
                     if (unreadCount > 0)
                       Positioned(
-                        right: -20,
-                        top: -4,
+                        right: -24,
+                        top: -5,
                         child: Container(
                           constraints: const BoxConstraints(
-                            minWidth: 20,
-                            minHeight: 20,
+                            minWidth: 24,
+                            minHeight: 24,
                           ),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
+                            horizontal: 7,
                             vertical: 2,
                           ),
                           alignment: Alignment.center,
@@ -428,7 +428,7 @@ class _PlanChatHeader extends StatelessWidget {
                             style: theme.textTheme.labelSmall?.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 10,
+                              fontSize: 12,
                               height: 1.0,
                             ),
                           ),
