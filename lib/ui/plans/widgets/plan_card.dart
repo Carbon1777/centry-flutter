@@ -56,7 +56,6 @@ class PlanCard extends StatelessWidget {
     }
   }
 
-  /// Цвет дедлайна по количеству часов до окончания
   Color _deadlineColor() {
     if (plan.votingDeadlineAt == null) {
       return Colors.grey.shade400;
@@ -67,13 +66,13 @@ class PlanCard extends StatelessWidget {
     final hours = diff.inHours;
 
     if (hours >= 120) {
-      return const Color(0xFF22C55E); // зелёный
+      return const Color(0xFF22C55E);
     } else if (hours >= 72) {
-      return const Color(0xFFFACC15); // жёлтый
+      return const Color(0xFFFACC15);
     } else if (hours >= 24) {
-      return const Color(0xFFFB923C); // оранжевый
+      return const Color(0xFFFB923C);
     } else {
-      return const Color(0xFFEF4444); // красный
+      return const Color(0xFFEF4444);
     }
   }
 
@@ -116,15 +115,28 @@ class PlanCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ===== Название
-              Text(
-                plan.title,
-                style: titleStyle,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      plan.title,
+                      style: titleStyle,
+                    ),
+                  ),
+                  if (plan.hasChatUnread) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-
               const SizedBox(height: 6),
-
-              // ===== Роль • Статус • Участники
               Wrap(
                 spacing: 6,
                 runSpacing: 2,
@@ -172,8 +184,6 @@ class PlanCard extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // ===== Дедлайн (только если OPEN)
               if (plan.status == 'OPEN' && plan.votingDeadlineAt != null) ...[
                 const SizedBox(height: 6),
                 Row(

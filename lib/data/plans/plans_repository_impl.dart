@@ -2,12 +2,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'plan_summary_dto.dart';
 import 'plan_details_dto.dart';
+import 'plan_chat_dto.dart';
 import 'plans_repository.dart';
 
 class PlansRepositoryImpl implements PlansRepository {
   final SupabaseClient _client;
 
   PlansRepositoryImpl(this._client);
+
+  PlanSummaryDto _mergeChatBadge(
+    PlanSummaryDto plan,
+    Map<String, PlanChatBadgeItemDto> badgesByPlanId,
+  ) {
+    final badge = badgesByPlanId[plan.id];
+    if (badge == null) return plan;
+    return plan.copyWith(
+      chatUnreadCount: badge.unreadCount,
+      hasChatUnread: badge.hasUnread,
+    );
+  }
 
   /* ===================== READ ===================== */
 
@@ -19,9 +32,19 @@ class PlansRepositoryImpl implements PlansRepository {
       'get_my_plans_v1',
       params: {'p_app_user_id': appUserId},
     );
+    final badges = await getMyPlanChatBadges(
+      appUserId: appUserId,
+      includeArchived: false,
+    );
+    final badgesByPlanId = {
+      for (final item in badges.items) item.planId: item,
+    };
 
     final items = (response['items'] as List<dynamic>? ?? []);
-    return items.map((e) => PlanSummaryDto.fromJson(e)).toList();
+    return items
+        .map((e) => PlanSummaryDto.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((plan) => _mergeChatBadge(plan, badgesByPlanId))
+        .toList();
   }
 
   @override
@@ -32,9 +55,19 @@ class PlansRepositoryImpl implements PlansRepository {
       'get_my_plans_archive_v1',
       params: {'p_app_user_id': appUserId},
     );
+    final badges = await getMyPlanChatBadges(
+      appUserId: appUserId,
+      includeArchived: true,
+    );
+    final badgesByPlanId = {
+      for (final item in badges.items) item.planId: item,
+    };
 
     final items = (response['items'] as List<dynamic>? ?? []);
-    return items.map((e) => PlanSummaryDto.fromJson(e)).toList();
+    return items
+        .map((e) => PlanSummaryDto.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((plan) => _mergeChatBadge(plan, badgesByPlanId))
+        .toList();
   }
 
   @override
@@ -426,6 +459,81 @@ class PlansRepositoryImpl implements PlansRepository {
         'p_owner_app_user_id': appUserId,
         'p_plan_id': planId,
       },
+    );
+  }
+
+  @override
+  Future<PlanChatSnapshotDto> getPlanChatSnapshot({
+    required String appUserId,
+    required String planId,
+    int limit = 50,
+    int? beforeRoomSeq,
+  }) async {
+    final response = await _client.rpc(
+      'get_plan_chat_snapshot_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_limit': limit,
+        'p_before_room_seq': beforeRoomSeq,
+      },
+    );
+    return PlanChatSnapshotDto.fromJson(
+      Map<String, dynamic>.from(response as Map),
+    );
+  }
+
+  @override
+  Future<PlanChatSnapshotMessageDto> sendPlanChatMessage({
+    required String appUserId,
+    required String planId,
+    required String text,
+    required String clientNonce,
+  }) async {
+    final response = await _client.rpc(
+      'send_plan_chat_message_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_text': text,
+        'p_client_nonce': clientNonce,
+      },
+    );
+    final payload = Map<String, dynamic>.from(response as Map);
+    final message = Map<String, dynamic>.from(payload['message'] as Map);
+    return PlanChatSnapshotMessageDto.fromJson(message);
+  }
+
+  @override
+  Future<void> markPlanChatRead({
+    required String appUserId,
+    required String planId,
+    required int readThroughRoomSeq,
+  }) async {
+    await _client.rpc(
+      'mark_plan_chat_read_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_read_through_room_seq': readThroughRoomSeq,
+      },
+    );
+  }
+
+  @override
+  Future<PlanChatBadgesDto> getMyPlanChatBadges({
+    required String appUserId,
+    bool includeArchived = false,
+  }) async {
+    final response = await _client.rpc(
+      'get_my_plan_chat_badges_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_include_archived': includeArchived,
+      },
+    );
+    return PlanChatBadgesDto.fromJson(
+      Map<String, dynamic>.from(response as Map),
     );
   }
 
