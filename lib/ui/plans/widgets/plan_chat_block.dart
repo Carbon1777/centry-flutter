@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/plans/plan_details_dto.dart';
+import '../../../data/plans/plans_repository.dart';
 import 'plan_chat_sheet.dart';
 
 class PlanChatBlock extends StatelessWidget {
   final List<PlanChatMessageDto> items;
   final String currentUserId;
+  final String planId;
+  final PlansRepository repository;
   final Map<String, String> nicknamesByUserId;
   final double availableHeight;
 
@@ -13,6 +16,8 @@ class PlanChatBlock extends StatelessWidget {
     super.key,
     required this.items,
     required this.currentUserId,
+    required this.planId,
+    required this.repository,
     required this.nicknamesByUserId,
     required this.availableHeight,
   });

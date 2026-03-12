@@ -43,7 +43,9 @@ class _PlansScreenState extends State<PlansScreen>
   final Set<String> _hiddenPlanIds = <String>{};
 
   Timer? _resumeRefetchTimer;
+  Timer? _chatBadgeRefreshTimer;
   DateTime? _lastResumedAt;
+  bool _chatBadgeRefreshInFlight = false;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _PlansScreenState extends State<PlansScreen>
     _tabController = TabController(length: 2, vsync: this);
 
     _loadAll();
+    _startChatBadgeRefresh();
 
     // Realtime refresh: if membership changes (e.g., removed by owner), refresh list immediately.
     Future<void>.microtask(_ensureInboxRealtimeSubscribed);
@@ -144,6 +147,25 @@ class _PlansScreenState extends State<PlansScreen>
 
   Future<void> _loadAll() async {
     await Future.wait([_loadActive(), _loadArchive()]);
+  }
+
+  void _startChatBadgeRefresh() {
+    _chatBadgeRefreshTimer?.cancel();
+    _chatBadgeRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted) return;
+      if (_loadingActive || _loadingArchive || _chatBadgeRefreshInFlight) return;
+      _chatBadgeRefreshInFlight = true;
+      try {
+        await _loadAll();
+      } finally {
+        _chatBadgeRefreshInFlight = false;
+      }
+    });
+  }
+
+  void _stopChatBadgeRefresh() {
+    _chatBadgeRefreshTimer?.cancel();
+    _chatBadgeRefreshTimer = null;
   }
 
   Future<void> _loadActive() async {
@@ -390,6 +412,7 @@ if (shouldHide && planId.isNotEmpty) {
 
     _resumeRefetchTimer?.cancel();
     _resumeRefetchTimer = null;
+    _stopChatBadgeRefresh();
 
     final ch = _inboxChannel;
     if (ch != null) {

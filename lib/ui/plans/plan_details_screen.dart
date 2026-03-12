@@ -1247,7 +1247,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final plan = _details?.plan;
@@ -1312,6 +1311,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
                   appUserId: widget.appUserId,
                   roleLabel: _roleLabel(_details!.plan.role),
                   statusLabel: _statusLabel(_details!.plan.status),
+                  repository: widget.repository,
                   canEditTitle: canEditTitle,
                   canEditDescription: canEditDescription,
                   canEditDeadline: canEditDeadline,
@@ -1657,6 +1657,7 @@ class _Body extends StatelessWidget {
   final String appUserId;
   final String roleLabel;
   final String statusLabel;
+  final PlansRepository repository;
 
   final bool canEditTitle;
   final bool canEditDescription;
@@ -1690,6 +1691,7 @@ class _Body extends StatelessWidget {
     required this.appUserId,
     required this.roleLabel,
     required this.statusLabel,
+    required this.repository,
     required this.canEditTitle,
     required this.canEditDescription,
     required this.canEditDeadline,
@@ -1793,51 +1795,29 @@ class _Body extends StatelessWidget {
     return Theme.of(context).textTheme.bodySmall;
   }
 
-
-
-  dynamic _tryReadMemberValue(dynamic member, List<String> keys) {
-    for (final key in keys) {
-      try {
-        final value = (member as dynamic);
-        switch (key) {
-          case 'appUserId':
-            return value.appUserId;
-          case 'userId':
-            return value.userId;
-          case 'id':
-            return value.id;
-          case 'nickname':
-            return value.nickname;
-          case 'displayName':
-            return value.displayName;
-          case 'name':
-            return value.name;
-        }
-      } catch (_) {
-        // ignore and try next key
-      }
-    }
-    return null;
-  }
-
-  String _memberAppUserId(dynamic member) {
-    final raw = _tryReadMemberValue(member, const ['appUserId', 'userId', 'id']);
-    return (raw ?? '').toString().trim();
-  }
-
-  String _memberNickname(dynamic member) {
-    final raw = _tryReadMemberValue(member, const ['nickname', 'displayName', 'name']);
-    return (raw ?? '').toString().trim();
-  }
-
   Map<String, String> _buildChatNicknamesByUserId() {
     final result = <String, String>{};
-    for (final member in details.members) {
-      final id = _memberAppUserId(member);
-      final nickname = _memberNickname(member);
-      if (id.isEmpty || nickname.isEmpty) continue;
-      result[id] = nickname;
+
+    final owner = details.ownerMember;
+    if (owner != null) {
+      final ownerId = owner.appUserId.trim();
+      final ownerNickname = owner.nickname.trim();
+      if (ownerId.isNotEmpty && ownerNickname.isNotEmpty) {
+        result[ownerId] = ownerNickname;
+      }
     }
+
+    for (final member in details.members) {
+      final memberId = member.appUserId.trim();
+      final memberNickname = member.nickname.trim();
+      if (memberId.isEmpty || memberNickname.isEmpty) continue;
+      result[memberId] = memberNickname;
+    }
+
+    if (appUserId.trim().isNotEmpty && !result.containsKey(appUserId.trim())) {
+      result[appUserId.trim()] = 'Вы';
+    }
+
     return result;
   }
 
@@ -1855,13 +1835,9 @@ class _Body extends StatelessWidget {
     final dateVotingHelperText = _buildDateVotingHelperText();
     final chatNicknamesByUserId = _buildChatNicknamesByUserId();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 92),
-              child: Column(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -2088,36 +2064,58 @@ class _Body extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: PlanPlacesBlock(
-              items: details.placeCandidates,
-              placeVoting: details.placeVoting,
-              onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
-              actionsDisabled: actionsDisabled,
-              onOpenDetails: onOpenPlaceDetails,
-              onRemoveCandidate: onRemovePlaceCandidate,
-              onVote: onVotePlace,
-              onUnvote: onUnvotePlace,
-              onChooseOwnerPriority: onChooseOwnerPriorityPlace,
-              onClearOwnerPriority: onClearOwnerPriorityPlace,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: PlanPlacesBlock(
+                    items: details.placeCandidates,
+                    placeVoting: details.placeVoting,
+                    onAddCandidate:
+                        plan.status == 'OPEN' ? onAddPlaceCandidate : null,
+                    actionsDisabled: actionsDisabled,
+                    onOpenDetails: onOpenPlaceDetails,
+                    onRemoveCandidate: onRemovePlaceCandidate,
+                    onVote: onVotePlace,
+                    onUnvote: onUnvotePlace,
+                    onChooseOwnerPriority: onChooseOwnerPriorityPlace,
+                    onClearOwnerPriority: onClearOwnerPriorityPlace,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1, thickness: 1),
+                const _SectionTitle('Чат'),
+                const SizedBox(height: 6),
+                PlanChatBlock(
+                  items: details.chat,
+                  currentUserId: appUserId,
+                  planId: details.plan.id,
+                  repository: repository,
+                  nicknamesByUserId: chatNicknamesByUserId,
+                  availableHeight: MediaQuery.of(context).size.height * 0.46,
+                ),
+              ],
             ),
           ),
         ],
       ),
-    ),
-    Positioned.fill(
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: PlanChatBlock(
-          items: details.chat,
-          currentUserId: appUserId,
-          nicknamesByUserId: chatNicknamesByUserId,
-          availableHeight: constraints.maxHeight,
-        ),
-      ),
-    ),
-  ],
-);
-      },
+    );
+  }
+}
+
+
+class _SectionTitle extends StatelessWidget {
+  final String text;
+
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
     );
   }
 }
