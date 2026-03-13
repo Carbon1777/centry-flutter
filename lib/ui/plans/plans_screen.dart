@@ -27,6 +27,8 @@ class PlansScreen extends StatefulWidget {
 
 class _PlansScreenState extends State<PlansScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const Duration _chatBadgesRefreshInterval = Duration(seconds: 10);
+
   late final PlansRepository _repo;
   late final TabController _tabController;
 
@@ -42,10 +44,11 @@ class _PlansScreenState extends State<PlansScreen>
   /// Added only when PlanDetailsScreen returns `pop(true)` (server-confirmed change).
   final Set<String> _hiddenPlanIds = <String>{};
 
+  final Set<String> _plansWithUnreadChat = <String>{};
+
   Timer? _resumeRefetchTimer;
-  Timer? _chatBadgeRefreshTimer;
+  Timer? _chatBadgesRefreshTimer;
   DateTime? _lastResumedAt;
-  bool _chatBadgeRefreshInFlight = false;
 
   @override
   void initState() {
@@ -56,10 +59,13 @@ class _PlansScreenState extends State<PlansScreen>
     _tabController = TabController(length: 2, vsync: this);
 
     _loadAll();
-    _startChatBadgeRefresh();
 
     // Realtime refresh: if membership changes (e.g., removed by owner), refresh list immediately.
     Future<void>.microtask(_ensureInboxRealtimeSubscribed);
+
+    _chatBadgesRefreshTimer = Timer.periodic(_chatBadgesRefreshInterval, (_) {
+      unawaited(_loadChatBadges());
+    });
   }
 
   @override
@@ -77,7 +83,8 @@ class _PlansScreenState extends State<PlansScreen>
 
     // Small dedupe to avoid double-calls on some Android devices.
     final last = _lastResumedAt;
-    if (last != null && now.difference(last) < const Duration(milliseconds: 500)) {
+    if (last != null &&
+        now.difference(last) < const Duration(milliseconds: 500)) {
       return;
     }
     _lastResumedAt = now;
@@ -100,8 +107,7 @@ class _PlansScreenState extends State<PlansScreen>
     _resumeRefetchTimer?.cancel();
     _resumeRefetchTimer = Timer(const Duration(milliseconds: 700), () {
       if (!mounted) return;
-      // ignore: discarded_futures
-      _loadAll();
+      unawaited(_loadAll());
     });
   }
 
@@ -146,26 +152,11 @@ class _PlansScreenState extends State<PlansScreen>
   }
 
   Future<void> _loadAll() async {
-    await Future.wait([_loadActive(), _loadArchive()]);
-  }
-
-  void _startChatBadgeRefresh() {
-    _chatBadgeRefreshTimer?.cancel();
-    _chatBadgeRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      if (!mounted) return;
-      if (_loadingActive || _loadingArchive || _chatBadgeRefreshInFlight) return;
-      _chatBadgeRefreshInFlight = true;
-      try {
-        await _loadAll();
-      } finally {
-        _chatBadgeRefreshInFlight = false;
-      }
-    });
-  }
-
-  void _stopChatBadgeRefresh() {
-    _chatBadgeRefreshTimer?.cancel();
-    _chatBadgeRefreshTimer = null;
+    await Future.wait([
+      _loadActive(),
+      _loadArchive(),
+      _loadChatBadges(),
+    ]);
   }
 
   Future<void> _loadActive() async {
@@ -206,6 +197,39 @@ class _PlansScreenState extends State<PlansScreen>
     setState(() => _loadingArchive = false);
   }
 
+  Future<void> _loadChatBadges() async {
+    try {
+      final appUserId = await _resolveDomainAppUserId();
+      if (appUserId == null || appUserId.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _plansWithUnreadChat.clear();
+        });
+        return;
+      }
+
+      final badges = await _repo.getMyPlanChatBadges(
+        appUserId: appUserId,
+        includeArchived: true,
+      );
+
+      final unreadPlanIds = badges.items
+          .where((item) => item.hasUnread || item.unreadCount > 0)
+          .map((item) => item.planId)
+          .where((id) => id.trim().isNotEmpty)
+          .toSet();
+
+      if (!mounted) return;
+      setState(() {
+        _plansWithUnreadChat
+          ..clear()
+          ..addAll(unreadPlanIds);
+      });
+    } catch (e) {
+      debugPrint('[PlansScreen] getMyPlanChatBadges error: $e');
+    }
+  }
+
   Future<void> _openDetails(PlanSummaryDto plan) async {
     final appUserId = await _resolveDomainAppUserId();
     if (appUserId == null) return;
@@ -225,7 +249,9 @@ class _PlansScreenState extends State<PlansScreen>
       ),
     );
 
-    debugPrint('[PlansScreen] details result changed=$changed for planId=${plan.id}');
+    debugPrint(
+      '[PlansScreen] details result changed=$changed for planId=${plan.id}',
+    );
     // ignore: avoid_print
     print('[PlansScreen] details result changed=$changed for planId=${plan.id}');
 
@@ -357,7 +383,8 @@ class _PlansScreenState extends State<PlansScreen>
           final payloadJson = record['payload'];
           if (payloadJson is! Map) return;
 
-          final type = (payloadJson['type'] ?? '').toString().trim().toUpperCase();
+          final type =
+              (payloadJson['type'] ?? '').toString().trim().toUpperCase();
 
           // Refresh list for membership-affecting events.
           // ✅ PLAN_DELETED must also refresh (plan disappears for this user).
@@ -365,7 +392,8 @@ class _PlansScreenState extends State<PlansScreen>
               type == 'PLAN_MEMBER_LEFT' ||
               type == 'PLAN_DELETED';
           if (!shouldRefresh) return;
-final planId = (payloadJson['plan_id'] ?? '').toString();
+
+          final planId = (payloadJson['plan_id'] ?? '').toString();
 
           // IMPORTANT:
           // - For PLAN_MEMBER_LEFT / PLAN_MEMBER_REMOVED we receive the event on the OWNER side too.
@@ -377,15 +405,17 @@ final planId = (payloadJson['plan_id'] ?? '').toString();
             // the plan must disappear immediately.
             shouldHide = true;
           } else if (type == 'PLAN_MEMBER_REMOVED') {
-            final removedUserId =
-                (payloadJson['removed_user_id'] ?? payloadJson['removed_app_user_id'] ?? '')
-                    .toString();
+            final removedUserId = (payloadJson['removed_user_id'] ??
+                    payloadJson['removed_app_user_id'] ??
+                    '')
+                .toString();
             shouldHide = removedUserId.isNotEmpty && removedUserId == appUserId;
           } else if (type == 'PLAN_MEMBER_LEFT') {
             final leftUserId = (payloadJson['left_user_id'] ?? '').toString();
             shouldHide = leftUserId.isNotEmpty && leftUserId == appUserId;
           }
-if (shouldHide && planId.isNotEmpty) {
+
+          if (shouldHide && planId.isNotEmpty) {
             // Hide immediately to prevent tapping a dead card before refetch completes.
             if (mounted) {
               setState(() {
@@ -403,7 +433,9 @@ if (shouldHide && planId.isNotEmpty) {
     );
 
     await channel.subscribe();
-    debugPrint('[PlansScreen] subscribed inbox realtime for appUserId=$appUserId');
+    debugPrint(
+      '[PlansScreen] subscribed inbox realtime for appUserId=$appUserId',
+    );
   }
 
   @override
@@ -412,7 +444,9 @@ if (shouldHide && planId.isNotEmpty) {
 
     _resumeRefetchTimer?.cancel();
     _resumeRefetchTimer = null;
-    _stopChatBadgeRefresh();
+
+    _chatBadgesRefreshTimer?.cancel();
+    _chatBadgesRefreshTimer = null;
 
     final ch = _inboxChannel;
     if (ch != null) {
@@ -425,6 +459,13 @@ if (shouldHide && planId.isNotEmpty) {
 
   @override
   Widget build(BuildContext context) {
+    final visibleActivePlans = _activePlans
+        .where((p) => !_hiddenPlanIds.contains(p.id))
+        .toList();
+    final visibleArchivePlans = _archivePlans
+        .where((p) => !_hiddenPlanIds.contains(p.id))
+        .toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Планы'),
@@ -452,17 +493,15 @@ if (shouldHide && planId.isNotEmpty) {
         children: [
           _PlansList(
             loading: _loadingActive,
-            plans: _activePlans
-                .where((p) => !_hiddenPlanIds.contains(p.id))
-                .toList(),
+            plans: visibleActivePlans,
+            unreadPlanIds: _plansWithUnreadChat,
             emptyText: 'Нет активных планов',
             onTap: _openDetails,
           ),
           _PlansList(
             loading: _loadingArchive,
-            plans: _archivePlans
-                .where((p) => !_hiddenPlanIds.contains(p.id))
-                .toList(),
+            plans: visibleArchivePlans,
+            unreadPlanIds: _plansWithUnreadChat,
             emptyText: 'Архив пуст',
             onTap: _openDetails,
           ),
@@ -522,12 +561,14 @@ class _RegistrationRequiredDialog extends StatelessWidget {
 class _PlansList extends StatelessWidget {
   final bool loading;
   final List<PlanSummaryDto> plans;
+  final Set<String> unreadPlanIds;
   final String emptyText;
   final ValueChanged<PlanSummaryDto> onTap;
 
   const _PlansList({
     required this.loading,
     required this.plans,
+    required this.unreadPlanIds,
     required this.emptyText,
     required this.onTap,
   });
@@ -552,6 +593,7 @@ class _PlansList extends StatelessWidget {
           child: PlanCard(
             plan: plan,
             onTap: () => onTap(plan),
+            showChatUnreadDot: unreadPlanIds.contains(plan.id),
           ),
         );
       },

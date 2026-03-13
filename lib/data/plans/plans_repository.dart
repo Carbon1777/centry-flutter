@@ -1,6 +1,6 @@
-import 'plan_summary_dto.dart';
-import 'plan_details_dto.dart';
 import 'plan_chat_dto.dart';
+import 'plan_details_dto.dart';
+import 'plan_summary_dto.dart';
 
 abstract class PlansRepository {
   /// Активные планы (archived = false)
@@ -17,6 +17,35 @@ abstract class PlansRepository {
   Future<PlanDetailsDto> getPlanDetails({
     required String appUserId,
     required String planId,
+  });
+
+  /// Snapshot внутрипланового чата
+  Future<PlanChatSnapshotDto> getPlanChatSnapshot({
+    required String appUserId,
+    required String planId,
+    int limit = 50,
+    int? beforeRoomSeq,
+  });
+
+  /// Сводные badge/has_unread по чатам планов
+  Future<PlanChatBadgesDto> getMyPlanChatBadges({
+    required String appUserId,
+    bool includeArchived = false,
+  });
+
+  /// Отправить сообщение в чат плана
+  Future<PlanChatSnapshotMessageDto> sendPlanChatMessage({
+    required String appUserId,
+    required String planId,
+    required String text,
+    String? clientNonce,
+  });
+
+  /// Отметить сообщения прочитанными до room_seq включительно
+  Future<void> markPlanChatRead({
+    required String appUserId,
+    required String planId,
+    required int readThroughRoomSeq,
   });
 
   /// Создание плана
@@ -165,31 +194,6 @@ abstract class PlansRepository {
   Future<void> deletePlan({
     required String appUserId,
     required String planId,
-  });
-
-  Future<PlanChatSnapshotDto> getPlanChatSnapshot({
-    required String appUserId,
-    required String planId,
-    int limit = 50,
-    int? beforeRoomSeq,
-  });
-
-  Future<PlanChatSnapshotMessageDto> sendPlanChatMessage({
-    required String appUserId,
-    required String planId,
-    required String text,
-    required String clientNonce,
-  });
-
-  Future<void> markPlanChatRead({
-    required String appUserId,
-    required String planId,
-    required int readThroughRoomSeq,
-  });
-
-  Future<PlanChatBadgesDto> getMyPlanChatBadges({
-    required String appUserId,
-    bool includeArchived = false,
   });
 
   /// Создать инвайт (owner)
