@@ -4,11 +4,13 @@ import '../../../data/plans/plan_summary_dto.dart';
 class PlanCard extends StatelessWidget {
   final PlanSummaryDto plan;
   final VoidCallback onTap;
+  final bool showChatUnreadDot;
 
   const PlanCard({
     super.key,
     required this.plan,
     required this.onTap,
+    this.showChatUnreadDot = false,
   });
 
   String _roleLabel(String role) {
@@ -111,104 +113,108 @@ class PlanCard extends StatelessWidget {
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      plan.title,
-                      style: titleStyle,
-                    ),
-                  ),
-                  if (plan.hasChatUnread) ...[
-                    const SizedBox(width: 10),
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFEF4444),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 2,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    roleText,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _roleColor(),
-                      height: 1.1,
-                    ),
+                    plan.title,
+                    style: titleStyle,
                   ),
-                  Text(
-                    '•',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                  Text(
-                    statusText,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: _statusColor(),
-                      height: 1.1,
-                    ),
-                  ),
-                  Text(
-                    '•',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                  Text(
-                    'Участники: ${plan.membersCount}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade400,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-              if (plan.status == 'OPEN' && plan.votingDeadlineAt != null) ...[
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Text(
-                      'Дедлайн голосования: ',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: headerColor,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _formatDeadline(plan.votingDeadlineAt!),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        roleText,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: _deadlineColor(),
+                          color: _roleColor(),
+                          height: 1.1,
+                        ),
+                      ),
+                      Text(
+                        '•',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _statusColor(),
+                          height: 1.1,
+                        ),
+                      ),
+                      Text(
+                        '•',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      Text(
+                        'Участники: ${plan.membersCount}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade400,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (plan.status == 'OPEN' && plan.votingDeadlineAt != null) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          'Дедлайн голосования: ',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: headerColor,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _formatDeadline(plan.votingDeadlineAt!),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _deadlineColor(),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              if (showChatUnreadDot)
+                const Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Color(0xFFEF4444),
+                          shape: BoxShape.circle,
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ],
             ],
           ),
         ),

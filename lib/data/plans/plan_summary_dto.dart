@@ -24,9 +24,6 @@ class PlanSummaryDto {
   final String? myPlaceVote;
   final DateTime? myDateVote;
 
-  final int chatUnreadCount;
-  final bool hasChatUnread;
-
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -48,60 +45,9 @@ class PlanSummaryDto {
     required this.datesCount,
     required this.myPlaceVote,
     required this.myDateVote,
-    required this.chatUnreadCount,
-    required this.hasChatUnread,
     required this.createdAt,
     required this.updatedAt,
   });
-
-  PlanSummaryDto copyWith({
-    String? id,
-    String? title,
-    String? description,
-    String? role,
-    String? status,
-    DateTime? votingDeadlineAt,
-    DateTime? eventAt,
-    String? decidedPlaceId,
-    DateTime? decidedDateAt,
-    DateTime? tieResolutionDeadlineAt,
-    bool? visibleInFeed,
-    bool? archived,
-    int? membersCount,
-    int? placesCount,
-    int? datesCount,
-    String? myPlaceVote,
-    DateTime? myDateVote,
-    int? chatUnreadCount,
-    bool? hasChatUnread,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return PlanSummaryDto(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      role: role ?? this.role,
-      status: status ?? this.status,
-      votingDeadlineAt: votingDeadlineAt ?? this.votingDeadlineAt,
-      eventAt: eventAt ?? this.eventAt,
-      decidedPlaceId: decidedPlaceId ?? this.decidedPlaceId,
-      decidedDateAt: decidedDateAt ?? this.decidedDateAt,
-      tieResolutionDeadlineAt:
-          tieResolutionDeadlineAt ?? this.tieResolutionDeadlineAt,
-      visibleInFeed: visibleInFeed ?? this.visibleInFeed,
-      archived: archived ?? this.archived,
-      membersCount: membersCount ?? this.membersCount,
-      placesCount: placesCount ?? this.placesCount,
-      datesCount: datesCount ?? this.datesCount,
-      myPlaceVote: myPlaceVote ?? this.myPlaceVote,
-      myDateVote: myDateVote ?? this.myDateVote,
-      chatUnreadCount: chatUnreadCount ?? this.chatUnreadCount,
-      hasChatUnread: hasChatUnread ?? this.hasChatUnread,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
 
   static DateTime? _asDate(dynamic v) {
     if (v == null) return null;
@@ -118,7 +64,6 @@ class PlanSummaryDto {
   }
 
   factory PlanSummaryDto.fromJson(Map<String, dynamic> json) {
-    final chatUnreadCount = _asInt(json['chat_unread_count']);
     return PlanSummaryDto(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -137,9 +82,6 @@ class PlanSummaryDto {
       datesCount: _asInt(json['dates_count']),
       myPlaceVote: json['my_place_vote']?.toString(),
       myDateVote: _asDate(json['my_date_vote']),
-      chatUnreadCount: chatUnreadCount,
-      hasChatUnread:
-          (json['has_chat_unread'] as bool?) ?? chatUnreadCount > 0,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );

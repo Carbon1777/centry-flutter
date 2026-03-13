@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -12,12 +13,44 @@ class PlanChatSheet extends StatefulWidget {
   final Map<String, String> nicknamesByUserId;
   final double availableHeight;
 
+  /// Server-controlled presentation messages.
+  ///
+  /// If passed, the sheet does not build local preview messages and renders
+  /// exactly these items, preserving the approved visual layout.
+  final List<PlanChatPresentationMessage>? presentationItems;
+
+  /// Server-controlled unread count for the collapsed header.
+  /// In expanded mode the badge is always hidden.
+  final int? unreadCountOverride;
+
+  /// Server-controlled send callback. If absent, legacy local preview send is used.
+  final Future<void> Function(String text)? onSendMessage;
+
+  /// Notifies parent when sheet expands/collapses.
+  final ValueChanged<bool>? onExpandedChanged;
+
+  /// Disable the local unread divider in server-first mode.
+  final bool showUnreadDivider;
+
+  /// Disable fake preview generation when there are no messages.
+  final bool usePreviewWhenEmpty;
+
+  /// Disable composer while server send is in-flight.
+  final bool sending;
+
   const PlanChatSheet({
     super.key,
     required this.items,
     required this.currentUserId,
     required this.nicknamesByUserId,
     required this.availableHeight,
+    this.presentationItems,
+    this.unreadCountOverride,
+    this.onSendMessage,
+    this.onExpandedChanged,
+    this.showUnreadDivider = true,
+    this.usePreviewWhenEmpty = true,
+    this.sending = false,
   });
 
   @override
@@ -26,15 +59,108 @@ class PlanChatSheet extends StatefulWidget {
 
 class _PlanChatSheetState extends State<PlanChatSheet> {
   static const double _kCollapsedHeight = 76;
+  static const double _kHeaderHeight = 72;
+  static const Duration _kAnimationDuration = Duration(milliseconds: 240);
+  static const Duration _kUnreadDividerLifetime = Duration(seconds: 2);
+  static const double _kMinExpandedContentHeight = 120;
+
+  final TextEditingController _composerController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _unreadDividerKey = GlobalKey();
 
   late List<PlanChatPresentationMessage> _messages;
+  bool _expanded = false;
   int _unreadCount = 0;
   int? _unreadStartIndex;
+  double _dragOffsetY = 0;
+
+  bool _showTemporaryUnreadDivider = false;
+  int? _temporaryUnreadStartIndex;
+  Timer? _unreadDividerTimer;
+
+  final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+
+  bool get _isServerControlled =>
+      widget.presentationItems != null ||
+      widget.unreadCountOverride != null ||
+      widget.onSendMessage != null;
 
   @override
   void initState() {
     super.initState();
-    _messages = _buildInitialMessages();
+    _messages = _buildPresentationMessages();
+    _syncUnreadStateFromMode(initial: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant PlanChatSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final previousLastMessageId = oldWidget.presentationItems != null &&
+            oldWidget.presentationItems!.isNotEmpty
+        ? oldWidget.presentationItems!.last.id
+        : (_messages.isNotEmpty ? _messages.last.id : null);
+
+    final newMessages = _buildPresentationMessages();
+    final newLastMessageId = newMessages.isNotEmpty ? newMessages.last.id : null;
+    final messagesChanged = !_sameMessages(_messages, newMessages);
+
+    if (messagesChanged) {
+      _messages = newMessages;
+      _cleanupMessageKeys();
+    }
+
+    _syncUnreadStateFromMode(initial: false);
+
+    final shouldAutoScroll =
+        _expanded &&
+            messagesChanged &&
+            previousLastMessageId != newLastMessageId &&
+            !_showTemporaryUnreadDivider;
+
+    if (shouldAutoScroll) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_scrollToBottom());
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _unreadDividerTimer?.cancel();
+    _composerController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  bool _sameMessages(
+    List<PlanChatPresentationMessage> a,
+    List<PlanChatPresentationMessage> b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.id != right.id ||
+          left.text != right.text ||
+          left.createdAt != right.createdAt ||
+          left.isMine != right.isMine) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _syncUnreadStateFromMode({required bool initial}) {
+    if (_isServerControlled) {
+      _unreadCount = widget.unreadCountOverride ?? 0;
+      _unreadStartIndex = null;
+      return;
+    }
+
+    if (!initial) return;
+
     if (_messages.isNotEmpty) {
       _unreadCount =
           _messages.length >= 3 ? 3 : (_messages.length >= 2 ? 2 : 1);
@@ -43,13 +169,18 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     }
   }
 
-  List<PlanChatPresentationMessage> _buildInitialMessages() {
+  List<PlanChatPresentationMessage> _buildPresentationMessages() {
+    final controlled = widget.presentationItems;
+    if (controlled != null) {
+      return List<PlanChatPresentationMessage>.from(controlled);
+    }
+
     if (widget.items.isNotEmpty) {
       return widget.items.map((item) {
         final authorUserId = item.authorAppUserId.trim();
         final authorNickname = widget.nicknamesByUserId[authorUserId]?.trim();
         return PlanChatPresentationMessage(
-          id: '${authorUserId}_${item.createdAt.toIso8601String()}_${item.text.hashCode}',
+          id: item.id,
           authorUserId: authorUserId,
           authorNickname: (authorNickname == null || authorNickname.isEmpty)
               ? 'Участник'
@@ -59,6 +190,10 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
           isMine: authorUserId == widget.currentUserId.trim(),
         );
       }).toList();
+    }
+
+    if (!widget.usePreviewWhenEmpty) {
+      return const <PlanChatPresentationMessage>[];
     }
 
     final me = widget.currentUserId.trim();
@@ -128,121 +263,76 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     ];
   }
 
-  Future<void> _openFullscreen() async {
-    final result = await showGeneralDialog<_PlanChatSessionState>(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: 'plan_chat_fullscreen',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return _PlanChatFullscreenDialog(
-          initialState: _PlanChatSessionState(
-            messages: List<PlanChatPresentationMessage>.from(_messages),
-            unreadCount: _unreadCount,
-            unreadStartIndex: _unreadStartIndex,
-          ),
-          currentUserId: widget.currentUserId,
-          nicknamesByUserId: widget.nicknamesByUserId,
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: child,
-        );
-      },
-    );
+  void _cleanupMessageKeys() {
+    final activeIds = _messages.map((message) => message.id).toSet();
+    _messageKeys.removeWhere((key, _) => !activeIds.contains(key));
+  }
 
-    if (!mounted || result == null) return;
-    setState(() {
-      _messages = result.messages;
-      _unreadCount = result.unreadCount;
-      _unreadStartIndex = result.unreadStartIndex;
+  GlobalKey _keyForMessage(String messageId) {
+    return _messageKeys.putIfAbsent(messageId, GlobalKey.new);
+  }
+
+  int _currentUnreadCountForOpen() {
+    return _isServerControlled
+        ? (widget.unreadCountOverride ?? 0)
+        : _unreadCount;
+  }
+
+  void _prepareOpenAnchorState() {
+    _unreadDividerTimer?.cancel();
+    _showTemporaryUnreadDivider = false;
+    _temporaryUnreadStartIndex = null;
+
+    if (_messages.isEmpty) return;
+
+    final unreadAtOpen = _currentUnreadCountForOpen();
+    final shouldShowTemporaryDivider =
+        unreadAtOpen > 0 && (_isServerControlled || widget.showUnreadDivider);
+
+    if (!shouldShowTemporaryDivider) {
+      return;
+    }
+
+    _temporaryUnreadStartIndex = math.max(0, _messages.length - unreadAtOpen);
+    _showTemporaryUnreadDivider = true;
+
+    _unreadDividerTimer = Timer(_kUnreadDividerLifetime, () {
+      if (!mounted) return;
+      setState(() {
+        _showTemporaryUnreadDivider = false;
+        _temporaryUnreadStartIndex = null;
+      });
     });
   }
 
-  void _handleCollapsedVerticalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    if (velocity < -220) {
-      unawaited(_openFullscreen());
+  void _handleExpandedOpened() {
+    _prepareOpenAnchorState();
+    setState(() {});
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_positionChatOnOpen());
+    });
+  }
+
+  void _handleExpandedClosed() {
+    _unreadDividerTimer?.cancel();
+    if (_showTemporaryUnreadDivider || _temporaryUnreadStartIndex != null) {
+      setState(() {
+        _showTemporaryUnreadDivider = false;
+        _temporaryUnreadStartIndex = null;
+      });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragEnd: _handleCollapsedVerticalDragEnd,
-        child: _PlanChatShell(
-          height: _kCollapsedHeight,
-          unreadCount: _unreadCount,
-          onHeaderTap: _openFullscreen,
-          expandedContent: null,
-        ),
-      ),
-    );
-  }
-}
-
-class _PlanChatFullscreenDialog extends StatefulWidget {
-  final _PlanChatSessionState initialState;
-  final String currentUserId;
-  final Map<String, String> nicknamesByUserId;
-
-  const _PlanChatFullscreenDialog({
-    required this.initialState,
-    required this.currentUserId,
-    required this.nicknamesByUserId,
-  });
-
-  @override
-  State<_PlanChatFullscreenDialog> createState() =>
-      _PlanChatFullscreenDialogState();
-}
-
-class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
-  final TextEditingController _composerController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-
-  late List<PlanChatPresentationMessage> _messages;
-  late int _unreadCount;
-  int? _unreadStartIndex;
-  double _dragOffsetY = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _messages =
-        List<PlanChatPresentationMessage>.from(widget.initialState.messages);
-    _unreadCount = widget.initialState.unreadCount;
-    _unreadStartIndex = widget.initialState.unreadStartIndex;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_scrollToBottom());
-    });
-  }
-
-  @override
-  void dispose() {
-    _composerController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _close() {
-    Navigator.of(context).pop(
-      _PlanChatSessionState(
-        messages: List<PlanChatPresentationMessage>.from(_messages),
-        unreadCount: _unreadCount,
-        unreadStartIndex: _unreadStartIndex,
-      ),
-    );
+  void _toggleExpanded() {
+    final nextExpanded = !_expanded;
+    setState(() => _expanded = nextExpanded);
+    widget.onExpandedChanged?.call(nextExpanded);
+    if (!nextExpanded) {
+      _handleExpandedClosed();
+      return;
+    }
+    _handleExpandedOpened();
   }
 
   void _handleVerticalDragStart(DragStartDetails details) {
@@ -251,22 +341,102 @@ class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
     _dragOffsetY += details.delta.dy;
-    final canCollapseFromTop =
-        _scrollController.hasClients && _scrollController.offset <= 0.5;
-    if (canCollapseFromTop && _dragOffsetY >= 12) {
+
+    if (!_expanded && _dragOffsetY <= -10) {
+      setState(() => _expanded = true);
+      widget.onExpandedChanged?.call(true);
       _dragOffsetY = 0;
-      _close();
+      _handleExpandedOpened();
+      return;
+    }
+
+    final canCollapseFromTop = _expanded &&
+        _scrollController.hasClients &&
+        _scrollController.offset <= 0.5;
+    if (canCollapseFromTop && _dragOffsetY >= 12) {
+      setState(() => _expanded = false);
+      widget.onExpandedChanged?.call(false);
+      _dragOffsetY = 0;
+      _handleExpandedClosed();
     }
   }
 
   void _handleVerticalDragEnd(DragEndDetails details) {
     _dragOffsetY = 0;
+
     final velocity = details.primaryVelocity ?? 0;
-    final canCollapseFromTop =
-        _scrollController.hasClients && _scrollController.offset <= 0.5;
-    if (velocity > 220 && canCollapseFromTop) {
-      _close();
+    if (velocity < -220) {
+      if (!_expanded) {
+        setState(() => _expanded = true);
+        widget.onExpandedChanged?.call(true);
+        _handleExpandedOpened();
+      }
+      return;
     }
+    if (velocity > 220) {
+      final canCollapseFromTop = _expanded &&
+          _scrollController.hasClients &&
+          _scrollController.offset <= 0.5;
+      if (canCollapseFromTop) {
+        setState(() => _expanded = false);
+        widget.onExpandedChanged?.call(false);
+        _handleExpandedClosed();
+      }
+    }
+  }
+
+  Future<void> _positionChatOnOpen() async {
+    if (_messages.isEmpty) return;
+
+    final unreadIndex =
+        _showTemporaryUnreadDivider ? _temporaryUnreadStartIndex : null;
+
+    if (unreadIndex != null &&
+        unreadIndex >= 0 &&
+        unreadIndex < _messages.length) {
+      await _scrollToMessageIndex(unreadIndex);
+      return;
+    }
+
+    await _scrollToBottom();
+  }
+
+  Future<void> _scrollToMessageIndex(int index) async {
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    if (!mounted || !_scrollController.hasClients || _messages.isEmpty) return;
+
+    final clampedIndex = index.clamp(0, _messages.length - 1);
+    final position = _scrollController.position;
+    final denominator = math.max(1, _messages.length - 1);
+    final approximateOffset =
+        position.maxScrollExtent * (clampedIndex / denominator);
+
+    _scrollController.jumpTo(
+      approximateOffset.clamp(0.0, position.maxScrollExtent),
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    if (!mounted || !_scrollController.hasClients) return;
+
+    final BuildContext? targetContext =
+        _unreadDividerKey.currentContext ??
+        _keyForMessage(_messages[clampedIndex].id).currentContext;
+
+    if (targetContext != null) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        alignment: 0.5,
+      );
+      return;
+    }
+
+    await _scrollController.animateTo(
+      approximateOffset.clamp(0.0, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _scrollToBottom() async {
@@ -280,6 +450,7 @@ class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
   }
 
   void _markUnreadAsRead() {
+    if (_isServerControlled) return;
     if (_unreadCount == 0) return;
     setState(() {
       _unreadCount = 0;
@@ -317,78 +488,166 @@ class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
     await _scrollToBottom();
   }
 
+  Future<void> _handleSendPressed() async {
+    final text = _composerController.text.trim();
+    if (text.isEmpty || widget.sending) return;
+
+    final sendMessage = widget.onSendMessage;
+    if (sendMessage == null) {
+      await _sendPreviewMessage();
+      return;
+    }
+
+    _composerController.clear();
+    setState(() {});
+
+    try {
+      await sendMessage(text);
+      await _scrollToBottom();
+    } catch (_) {
+      if (!mounted) return;
+      _composerController.text = text;
+      _composerController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _composerController.text.length),
+      );
+      setState(() {});
+      return;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final keyboardInset = media.viewInsets.bottom;
-    final fullHeight =
-        media.size.height - media.padding.top - media.padding.bottom - 8;
+    final maxHeight = (widget.availableHeight
+            .clamp(_kCollapsedHeight, widget.availableHeight) as num)
+        .toDouble();
+    final targetHeight = _expanded ? maxHeight : _kCollapsedHeight;
+    final headerUnreadCount = _expanded
+        ? 0
+        : (_isServerControlled
+            ? (widget.unreadCountOverride ?? 0)
+            : _unreadCount);
 
-    return Material(
-      color: Colors.transparent,
+    return Align(
+      alignment: Alignment.bottomCenter,
       child: GestureDetector(
-        onTap: () {},
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.only(bottom: keyboardInset),
-          child: Align(
-            alignment: Alignment.bottomCenter,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onVerticalDragStart: _handleVerticalDragStart,
-              onVerticalDragUpdate: _handleVerticalDragUpdate,
-              onVerticalDragEnd: _handleVerticalDragEnd,
-              child: _PlanChatShell(
-                height: fullHeight,
-                unreadCount: _unreadCount,
-                onHeaderTap: _close,
-                expandedContent: Column(
-                  children: [
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragStart: _handleVerticalDragStart,
+        onVerticalDragUpdate: _handleVerticalDragUpdate,
+        onVerticalDragEnd: _handleVerticalDragEnd,
+        child: AnimatedContainer(
+          duration: _kAnimationDuration,
+          curve: Curves.easeOutCubic,
+          width: double.infinity,
+          height: targetHeight,
+          decoration: BoxDecoration(
+            color: const Color(0xB8181E27),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.white.withOpacity(0.055),
+                Colors.white.withOpacity(0.015),
+              ],
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Column(
+                children: [
+                  _PlanChatHeader(
+                    unreadCount: headerUnreadCount,
+                    onTap: _toggleExpanded,
+                  ),
+                  if (_expanded)
                     Expanded(
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (notification) {
-                          if (_unreadCount > 0 &&
-                              notification is ScrollUpdateNotification) {
-                            _markUnreadAsRead();
-                          }
-                          return false;
-                        },
-                        child: ListView.separated(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
-                          itemCount: _messages.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final showUnreadDivider =
-                                _unreadStartIndex != null &&
-                                    _unreadCount > 0 &&
-                                    index == _unreadStartIndex;
-                            final message = _messages[index];
+                      child: ClipRect(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            if (constraints.maxHeight <
+                                _kMinExpandedContentHeight) {
+                              return const SizedBox.expand();
+                            }
+
                             return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                if (showUnreadDivider)
-                                  const _UnreadMessagesDivider(),
-                                if (showUnreadDivider)
-                                  const SizedBox(height: 10),
-                                PlanChatMessageBubble(message: message),
+                                Expanded(
+                                  child: NotificationListener<ScrollNotification>(
+                                    onNotification: (notification) {
+                                      if (!_isServerControlled &&
+                                          _unreadCount > 0 &&
+                                          notification
+                                              is ScrollUpdateNotification) {
+                                        _markUnreadAsRead();
+                                      }
+                                      return false;
+                                    },
+                                    child: ListView.separated(
+                                      controller: _scrollController,
+                                      padding: const EdgeInsets.fromLTRB(
+                                        14,
+                                        8,
+                                        14,
+                                        14,
+                                      ),
+                                      itemCount: _messages.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(height: 10),
+                                      itemBuilder: (context, index) {
+                                        final showUnreadDivider =
+                                            (_showTemporaryUnreadDivider &&
+                                                    _temporaryUnreadStartIndex !=
+                                                        null &&
+                                                    index ==
+                                                        _temporaryUnreadStartIndex) ||
+                                                (!_isServerControlled &&
+                                                    widget.showUnreadDivider &&
+                                                    _unreadStartIndex != null &&
+                                                    _unreadCount > 0 &&
+                                                    index == _unreadStartIndex);
+
+                                        final message = _messages[index];
+                                        return KeyedSubtree(
+                                          key: _keyForMessage(message.id),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              if (showUnreadDivider)
+                                                KeyedSubtree(
+                                                  key: _unreadDividerKey,
+                                                  child:
+                                                      const _UnreadMessagesDivider(),
+                                                ),
+                                              if (showUnreadDivider)
+                                                const SizedBox(height: 10),
+                                              PlanChatMessageBubble(
+                                                message: message,
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                _PlanChatComposer(
+                                  controller: _composerController,
+                                  sending: widget.sending,
+                                  onChanged: () => setState(() {}),
+                                  onSend: _handleSendPressed,
+                                  onTapInside: _markUnreadAsRead,
+                                ),
                               ],
                             );
                           },
                         ),
                       ),
                     ),
-                    _PlanChatComposer(
-                      controller: _composerController,
-                      onChanged: () => setState(() {}),
-                      onSend: _sendPreviewMessage,
-                      onTapInside: _markUnreadAsRead,
-                      bottomPadding: media.padding.bottom,
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
@@ -398,85 +657,9 @@ class _PlanChatFullscreenDialogState extends State<_PlanChatFullscreenDialog> {
   }
 }
 
-class _PlanChatShell extends StatelessWidget {
-  final double height;
-  final int unreadCount;
-  final FutureOr<void> Function() onHeaderTap;
-  final Widget? expandedContent;
-
-  const _PlanChatShell({
-    required this.height,
-    required this.unreadCount,
-    required this.onHeaderTap,
-    required this.expandedContent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        color: const Color(0xB8181E27),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withOpacity(0.055),
-            Colors.white.withOpacity(0.015),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.28),
-            blurRadius: 28,
-            offset: const Offset(0, -8),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.14),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Column(
-            children: [
-              _PlanChatHeader(
-                unreadCount: unreadCount,
-                onTap: onHeaderTap,
-              ),
-              if (expandedContent != null) Expanded(child: expandedContent!),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PlanChatSessionState {
-  final List<PlanChatPresentationMessage> messages;
-  final int unreadCount;
-  final int? unreadStartIndex;
-
-  const _PlanChatSessionState({
-    required this.messages,
-    required this.unreadCount,
-    required this.unreadStartIndex,
-  });
-}
-
 class _PlanChatHeader extends StatelessWidget {
   final int unreadCount;
-  final FutureOr<void> Function() onTap;
+  final VoidCallback onTap;
 
   const _PlanChatHeader({
     required this.unreadCount,
@@ -488,9 +671,9 @@ class _PlanChatHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return InkWell(
-      onTap: () => onTap(),
+      onTap: onTap,
       child: SizedBox(
-        height: 72,
+        height: _PlanChatSheetState._kHeaderHeight,
         child: Column(
           children: [
             const SizedBox(height: 8),
@@ -611,28 +794,28 @@ class _UnreadMessagesDivider extends StatelessWidget {
 
 class _PlanChatComposer extends StatelessWidget {
   final TextEditingController controller;
+  final bool sending;
   final VoidCallback onChanged;
   final VoidCallback onSend;
   final VoidCallback onTapInside;
-  final double bottomPadding;
 
   const _PlanChatComposer({
     required this.controller,
+    required this.sending,
     required this.onChanged,
     required this.onSend,
     required this.onTapInside,
-    this.bottomPadding = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    final canSend = controller.text.trim().isNotEmpty;
+    final canSend = !sending && controller.text.trim().isNotEmpty;
     final theme = Theme.of(context);
 
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: EdgeInsets.fromLTRB(14, 10, 14, 14 + bottomPadding),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.08),
           border: Border(
@@ -645,6 +828,7 @@ class _PlanChatComposer extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
+                enabled: !sending,
                 minLines: 1,
                 maxLines: 5,
                 textInputAction: TextInputAction.newline,
@@ -653,7 +837,7 @@ class _PlanChatComposer extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Напишите сообщение…',
                   filled: true,
-                  fillColor: theme.colorScheme.surface.withOpacity(0.9),
+                  fillColor: theme.colorScheme.surface.withOpacity(0.90),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 14,
                     vertical: 12,

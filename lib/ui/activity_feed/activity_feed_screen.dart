@@ -355,12 +355,70 @@ class _FeedUserState {
 // Bottom navigation
 // =======================
 
-class _BottomNavigationBar extends StatelessWidget {
+class _BottomNavigationBar extends StatefulWidget {
   final String appUserId;
 
   const _BottomNavigationBar({
     required this.appUserId,
   });
+
+  @override
+  State<_BottomNavigationBar> createState() => _BottomNavigationBarState();
+}
+
+class _BottomNavigationBarState extends State<_BottomNavigationBar>
+    with WidgetsBindingObserver {
+  final PlansRepository _plansRepository =
+      PlansRepositoryImpl(Supabase.instance.client);
+
+  Timer? _refreshTimer;
+  bool _hasUnreadPlanChats = false;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadBadges();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      unawaited(_loadBadges());
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadBadges());
+    }
+  }
+
+  Future<void> _loadBadges() async {
+    if (!mounted || _loading) return;
+    _loading = true;
+    try {
+      final badges = await _plansRepository.getMyPlanChatBadges(
+        appUserId: widget.appUserId,
+        includeArchived: true,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _hasUnreadPlanChats =
+            badges.hasAnyUnread || badges.unreadPlansCount > 0;
+      });
+    } catch (e) {
+      debugPrint('[ActivityFeedScreen] getMyPlanChatBadges error: $e');
+    } finally {
+      _loading = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -398,11 +456,12 @@ class _BottomNavigationBar extends StatelessWidget {
                 _NavItem(
                   icon: Icons.event_note_outlined,
                   label: 'Мои планы',
+                  showDot: _hasUnreadPlanChats,
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => PlansScreen(
-                          appUserId: appUserId,
+                          appUserId: widget.appUserId,
                         ),
                       ),
                     );
@@ -415,9 +474,10 @@ class _BottomNavigationBar extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) {
-                          final repo = FriendsRepositoryImpl(Supabase.instance.client);
+                          final repo =
+                              FriendsRepositoryImpl(Supabase.instance.client);
                           return FriendsScreen(
-                            appUserId: appUserId,
+                            appUserId: widget.appUserId,
                             repository: repo,
                           );
                         },
@@ -438,11 +498,13 @@ class _NavItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool showDot;
 
   const _NavItem({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.showDot = false,
   });
 
   @override
@@ -455,14 +517,44 @@ class _NavItem extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon),
-            const SizedBox(height: 4),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, size: 27),
+                if (showDot)
+                  const Positioned(
+                    right: -2,
+                    top: -1,
+                    child: _UnreadDot(),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 5),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _UnreadDot extends StatelessWidget {
+  const _UnreadDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 9,
+      height: 9,
+      decoration: const BoxDecoration(
+        color: Color(0xFFEF4444),
+        shape: BoxShape.circle,
       ),
     );
   }
