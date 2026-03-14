@@ -41,6 +41,28 @@ abstract class PlansRepository {
     String? clientNonce,
   });
 
+  /// Редактировать сообщение в чате плана
+  Future<void> editPlanChatMessage({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+    required String text,
+  });
+
+  /// Удалить сообщение у всех (tombstone)
+  Future<void> deletePlanChatMessageForAll({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+  });
+
+  /// Удалить сообщение только у себя
+  Future<void> deletePlanChatMessageForMe({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+  });
+
   /// Отметить сообщения прочитанными до room_seq включительно
   Future<void> markPlanChatRead({
     required String appUserId,

@@ -308,6 +308,49 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
     }
   }
 
+  Future<void> _handleEditMessage(String messageId, String text) async {
+    try {
+      await widget.repository.editPlanChatMessage(
+        appUserId: widget.currentUserId,
+        planId: widget.planId,
+        messageId: messageId,
+        text: text,
+      );
+    } catch (e) {
+      debugPrint('[PlanChatBlock] editMessage error: $e');
+      rethrow;
+    }
+    unawaited(_queueRefresh());
+  }
+
+  Future<void> _handleDeleteForAll(String messageId) async {
+    try {
+      await widget.repository.deletePlanChatMessageForAll(
+        appUserId: widget.currentUserId,
+        planId: widget.planId,
+        messageId: messageId,
+      );
+    } catch (e) {
+      debugPrint('[PlanChatBlock] deleteForAll error: $e');
+      return;
+    }
+    unawaited(_queueRefresh());
+  }
+
+  Future<void> _handleDeleteForMe(String messageId) async {
+    try {
+      await widget.repository.deletePlanChatMessageForMe(
+        appUserId: widget.currentUserId,
+        planId: widget.planId,
+        messageId: messageId,
+      );
+    } catch (e) {
+      debugPrint('[PlanChatBlock] deleteForMe error: $e');
+      return;
+    }
+    unawaited(_queueRefresh());
+  }
+
   Future<void> _handleSendMessage(String text) async {
     if (_sending) return;
 
@@ -422,6 +465,9 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       presentationItems: presentationItems,
       unreadCountOverride: unreadCount,
       onSendMessage: _handleSendMessage,
+      onEditMessage: _handleEditMessage,
+      onDeleteMessageForMe: _handleDeleteForMe,
+      onDeleteMessageForAll: _handleDeleteForAll,
       onExpandedChanged: _handleExpandedChanged,
       showUnreadDivider: false,
       usePreviewWhenEmpty: false,

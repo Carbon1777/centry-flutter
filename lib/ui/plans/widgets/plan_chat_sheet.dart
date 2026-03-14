@@ -38,6 +38,15 @@ class PlanChatSheet extends StatefulWidget {
   /// Disable composer while server send is in-flight.
   final bool sending;
 
+  /// Callback для удаления сообщения только у себя.
+  final Future<void> Function(String messageId)? onDeleteMessageForMe;
+
+  /// Callback для редактирования сообщения.
+  final Future<void> Function(String messageId, String text)? onEditMessage;
+
+  /// Callback для удаления сообщения у всех (tombstone).
+  final Future<void> Function(String messageId)? onDeleteMessageForAll;
+
   const PlanChatSheet({
     super.key,
     required this.items,
@@ -51,6 +60,9 @@ class PlanChatSheet extends StatefulWidget {
     this.showUnreadDivider = true,
     this.usePreviewWhenEmpty = true,
     this.sending = false,
+    this.onDeleteMessageForMe,
+    this.onEditMessage,
+    this.onDeleteMessageForAll,
   });
 
   @override
@@ -88,6 +100,8 @@ class _PlanChatSheetState extends State<PlanChatSheet>
   double _lastKeyboardInsetBottom = 0;
 
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
+
+  PlanChatPresentationMessage? _editingMessage;
 
   bool get _isServerControlled =>
       widget.presentationItems != null ||
@@ -195,7 +209,10 @@ class _PlanChatSheetState extends State<PlanChatSheet>
       if (left.id != right.id ||
           left.text != right.text ||
           left.createdAt != right.createdAt ||
-          left.isMine != right.isMine) {
+          left.isMine != right.isMine ||
+          left.editedAt != right.editedAt ||
+          left.messageKind != right.messageKind ||
+          left.deletedAt != right.deletedAt) {
         return false;
       }
     }
@@ -647,9 +664,82 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     );
   }
 
+  void _enterEditMode(PlanChatPresentationMessage message) {
+    setState(() {
+      _editingMessage = message;
+      _composerController.text = message.text;
+      _composerController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _composerController.text.length),
+      );
+    });
+    _restoreComposerFocus();
+  }
+
+  void _exitEditMode() {
+    setState(() {
+      _editingMessage = null;
+      _composerController.clear();
+    });
+  }
+
+  Future<void> _showMessageActions(
+    PlanChatPresentationMessage message,
+  ) async {
+    final deleteForMe = widget.onDeleteMessageForMe;
+    if (deleteForMe == null) return;
+
+    final canEdit = widget.onEditMessage != null &&
+        message.isMine &&
+        !message.isTombstone;
+
+    final canDeleteForAll = widget.onDeleteMessageForAll != null &&
+        message.isMine &&
+        !message.isTombstone;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return _MessageActionSheet(
+          onEdit: canEdit
+              ? () {
+                  Navigator.of(context).pop();
+                  _enterEditMode(message);
+                }
+              : null,
+          onDeleteForMe: () async {
+            Navigator.of(context).pop();
+            await deleteForMe(message.id);
+          },
+          onDeleteForAll: canDeleteForAll
+              ? () async {
+                  Navigator.of(context).pop();
+                  await widget.onDeleteMessageForAll!(message.id);
+                }
+              : null,
+        );
+      },
+    );
+  }
+
   Future<void> _handleSendPressed() async {
     final text = _composerController.text.trim();
     if (text.isEmpty || widget.sending) return;
+
+    final editingMessage = _editingMessage;
+    if (editingMessage != null) {
+      final editMessage = widget.onEditMessage;
+      if (editMessage == null) return;
+
+      _exitEditMode();
+      try {
+        await editMessage(editingMessage.id, text);
+      } catch (_) {
+        if (!mounted) return;
+        _enterEditMode(editingMessage);
+      }
+      return;
+    }
 
     final sendMessage = widget.onSendMessage;
     if (sendMessage == null) {
@@ -792,6 +882,15 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                                 const SizedBox(height: 10),
                                               PlanChatMessageBubble(
                                                 message: message,
+                                                onLongPress: widget
+                                                            .onDeleteMessageForMe !=
+                                                        null
+                                                    ? () => unawaited(
+                                                          _showMessageActions(
+                                                            message,
+                                                          ),
+                                                        )
+                                                    : null,
                                               ),
                                             ],
                                           ),
@@ -801,6 +900,10 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                   ),
                                 ),
                               ),
+                              if (_editingMessage != null)
+                                _PlanChatEditBanner(
+                                  onCancel: _exitEditMode,
+                                ),
                               _PlanChatComposer(
                                 controller: _composerController,
                                 focusNode: _composerFocusNode,
@@ -1068,6 +1171,128 @@ class _PlanChatComposer extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MessageActionSheet extends StatelessWidget {
+  final VoidCallback? onEdit;
+  final Future<void> Function() onDeleteForMe;
+  final Future<void> Function()? onDeleteForAll;
+
+  const _MessageActionSheet({
+    required this.onDeleteForMe,
+    this.onEdit,
+    this.onDeleteForAll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C2333),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          if (onEdit != null)
+            ListTile(
+              leading: const Icon(
+                Icons.edit_outlined,
+                color: Colors.white70,
+              ),
+              title: Text(
+                'Редактировать',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: Colors.white,
+                ),
+              ),
+              onTap: onEdit,
+            ),
+          ListTile(
+            leading: const Icon(
+              Icons.visibility_off_outlined,
+              color: Colors.white70,
+            ),
+            title: Text(
+              'Удалить у себя',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: Colors.white,
+              ),
+            ),
+            onTap: onDeleteForMe,
+          ),
+          if (onDeleteForAll != null)
+            ListTile(
+              leading: const Icon(
+                Icons.delete_outline,
+                color: Color(0xFFFF445A),
+              ),
+              title: Text(
+                'Удалить у всех',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: const Color(0xFFFF445A),
+                ),
+              ),
+              onTap: onDeleteForAll,
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanChatEditBanner extends StatelessWidget {
+  final VoidCallback onCancel;
+
+  const _PlanChatEditBanner({required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.12),
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.edit_outlined,
+            size: 16,
+            color: Color(0xFF7FB0FF),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Редактирование сообщения',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF7FB0FF),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onCancel,
+            child: const Icon(
+              Icons.close,
+              size: 18,
+              color: Colors.white54,
+            ),
+          ),
+        ],
       ),
     );
   }

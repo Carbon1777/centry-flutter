@@ -31,10 +31,12 @@ class PlanChatPresentationMessage {
 
 class PlanChatMessageBubble extends StatelessWidget {
   final PlanChatPresentationMessage message;
+  final VoidCallback? onLongPress;
 
   const PlanChatMessageBubble({
     super.key,
     required this.message,
+    this.onLongPress,
   });
 
   String _formatMessageDateTime(DateTime value) {
@@ -62,9 +64,12 @@ class PlanChatMessageBubble extends StatelessWidget {
         ? const Color(0xFF7FB0FF)
         : const Color(0xFF8BE4D4);
 
-    return Align(
-      alignment: message.isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: Align(
+        alignment:
+            message.isMine ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.82,
         ),
@@ -156,6 +161,7 @@ class PlanChatMessageBubble extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }
