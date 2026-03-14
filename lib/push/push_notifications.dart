@@ -523,6 +523,9 @@ class PushNotifications {
         return;
       }
 
+      // Chat message: tap just brings app to foreground, no navigation needed.
+      if (kind == 'PLAN_CHAT_MESSAGE') return;
+
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
       if (inviteId.isEmpty || planId.isEmpty) return;
@@ -636,6 +639,11 @@ class PushNotifications {
     final ownerAppUserId =
         (m.data['owner_app_user_id'] ?? '').toString().trim();
     return planId.isNotEmpty && ownerAppUserId.isNotEmpty;
+  }
+
+  static bool isPlanChatMessage(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString().trim();
+    return t == 'PLAN_CHAT_MESSAGE';
   }
 
   static bool isFriendRequestReceived(RemoteMessage m) {
@@ -1492,6 +1500,85 @@ class PushNotifications {
     await _local.show(id, title, normalizedBody, details, payload: payload);
     if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
+
+  static Future<void> showPlanChatMessage(RemoteMessage m) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[PushNotifications] showPlanChatMessage id=${m.messageId} sentAt=${m.sentTime}',
+      );
+      debugPrint('[PushNotifications] showPlanChatMessage data=${m.data}');
+    }
+
+    if (!isPlanChatMessage(m)) return;
+
+    final planId = (m.data['plan_id'] ?? '').toString().trim();
+
+    const title = 'Сообщение';
+    const body =
+        'У вас в чате плана новое сообщение. Откройте приложение чтобы посмотреть.';
+
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
+    final msgId = (m.messageId ?? '').toString();
+    final idSeed = eventId.isNotEmpty
+        ? 'plan_chat_message:$planId:$eventId'
+        : (msgId.isNotEmpty
+            ? 'plan_chat_message:$planId:$msgId'
+            : 'plan_chat_message:$planId');
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      ...m.data,
+      'kind': 'PLAN_CHAT_MESSAGE',
+      'type': 'PLAN_CHAT_MESSAGE',
+      if (planId.isNotEmpty) 'plan_id': planId,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
+      'title': title,
+      'body': body,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+    if (kDebugMode) {
+      debugPrint('[PushNotifications] showPlanChatMessage local.show done id=$id');
+    }
+  }
 }
 
 @pragma('vm:entry-point')
@@ -1515,6 +1602,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showPlanScheduledNotification(message);
     await PushNotifications.showFriendRequest(message);
     await PushNotifications.showFriendRemoved(message);
+    await PushNotifications.showPlanChatMessage(message);
   } catch (e) {
     if (kDebugMode) debugPrint('[FCM-BG] error: $e');
   }

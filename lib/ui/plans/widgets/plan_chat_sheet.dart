@@ -103,6 +103,9 @@ class _PlanChatSheetState extends State<PlanChatSheet>
 
   PlanChatPresentationMessage? _editingMessage;
 
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
+
   bool get _isServerControlled =>
       widget.presentationItems != null ||
       widget.unreadCountOverride != null ||
@@ -470,10 +473,15 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     _openPositionRequestId++;
     _keyboardAdjustmentRequestId++;
     _unreadDividerTimer?.cancel();
-    if (_showTemporaryUnreadDivider || _temporaryUnreadStartIndex != null) {
+    final needsUpdate = _showTemporaryUnreadDivider ||
+        _temporaryUnreadStartIndex != null ||
+        _selectionMode;
+    if (needsUpdate) {
       setState(() {
         _showTemporaryUnreadDivider = false;
         _temporaryUnreadStartIndex = null;
+        _selectionMode = false;
+        _selectedIds.clear();
       });
     }
   }
@@ -682,6 +690,61 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     });
   }
 
+  void _enterSelectionMode(String firstMessageId) {
+    _dismissKeyboard();
+    setState(() {
+      _editingMessage = null;
+      _composerController.clear();
+      _selectionMode = true;
+      _selectedIds.clear();
+      _selectedIds.add(firstMessageId);
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleMessageSelection(String messageId) {
+    setState(() {
+      if (_selectedIds.contains(messageId)) {
+        _selectedIds.remove(messageId);
+      } else {
+        _selectedIds.add(messageId);
+      }
+    });
+  }
+
+  bool get _canDeleteSelectedForAll {
+    if (_selectedIds.isEmpty) return false;
+    return _messages
+        .where((m) => _selectedIds.contains(m.id))
+        .every((m) => m.isMine && !m.isTombstone);
+  }
+
+  Future<void> _handleBulkDeleteForMe() async {
+    final ids = List<String>.from(_selectedIds);
+    _exitSelectionMode();
+    final deleteForMe = widget.onDeleteMessageForMe;
+    if (deleteForMe == null) return;
+    for (final id in ids) {
+      await deleteForMe(id);
+    }
+  }
+
+  Future<void> _handleBulkDeleteForAll() async {
+    final ids = List<String>.from(_selectedIds);
+    _exitSelectionMode();
+    final deleteForAll = widget.onDeleteMessageForAll;
+    if (deleteForAll == null) return;
+    for (final id in ids) {
+      await deleteForAll(id);
+    }
+  }
+
   Future<void> _showMessageActions(
     PlanChatPresentationMessage message,
   ) async {
@@ -717,6 +780,12 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                   await widget.onDeleteMessageForAll!(message.id);
                 }
               : null,
+          onSelectMultiple: message.isTombstone
+              ? null
+              : () {
+                  Navigator.of(context).pop();
+                  _enterSelectionMode(message.id);
+                },
         );
       },
     );
@@ -779,7 +848,11 @@ class _PlanChatSheetState extends State<PlanChatSheet>
             ? (widget.unreadCountOverride ?? 0)
             : _unreadCount);
 
-    return Align(
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: Align(
       alignment: Alignment.bottomCenter,
       child: AnimatedContainer(
         duration: _kAnimationDuration,
@@ -880,18 +953,93 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                                 ),
                                               if (showUnreadDivider)
                                                 const SizedBox(height: 10),
-                                              PlanChatMessageBubble(
-                                                message: message,
-                                                onLongPress: widget
-                                                            .onDeleteMessageForMe !=
-                                                        null
-                                                    ? () => unawaited(
-                                                          _showMessageActions(
-                                                            message,
+                                              if (_selectionMode &&
+                                                  !message.isTombstone)
+                                                GestureDetector(
+                                                  behavior: HitTestBehavior
+                                                      .opaque,
+                                                  onTap: () =>
+                                                      _toggleMessageSelection(
+                                                    message.id,
+                                                  ),
+                                                  child: Row(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      SizedBox(
+                                                        width: 32,
+                                                        child: AnimatedScale(
+                                                          scale: _selectedIds
+                                                                  .contains(
+                                                                    message.id,
+                                                                  )
+                                                              ? 1.0
+                                                              : 0.85,
+                                                          duration: const Duration(
+                                                            milliseconds: 150,
                                                           ),
-                                                        )
-                                                    : null,
-                                              ),
+                                                          child: Checkbox(
+                                                            value: _selectedIds
+                                                                .contains(
+                                                              message.id,
+                                                            ),
+                                                            onChanged: (_) =>
+                                                                _toggleMessageSelection(
+                                                              message.id,
+                                                            ),
+                                                            shape:
+                                                                RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                6,
+                                                              ),
+                                                            ),
+                                                            side: BorderSide(
+                                                              color: Colors
+                                                                  .white
+                                                                  .withOpacity(
+                                                                0.40,
+                                                              ),
+                                                            ),
+                                                            activeColor:
+                                                                const Color(
+                                                              0xFF3B82F6,
+                                                            ),
+                                                            checkColor:
+                                                                Colors.white,
+                                                            materialTapTargetSize:
+                                                                MaterialTapTargetSize
+                                                                    .shrinkWrap,
+                                                            visualDensity:
+                                                                VisualDensity
+                                                                    .compact,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        child:
+                                                            PlanChatMessageBubble(
+                                                          message: message,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                )
+                                              else
+                                                PlanChatMessageBubble(
+                                                  message: message,
+                                                  onLongPress: widget
+                                                              .onDeleteMessageForMe !=
+                                                          null
+                                                      ? () => unawaited(
+                                                            _showMessageActions(
+                                                              message,
+                                                            ),
+                                                          )
+                                                      : null,
+                                                ),
                                             ],
                                           ),
                                         );
@@ -900,18 +1048,36 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                   ),
                                 ),
                               ),
-                              if (_editingMessage != null)
-                                _PlanChatEditBanner(
-                                  onCancel: _exitEditMode,
+                              if (_selectionMode)
+                                _SelectionActionBar(
+                                  selectedCount: _selectedIds.length,
+                                  canDeleteForAll: _canDeleteSelectedForAll,
+                                  onCancel: _exitSelectionMode,
+                                  onDeleteForMe: _selectedIds.isEmpty
+                                      ? null
+                                      : () => unawaited(
+                                            _handleBulkDeleteForMe(),
+                                          ),
+                                  onDeleteForAll: _canDeleteSelectedForAll
+                                      ? () => unawaited(
+                                            _handleBulkDeleteForAll(),
+                                          )
+                                      : null,
+                                )
+                              else ...[
+                                if (_editingMessage != null)
+                                  _PlanChatEditBanner(
+                                    onCancel: _exitEditMode,
+                                  ),
+                                _PlanChatComposer(
+                                  controller: _composerController,
+                                  focusNode: _composerFocusNode,
+                                  sending: widget.sending,
+                                  onChanged: () => setState(() {}),
+                                  onSend: _handleSendPressed,
+                                  onTapInside: _markUnreadAsRead,
                                 ),
-                              _PlanChatComposer(
-                                controller: _composerController,
-                                focusNode: _composerFocusNode,
-                                sending: widget.sending,
-                                onChanged: () => setState(() {}),
-                                onSend: _handleSendPressed,
-                                onTapInside: _markUnreadAsRead,
-                              ),
+                              ],
                             ],
                           );
                         },
@@ -922,6 +1088,7 @@ class _PlanChatSheetState extends State<PlanChatSheet>
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1180,10 +1347,119 @@ class _MessageActionSheet extends StatelessWidget {
   final VoidCallback? onEdit;
   final Future<void> Function() onDeleteForMe;
   final Future<void> Function()? onDeleteForAll;
+  final VoidCallback? onSelectMultiple;
 
   const _MessageActionSheet({
     required this.onDeleteForMe,
     this.onEdit,
+    this.onDeleteForAll,
+    this.onSelectMultiple,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasEdit = onEdit != null;
+    final hasDeleteForAll = onDeleteForAll != null;
+    final hasSelectMultiple = onSelectMultiple != null;
+
+    Divider divider() => Divider(
+          height: 1,
+          thickness: 1,
+          indent: 16,
+          endIndent: 16,
+          color: Colors.white.withOpacity(0.07),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF252D3D),
+            Color(0xFF181E2B),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.13)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.45),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.04),
+            blurRadius: 0,
+            spreadRadius: 0,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 6),
+            if (hasEdit) ...[
+              _ActionTile(
+                icon: Icons.edit_outlined,
+                iconColor: Colors.white.withOpacity(0.80),
+                label: 'Редактировать',
+                labelColor: Colors.white,
+                onTap: onEdit!,
+              ),
+              divider(),
+            ],
+            _ActionTile(
+              icon: Icons.visibility_off_outlined,
+              iconColor: Colors.white.withOpacity(0.60),
+              label: 'Удалить у себя',
+              labelColor: Colors.white.withOpacity(0.90),
+              onTap: onDeleteForMe,
+            ),
+            if (hasDeleteForAll) ...[
+              divider(),
+              _ActionTile(
+                icon: Icons.delete_outline,
+                iconColor: const Color(0xFFFF445A),
+                label: 'Удалить у всех',
+                labelColor: const Color(0xFFFF445A),
+                onTap: onDeleteForAll!,
+              ),
+            ],
+            if (hasSelectMultiple) ...[
+              divider(),
+              _ActionTile(
+                icon: Icons.checklist_rounded,
+                iconColor: Colors.white.withOpacity(0.60),
+                label: 'Выбрать несколько',
+                labelColor: Colors.white.withOpacity(0.90),
+                onTap: onSelectMultiple!,
+              ),
+            ],
+            const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionActionBar extends StatelessWidget {
+  final int selectedCount;
+  final bool canDeleteForAll;
+  final VoidCallback onCancel;
+  final VoidCallback? onDeleteForMe;
+  final VoidCallback? onDeleteForAll;
+
+  const _SelectionActionBar({
+    required this.selectedCount,
+    required this.canDeleteForAll,
+    required this.onCancel,
+    this.onDeleteForMe,
     this.onDeleteForAll,
   });
 
@@ -1192,59 +1468,99 @@ class _MessageActionSheet extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C2333),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.10)),
+        color: Colors.black.withOpacity(0.12),
+        border: Border(
+          top: BorderSide(color: Colors.white.withOpacity(0.08)),
+        ),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         children: [
-          const SizedBox(height: 8),
-          if (onEdit != null)
-            ListTile(
-              leading: const Icon(
-                Icons.edit_outlined,
-                color: Colors.white70,
-              ),
-              title: Text(
-                'Редактировать',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: Colors.white,
-                ),
-              ),
-              onTap: onEdit,
+          TextButton(
+            onPressed: onCancel,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white.withOpacity(0.70),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
-          ListTile(
-            leading: const Icon(
-              Icons.visibility_off_outlined,
-              color: Colors.white70,
-            ),
-            title: Text(
-              'Удалить у себя',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: Colors.white,
+            child: Text(
+              'Отмена',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
             ),
-            onTap: onDeleteForMe,
           ),
-          if (onDeleteForAll != null)
-            ListTile(
-              leading: const Icon(
-                Icons.delete_outline,
+          Expanded(
+            child: Text(
+              selectedCount == 0
+                  ? 'Выберите сообщения'
+                  : 'Выбрано: $selectedCount',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withOpacity(0.60),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (canDeleteForAll)
+            IconButton(
+              onPressed: onDeleteForAll,
+              tooltip: 'Удалить у всех',
+              icon: const Icon(
+                Icons.delete_forever_outlined,
                 color: Color(0xFFFF445A),
               ),
-              title: Text(
-                'Удалить у всех',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: const Color(0xFFFF445A),
-                ),
-              ),
-              onTap: onDeleteForAll,
             ),
-          const SizedBox(height: 8),
+          IconButton(
+            onPressed: onDeleteForMe,
+            tooltip: 'Удалить у себя',
+            icon: Icon(
+              Icons.visibility_off_outlined,
+              color: onDeleteForMe != null
+                  ? Colors.white.withOpacity(0.75)
+                  : Colors.white.withOpacity(0.25),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color labelColor;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.labelColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: labelColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
