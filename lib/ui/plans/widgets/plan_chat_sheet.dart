@@ -57,7 +57,8 @@ class PlanChatSheet extends StatefulWidget {
   State<PlanChatSheet> createState() => _PlanChatSheetState();
 }
 
-class _PlanChatSheetState extends State<PlanChatSheet> {
+class _PlanChatSheetState extends State<PlanChatSheet>
+    with WidgetsBindingObserver {
   static const double _kCollapsedHeight = 76;
   static const double _kHeaderHeight = 72;
   static const Duration _kAnimationDuration = Duration(milliseconds: 240);
@@ -82,6 +83,9 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 
   bool _pendingOwnMessageAutoScroll = false;
   int _scheduledAutoScrollId = 0;
+  int _openPositionRequestId = 0;
+  int _keyboardAdjustmentRequestId = 0;
+  double _lastKeyboardInsetBottom = 0;
 
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
 
@@ -93,8 +97,37 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _messages = _buildPresentationMessages();
     _syncUnreadStateFromMode(initial: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lastKeyboardInsetBottom = MediaQuery.viewInsetsOf(context).bottom;
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+
+    final nextKeyboardInsetBottom = _currentKeyboardInsetBottom();
+    final keyboardOpened =
+        nextKeyboardInsetBottom > _lastKeyboardInsetBottom + 1;
+    final shouldKeepBottomAnchored =
+        _expanded &&
+        (_composerFocusNode.hasFocus ||
+            _isNearBottom(
+              threshold: _kBottomAutoScrollThreshold + 56,
+            ));
+
+    _lastKeyboardInsetBottom = nextKeyboardInsetBottom;
+
+    if (keyboardOpened && shouldKeepBottomAnchored) {
+      _scheduleKeyboardInsetAdjustment();
+    }
   }
 
   @override
@@ -142,6 +175,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _unreadDividerTimer?.cancel();
     _composerController.dispose();
     _scrollController.dispose();
@@ -168,6 +202,11 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     return true;
   }
 
+  double _currentKeyboardInsetBottom() {
+    final view = View.of(context);
+    return MediaQueryData.fromView(view).viewInsets.bottom;
+  }
+
   bool _isNearBottom({double threshold = _kBottomAutoScrollThreshold}) {
     if (!_scrollController.hasClients) return true;
     final position = _scrollController.position;
@@ -188,6 +227,32 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
         ),
       );
     });
+  }
+
+  void _scheduleKeyboardInsetAdjustment() {
+    final requestId = ++_keyboardAdjustmentRequestId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_adjustForKeyboardInset(requestId: requestId));
+    });
+  }
+
+  Future<void> _adjustForKeyboardInset({required int requestId}) async {
+    for (var i = 0; i < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+      if (!mounted || !_expanded || requestId != _keyboardAdjustmentRequestId) {
+        return;
+      }
+      if (!_scrollController.hasClients) {
+        continue;
+      }
+
+      final position = _scrollController.position;
+      final targetOffset = position.maxScrollExtent;
+      if ((targetOffset - position.pixels).abs() < 1.0) {
+        continue;
+      }
+      _scrollController.jumpTo(targetOffset);
+    }
   }
 
   Future<void> _autoScrollAfterUpdate({
@@ -376,14 +441,17 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 
   void _handleExpandedOpened() {
     _prepareOpenAnchorState();
+    final requestId = ++_openPositionRequestId;
     setState(() {});
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_positionChatOnOpen());
+      unawaited(_positionChatOnOpen(requestId: requestId));
     });
   }
 
   void _handleExpandedClosed() {
+    _openPositionRequestId++;
+    _keyboardAdjustmentRequestId++;
     _unreadDividerTimer?.cancel();
     if (_showTemporaryUnreadDivider || _temporaryUnreadStartIndex != null) {
       setState(() {
@@ -456,7 +524,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     }
   }
 
-  Future<void> _positionChatOnOpen() async {
+  Future<void> _positionChatOnOpen({required int requestId}) async {
     if (_messages.isEmpty) return;
 
     final unreadIndex =
@@ -465,6 +533,10 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     if (unreadIndex != null &&
         unreadIndex >= 0 &&
         unreadIndex < _messages.length) {
+      await Future<void>.delayed(_kAnimationDuration);
+      if (!mounted || !_expanded || requestId != _openPositionRequestId) {
+        return;
+      }
       await _scrollToMessageIndex(unreadIndex);
       return;
     }
@@ -473,7 +545,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
   }
 
   Future<void> _scrollToMessageIndex(int index) async {
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    await Future<void>.delayed(const Duration(milliseconds: 16));
     if (!mounted || !_scrollController.hasClients || _messages.isEmpty) return;
 
     final clampedIndex = index.clamp(0, _messages.length - 1);
@@ -486,7 +558,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       approximateOffset.clamp(0.0, position.maxScrollExtent),
     );
 
-    await Future<void>.delayed(const Duration(milliseconds: 40));
+    await Future<void>.delayed(const Duration(milliseconds: 16));
     if (!mounted || !_scrollController.hasClients) return;
 
     final BuildContext? targetContext =
