@@ -401,10 +401,14 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       text: message.text,
       createdAt: message.createdAt,
       isMine: message.isMine,
+      editedAt: message.editedAt,
+      messageKind: message.messageKind,
+      deletedAt: message.deletedAt,
     );
   }
 
   @override
+  
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
     final presentationItems = _buildPresentationMessages();
