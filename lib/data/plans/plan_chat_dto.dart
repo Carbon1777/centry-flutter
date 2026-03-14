@@ -7,6 +7,9 @@ class PlanChatSnapshotMessageDto {
   final String text;
   final DateTime createdAt;
   final bool isMine;
+  final DateTime? editedAt;
+  final String? messageKind;
+  final DateTime? deletedAt;
 
   PlanChatSnapshotMessageDto({
     required this.id,
@@ -17,6 +20,9 @@ class PlanChatSnapshotMessageDto {
     required this.text,
     required this.createdAt,
     required this.isMine,
+    this.editedAt,
+    this.messageKind,
+    this.deletedAt,
   });
 
   static int _asInt(dynamic value, {int fallback = 0}) {
@@ -24,6 +30,13 @@ class PlanChatSnapshotMessageDto {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value.toString()) ?? fallback;
+  }
+
+  static DateTime? _asDateTime(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    if (s.isEmpty) return null;
+    return DateTime.tryParse(s);
   }
 
   factory PlanChatSnapshotMessageDto.fromJson(Map<String, dynamic> json) {
@@ -36,6 +49,9 @@ class PlanChatSnapshotMessageDto {
       text: (json['text'] ?? '').toString(),
       createdAt: DateTime.parse((json['created_at'] ?? '').toString()),
       isMine: (json['is_mine'] as bool?) ?? false,
+      editedAt: _asDateTime(json['edited_at']),
+      messageKind: json['message_kind']?.toString(),
+      deletedAt: _asDateTime(json['deleted_at']),
     );
   }
 }
