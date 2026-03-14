@@ -499,6 +499,7 @@ serve(async () => {
         plan_deleted: planDeleted,
         friend_event: friendEvent,
         voting_or_event_reminder: votingOrEventReminder,
+        plan_chat_message: planChatMessage,
         include_notification: shouldIncludeNotification,
       },
       attempts: debugAttempts,
