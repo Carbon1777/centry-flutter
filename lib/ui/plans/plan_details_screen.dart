@@ -1260,6 +1260,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     final hasPrimaryAction = canDeletePlan || canLeavePlan;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('Детали плана'),
         actions: [

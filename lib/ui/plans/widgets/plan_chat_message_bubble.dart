@@ -86,10 +86,13 @@ class PlanChatMessageBubble extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  PlanChatAvatar(
-                    userId: message.authorUserId,
-                    nickname: message.authorNickname,
-                    size: 34,
+                  Opacity(
+                    opacity: isTombstone ? 0.35 : 1.0,
+                    child: PlanChatAvatar(
+                      userId: message.authorUserId,
+                      nickname: message.authorNickname,
+                      size: 34,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(

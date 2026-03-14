@@ -186,6 +186,10 @@ function isPlanDeleted(payload: Record<string, unknown>): boolean {
 
 // NEW: strict data-only types for voting / owner-priority / event reminder.
 // Important: this is intentionally isolated and does NOT change any existing working flows.
+function isPlanChatMessage(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PLAN_CHAT_MESSAGE";
+}
+
 function isPlanVotingOrEventReminder(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
   return t === "PLAN_VOTING_REMINDER_DATE"
@@ -305,6 +309,7 @@ serve(async () => {
 
     const friendEvent = isFriendEvent(payload);
     const votingOrEventReminder = isPlanVotingOrEventReminder(payload);
+    const planChatMessage = isPlanChatMessage(payload);
 
     // ✅ Canon (server-first UX):
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
@@ -313,6 +318,7 @@ serve(async () => {
     // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY.
     // - PLAN_VOTING_REMINDER_* / PLAN_OWNER_PRIORITY_* / PLAN_EVENT_REMINDER_24H: STRICT DATA-ONLY.
     // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
+    // - PLAN_CHAT_MESSAGE: STRICT DATA-ONLY (app shows local notification; tap just opens app).
     // - Other notification types may include OS notification.
     const shouldIncludeNotification =
       !(internalInvite
@@ -321,7 +327,8 @@ serve(async () => {
         || memberJoinedByInvite
         || planDeleted
         || friendEvent
-        || votingOrEventReminder);
+        || votingOrEventReminder
+        || planChatMessage);
 
     let anyOk = false;
     let lastErr = "";
