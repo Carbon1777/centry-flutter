@@ -9,6 +9,12 @@ class PlanChatPresentationMessage {
   final String text;
   final DateTime createdAt;
   final bool isMine;
+  final DateTime? editedAt;
+  final String? messageKind;
+  final DateTime? deletedAt;
+
+  bool get isTombstone =>
+      messageKind == 'tombstone' || deletedAt != null;
 
   const PlanChatPresentationMessage({
     required this.id,
@@ -17,6 +23,9 @@ class PlanChatPresentationMessage {
     required this.text,
     required this.createdAt,
     required this.isMine,
+    this.editedAt,
+    this.messageKind,
+    this.deletedAt,
   });
 }
 
@@ -36,12 +45,19 @@ class PlanChatMessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bubbleColor = message.isMine
-        ? const Color(0xFF10233F)
-        : theme.colorScheme.surface.withOpacity(0.94);
-    final borderColor = message.isMine
-        ? const Color(0xFF2A62C7).withOpacity(0.50)
-        : Colors.white.withOpacity(0.14);
+    final isTombstone = message.isTombstone;
+    final isEdited = !isTombstone && message.editedAt != null;
+
+    final bubbleColor = isTombstone
+        ? theme.colorScheme.surface.withOpacity(0.40)
+        : (message.isMine
+            ? const Color(0xFF10233F)
+            : theme.colorScheme.surface.withOpacity(0.94));
+    final borderColor = isTombstone
+        ? Colors.white.withOpacity(0.08)
+        : (message.isMine
+            ? const Color(0xFF2A62C7).withOpacity(0.50)
+            : Colors.white.withOpacity(0.14));
     final nicknameColor = message.isMine
         ? const Color(0xFF7FB0FF)
         : const Color(0xFF8BE4D4);
@@ -81,7 +97,9 @@ class PlanChatMessageBubble extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: nicknameColor,
+                            color: isTombstone
+                                ? Colors.white.withOpacity(0.35)
+                                : nicknameColor,
                             height: 1.0,
                           ),
                         ),
@@ -91,7 +109,9 @@ class PlanChatMessageBubble extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(0.68),
+                            color: Colors.white.withOpacity(
+                              isTombstone ? 0.35 : 0.68,
+                            ),
                             fontWeight: FontWeight.w500,
                             height: 1.0,
                           ),
@@ -102,13 +122,37 @@ class PlanChatMessageBubble extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              Text(
-                message.text,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  height: 1.35,
-                  fontSize: 15.5,
+              if (isTombstone)
+                Text(
+                  'Сообщение удалено',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    height: 1.35,
+                    fontSize: 15.5,
+                    color: Colors.white.withOpacity(0.38),
+                    fontStyle: FontStyle.italic,
+                  ),
+                )
+              else ...[
+                Text(
+                  message.text,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    height: 1.35,
+                    fontSize: 15.5,
+                  ),
                 ),
-              ),
+                if (isEdited)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Изменено',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.45),
+                        fontWeight: FontWeight.w500,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
