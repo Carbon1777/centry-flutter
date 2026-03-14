@@ -63,9 +63,11 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
   static const Duration _kAnimationDuration = Duration(milliseconds: 240);
   static const Duration _kUnreadDividerLifetime = Duration(seconds: 2);
   static const double _kMinExpandedContentHeight = 120;
+  static const double _kBottomAutoScrollThreshold = 72;
 
   final TextEditingController _composerController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _composerFocusNode = FocusNode();
   final GlobalKey _unreadDividerKey = GlobalKey();
 
   late List<PlanChatPresentationMessage> _messages;
@@ -77,6 +79,9 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
   bool _showTemporaryUnreadDivider = false;
   int? _temporaryUnreadStartIndex;
   Timer? _unreadDividerTimer;
+
+  bool _pendingOwnMessageAutoScroll = false;
+  int _scheduledAutoScrollId = 0;
 
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
 
@@ -100,6 +105,10 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
             oldWidget.presentationItems!.isNotEmpty
         ? oldWidget.presentationItems!.last.id
         : (_messages.isNotEmpty ? _messages.last.id : null);
+    final previousMaxScrollExtent = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+    final wasNearBottom = _expanded && _isNearBottom();
 
     final newMessages = _buildPresentationMessages();
     final newLastMessageId = newMessages.isNotEmpty ? newMessages.last.id : null;
@@ -116,12 +125,18 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
         _expanded &&
             messagesChanged &&
             previousLastMessageId != newLastMessageId &&
-            !_showTemporaryUnreadDivider;
+            !_showTemporaryUnreadDivider &&
+            (wasNearBottom || _pendingOwnMessageAutoScroll);
 
     if (shouldAutoScroll) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_scrollToBottom());
-      });
+      final forceToBottom = _pendingOwnMessageAutoScroll;
+      _pendingOwnMessageAutoScroll = false;
+      _scheduleAutoScrollAfterUpdate(
+        previousMaxScrollExtent: previousMaxScrollExtent,
+        forceToBottom: forceToBottom,
+      );
+    } else if (messagesChanged && _pendingOwnMessageAutoScroll) {
+      _pendingOwnMessageAutoScroll = false;
     }
   }
 
@@ -130,6 +145,7 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     _unreadDividerTimer?.cancel();
     _composerController.dispose();
     _scrollController.dispose();
+    _composerFocusNode.dispose();
     super.dispose();
   }
 
@@ -150,6 +166,59 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       }
     }
     return true;
+  }
+
+  bool _isNearBottom({double threshold = _kBottomAutoScrollThreshold}) {
+    if (!_scrollController.hasClients) return true;
+    final position = _scrollController.position;
+    return position.maxScrollExtent - position.pixels <= threshold;
+  }
+
+  void _scheduleAutoScrollAfterUpdate({
+    required double previousMaxScrollExtent,
+    required bool forceToBottom,
+  }) {
+    final requestId = ++_scheduledAutoScrollId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(
+        _autoScrollAfterUpdate(
+          requestId: requestId,
+          previousMaxScrollExtent: previousMaxScrollExtent,
+          forceToBottom: forceToBottom,
+        ),
+      );
+    });
+  }
+
+  Future<void> _autoScrollAfterUpdate({
+    required int requestId,
+    required double previousMaxScrollExtent,
+    required bool forceToBottom,
+  }) async {
+    if (!mounted || !_scrollController.hasClients) return;
+    if (requestId != _scheduledAutoScrollId) return;
+
+    final position = _scrollController.position;
+    final previousPixels = position.pixels;
+    final newMaxScrollExtent = position.maxScrollExtent;
+    final delta = math.max(0.0, newMaxScrollExtent - previousMaxScrollExtent);
+
+    final targetOffset = forceToBottom
+        ? newMaxScrollExtent
+        : (previousPixels + delta).clamp(0.0, newMaxScrollExtent);
+
+    if ((targetOffset - previousPixels).abs() < 1.0) return;
+
+    if (forceToBottom) {
+      _scrollController.jumpTo(targetOffset);
+      return;
+    }
+
+    await _scrollController.animateTo(
+      targetOffset,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _syncUnreadStateFromMode({required bool initial}) {
@@ -324,64 +393,66 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     }
   }
 
-  void _toggleExpanded() {
-    final nextExpanded = !_expanded;
-    setState(() => _expanded = nextExpanded);
-    widget.onExpandedChanged?.call(nextExpanded);
-    if (!nextExpanded) {
-      _handleExpandedClosed();
-      return;
-    }
-    _handleExpandedOpened();
+  void _dismissKeyboard() {
+    if (!_composerFocusNode.hasFocus) return;
+    _composerFocusNode.unfocus();
+    FocusScope.of(context).unfocus();
   }
 
-  void _handleVerticalDragStart(DragStartDetails details) {
-    _dragOffsetY = 0;
-  }
+  void _setExpandedState(
+    bool value, {
+    bool dismissKeyboardOnClose = true,
+  }) {
+    if (_expanded == value) return;
 
-  void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    _dragOffsetY += details.delta.dy;
+    setState(() => _expanded = value);
+    widget.onExpandedChanged?.call(value);
 
-    if (!_expanded && _dragOffsetY <= -10) {
-      setState(() => _expanded = true);
-      widget.onExpandedChanged?.call(true);
-      _dragOffsetY = 0;
+    if (value) {
       _handleExpandedOpened();
       return;
     }
 
-    final canCollapseFromTop = _expanded &&
-        _scrollController.hasClients &&
-        _scrollController.offset <= 0.5;
-    if (canCollapseFromTop && _dragOffsetY >= 12) {
-      setState(() => _expanded = false);
-      widget.onExpandedChanged?.call(false);
+    if (dismissKeyboardOnClose) {
+      _dismissKeyboard();
+    }
+    _handleExpandedClosed();
+  }
+
+  void _toggleExpanded() {
+    _setExpandedState(!_expanded);
+  }
+
+  void _handleHeaderVerticalDragStart(DragStartDetails details) {
+    _dragOffsetY = 0;
+  }
+
+  void _handleHeaderVerticalDragUpdate(DragUpdateDetails details) {
+    _dragOffsetY += details.delta.dy;
+
+    if (!_expanded && _dragOffsetY <= -10) {
       _dragOffsetY = 0;
-      _handleExpandedClosed();
+      _setExpandedState(true);
+      return;
+    }
+
+    if (_expanded && _dragOffsetY >= 12) {
+      _dragOffsetY = 0;
+      _setExpandedState(false, dismissKeyboardOnClose: false);
     }
   }
 
-  void _handleVerticalDragEnd(DragEndDetails details) {
+  void _handleHeaderVerticalDragEnd(DragEndDetails details) {
     _dragOffsetY = 0;
 
     final velocity = details.primaryVelocity ?? 0;
-    if (velocity < -220) {
-      if (!_expanded) {
-        setState(() => _expanded = true);
-        widget.onExpandedChanged?.call(true);
-        _handleExpandedOpened();
-      }
+    if (!_expanded && velocity < -220) {
+      _setExpandedState(true);
       return;
     }
-    if (velocity > 220) {
-      final canCollapseFromTop = _expanded &&
-          _scrollController.hasClients &&
-          _scrollController.offset <= 0.5;
-      if (canCollapseFromTop) {
-        setState(() => _expanded = false);
-        widget.onExpandedChanged?.call(false);
-        _handleExpandedClosed();
-      }
+
+    if (_expanded && velocity > 220) {
+      _setExpandedState(false, dismissKeyboardOnClose: false);
     }
   }
 
@@ -458,6 +529,15 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
     });
   }
 
+  void _restoreComposerFocus() {
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_composerFocusNode);
+    });
+  }
+
   Future<void> _sendPreviewMessage() async {
     final text = _composerController.text.trim();
     if (text.isEmpty) return;
@@ -467,6 +547,9 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
         (widget.nicknamesByUserId[currentUserId] ?? 'Вы').trim().isEmpty
             ? 'Вы'
             : (widget.nicknamesByUserId[currentUserId] ?? 'Вы').trim();
+    final previousMaxScrollExtent = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
 
     setState(() {
       _messages = List<PlanChatPresentationMessage>.from(_messages)
@@ -485,7 +568,11 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       _unreadStartIndex = null;
     });
 
-    await _scrollToBottom();
+    _restoreComposerFocus();
+    _scheduleAutoScrollAfterUpdate(
+      previousMaxScrollExtent: previousMaxScrollExtent,
+      forceToBottom: true,
+    );
   }
 
   Future<void> _handleSendPressed() async {
@@ -498,18 +585,21 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
       return;
     }
 
+    _pendingOwnMessageAutoScroll = true;
     _composerController.clear();
     setState(() {});
+    _restoreComposerFocus();
 
     try {
       await sendMessage(text);
-      await _scrollToBottom();
     } catch (_) {
       if (!mounted) return;
+      _pendingOwnMessageAutoScroll = false;
       _composerController.text = text;
       _composerController.selection = TextSelection.fromPosition(
         TextPosition(offset: _composerController.text.length),
       );
+      _restoreComposerFocus();
       setState(() {});
       return;
     }
@@ -529,52 +619,53 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 
     return Align(
       alignment: Alignment.bottomCenter,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragStart: _handleVerticalDragStart,
-        onVerticalDragUpdate: _handleVerticalDragUpdate,
-        onVerticalDragEnd: _handleVerticalDragEnd,
-        child: AnimatedContainer(
-          duration: _kAnimationDuration,
-          curve: Curves.easeOutCubic,
-          width: double.infinity,
-          height: targetHeight,
-          decoration: BoxDecoration(
-            color: const Color(0xB8181E27),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.white.withOpacity(0.055),
-                Colors.white.withOpacity(0.015),
-              ],
-            ),
+      child: AnimatedContainer(
+        duration: _kAnimationDuration,
+        curve: Curves.easeOutCubic,
+        width: double.infinity,
+        height: targetHeight,
+        decoration: BoxDecoration(
+          color: const Color(0xB8181E27),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withOpacity(0.055),
+              Colors.white.withOpacity(0.015),
+            ],
           ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Column(
-                children: [
-                  _PlanChatHeader(
-                    unreadCount: headerUnreadCount,
-                    onTap: _toggleExpanded,
-                  ),
-                  if (_expanded)
-                    Expanded(
-                      child: ClipRect(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            if (constraints.maxHeight <
-                                _kMinExpandedContentHeight) {
-                              return const SizedBox.expand();
-                            }
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Column(
+              children: [
+                _PlanChatHeader(
+                  unreadCount: headerUnreadCount,
+                  onTap: _toggleExpanded,
+                  onVerticalDragStart: _handleHeaderVerticalDragStart,
+                  onVerticalDragUpdate: _handleHeaderVerticalDragUpdate,
+                  onVerticalDragEnd: _handleHeaderVerticalDragEnd,
+                ),
+                if (_expanded)
+                  Expanded(
+                    child: ClipRect(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (constraints.maxHeight <
+                              _kMinExpandedContentHeight) {
+                            return const SizedBox.expand();
+                          }
 
-                            return Column(
-                              children: [
-                                Expanded(
+                          return Column(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.translucent,
+                                  onTap: _dismissKeyboard,
                                   child: NotificationListener<ScrollNotification>(
                                     onNotification: (notification) {
                                       if (!_isServerControlled &&
@@ -586,6 +677,9 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
                                       return false;
                                     },
                                     child: ListView.separated(
+                                      keyboardDismissBehavior:
+                                          ScrollViewKeyboardDismissBehavior
+                                              .onDrag,
                                       controller: _scrollController,
                                       padding: const EdgeInsets.fromLTRB(
                                         14,
@@ -634,21 +728,22 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
                                     ),
                                   ),
                                 ),
-                                _PlanChatComposer(
-                                  controller: _composerController,
-                                  sending: widget.sending,
-                                  onChanged: () => setState(() {}),
-                                  onSend: _handleSendPressed,
-                                  onTapInside: _markUnreadAsRead,
-                                ),
-                              ],
-                            );
-                          },
-                        ),
+                              ),
+                              _PlanChatComposer(
+                                controller: _composerController,
+                                focusNode: _composerFocusNode,
+                                sending: widget.sending,
+                                onChanged: () => setState(() {}),
+                                onSend: _handleSendPressed,
+                                onTapInside: _markUnreadAsRead,
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -660,88 +755,104 @@ class _PlanChatSheetState extends State<PlanChatSheet> {
 class _PlanChatHeader extends StatelessWidget {
   final int unreadCount;
   final VoidCallback onTap;
+  final GestureDragStartCallback? onVerticalDragStart;
+  final GestureDragUpdateCallback? onVerticalDragUpdate;
+  final GestureDragEndCallback? onVerticalDragEnd;
 
   const _PlanChatHeader({
     required this.unreadCount,
     required this.onTap,
+    this.onVerticalDragStart,
+    this.onVerticalDragUpdate,
+    this.onVerticalDragEnd,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: _PlanChatSheetState._kHeaderHeight,
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Center(
-              child: Container(
-                width: 72,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.40),
-                  borderRadius: BorderRadius.circular(20),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: onVerticalDragStart,
+      onVerticalDragUpdate: onVerticalDragUpdate,
+      onVerticalDragEnd: onVerticalDragEnd,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        customBorder: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SizedBox(
+          height: _PlanChatSheetState._kHeaderHeight,
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.40),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 40,
-              child: Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Text(
-                      'Чат',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 28,
-                        letterSpacing: 0.1,
-                        color: Colors.white.withOpacity(0.96),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 40,
+                child: Center(
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Text(
+                        'Чат',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 28,
+                          letterSpacing: 0.1,
+                          color: Colors.white.withOpacity(0.96),
+                        ),
                       ),
-                    ),
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: -24,
-                        top: -5,
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            minWidth: 24,
-                            minHeight: 24,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF445A),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: const Color(0xB8181E27),
-                              width: 1.5,
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: -24,
+                          top: -5,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              minWidth: 24,
+                              minHeight: 24,
                             ),
-                          ),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : unreadCount.toString(),
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12,
-                              height: 1.0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF445A),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: const Color(0xB8181E27),
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Text(
+                              unreadCount > 99 ? '99+' : unreadCount.toString(),
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                height: 1.0,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -794,6 +905,7 @@ class _UnreadMessagesDivider extends StatelessWidget {
 
 class _PlanChatComposer extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool sending;
   final VoidCallback onChanged;
   final VoidCallback onSend;
@@ -801,6 +913,7 @@ class _PlanChatComposer extends StatelessWidget {
 
   const _PlanChatComposer({
     required this.controller,
+    required this.focusNode,
     required this.sending,
     required this.onChanged,
     required this.onSend,
@@ -822,59 +935,66 @@ class _PlanChatComposer extends StatelessWidget {
             top: BorderSide(color: Colors.white.withOpacity(0.08)),
           ),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: !sending,
-                minLines: 1,
-                maxLines: 5,
-                textInputAction: TextInputAction.newline,
-                onChanged: (_) => onChanged(),
-                onTap: onTapInside,
-                decoration: InputDecoration(
-                  hintText: 'Напишите сообщение…',
-                  filled: true,
-                  fillColor: theme.colorScheme.surface.withOpacity(0.90),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide:
-                        BorderSide(color: Colors.white.withOpacity(0.10)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide:
-                        BorderSide(color: Colors.white.withOpacity(0.10)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+        child: TextFieldTapRegion(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  enabled: true,
+                  minLines: 1,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.newline,
+                  onChanged: (_) => onChanged(),
+                  onTap: onTapInside,
+                  decoration: InputDecoration(
+                    hintText: 'Напишите сообщение…',
+                    filled: true,
+                    fillColor: theme.colorScheme.surface.withOpacity(0.90),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide:
+                          BorderSide(color: Colors.white.withOpacity(0.10)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide:
+                          BorderSide(color: Colors.white.withOpacity(0.10)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: const BorderSide(color: Color(0xFF3B82F6)),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: FilledButton(
-                onPressed: canSend ? onSend : null,
-                style: FilledButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+              const SizedBox(width: 10),
+              Focus(
+                canRequestFocus: false,
+                descendantsAreFocusable: false,
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: canSend ? onSend : null,
+                    style: FilledButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Icon(Icons.arrow_upward_rounded),
                   ),
                 ),
-                child: const Icon(Icons.arrow_upward_rounded),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -43,6 +43,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
   bool _refreshInFlight = false;
   bool _refreshQueued = false;
   bool _readInFlight = false;
+  bool _hasLoadedServerSnapshot = false;
   int _lastMarkedReadRoomSeq = 0;
 
   @override
@@ -64,7 +65,8 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       return;
     }
 
-    if (_didItemsChange(oldWidget.items, widget.items)) {
+    if (_didItemsChange(oldWidget.items, widget.items) &&
+        !_hasLoadedServerSnapshot) {
       _syncSnapshotFromWidgetItems();
       unawaited(_queueRefresh());
     }
@@ -95,6 +97,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       _refreshInFlight = false;
       _refreshQueued = false;
       _readInFlight = false;
+      _hasLoadedServerSnapshot = false;
       _lastMarkedReadRoomSeq = 0;
     });
 
@@ -239,6 +242,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       if (!mounted) return;
       setState(() {
         _snapshot = snapshot;
+        _hasLoadedServerSnapshot = true;
       });
 
       unawaited(_markReadIfNeeded());
