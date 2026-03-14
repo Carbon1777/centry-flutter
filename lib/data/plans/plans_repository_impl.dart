@@ -128,6 +128,56 @@ class PlansRepositoryImpl implements PlansRepository {
   }
 
   @override
+  Future<void> editPlanChatMessage({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+    required String text,
+  }) async {
+    await _client.rpc(
+      'edit_plan_chat_message_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_message_id': messageId,
+        'p_text': text,
+      },
+    );
+  }
+
+  @override
+  Future<void> deletePlanChatMessageForAll({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+  }) async {
+    await _client.rpc(
+      'delete_plan_chat_message_for_all_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_message_id': messageId,
+      },
+    );
+  }
+
+  @override
+  Future<void> deletePlanChatMessageForMe({
+    required String appUserId,
+    required String planId,
+    required String messageId,
+  }) async {
+    await _client.rpc(
+      'delete_plan_chat_message_for_me_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_plan_id': planId,
+        'p_message_id': messageId,
+      },
+    );
+  }
+
+  @override
   Future<void> markPlanChatRead({
     required String appUserId,
     required String planId,
