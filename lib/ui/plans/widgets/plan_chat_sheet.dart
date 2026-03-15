@@ -215,7 +215,11 @@ class _PlanChatSheetState extends State<PlanChatSheet>
           left.isMine != right.isMine ||
           left.editedAt != right.editedAt ||
           left.messageKind != right.messageKind ||
-          left.deletedAt != right.deletedAt) {
+          left.deletedAt != right.deletedAt ||
+          left.nicknameHidden != right.nicknameHidden ||
+          left.avatarHidden != right.avatarHidden ||
+          left.avatarUrl != right.avatarUrl ||
+          left.authorNickname != right.authorNickname) {
         return false;
       }
     }

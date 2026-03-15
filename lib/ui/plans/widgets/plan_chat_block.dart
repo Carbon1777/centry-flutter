@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../data/plans/plan_chat_dto.dart';
 import '../../../data/plans/plan_details_dto.dart';
 import '../../../data/plans/plans_repository.dart';
+import '../../../features/profile/user_card_sheet.dart';
 import 'plan_chat_message_bubble.dart';
 import 'plan_chat_sheet.dart';
 
@@ -45,6 +46,9 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
   bool _readInFlight = false;
   bool _hasLoadedServerSnapshot = false;
   int _lastMarkedReadRoomSeq = 0;
+
+  Map<String, UserMiniProfile> _profiles = {};
+  bool _profilesLoadInFlight = false;
 
   @override
   void initState() {
@@ -99,6 +103,8 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       _readInFlight = false;
       _hasLoadedServerSnapshot = false;
       _lastMarkedReadRoomSeq = 0;
+      _profiles = {};
+      _profilesLoadInFlight = false;
     });
 
     await _bootstrap();
@@ -246,8 +252,37 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       });
 
       unawaited(_markReadIfNeeded());
+      unawaited(_loadProfiles(snapshot.messages));
     } catch (e) {
       debugPrint('[PlanChatBlock] loadSnapshot error: $e');
+    }
+  }
+
+  Future<void> _loadProfiles(List<PlanChatSnapshotMessageDto> messages) async {
+    if (_profilesLoadInFlight) return;
+
+    final ids = messages
+        .map((m) => m.authorAppUserId.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (ids.isEmpty) return;
+
+    _profilesLoadInFlight = true;
+    try {
+      final profiles = await loadUserMiniProfiles(
+        userIds: ids,
+        context: 'in_plans',
+      );
+      if (!mounted) return;
+      setState(() {
+        _profiles = profiles;
+      });
+    } catch (e) {
+      debugPrint('[PlanChatBlock] loadProfiles error: $e');
+    } finally {
+      _profilesLoadInFlight = false;
     }
   }
 
@@ -429,18 +464,29 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
     PlanChatSnapshotMessageDto message,
   ) {
     final authorUserId = message.authorAppUserId.trim();
-    final nicknameFromDetails = widget.nicknamesByUserId[authorUserId]?.trim();
-    final effectiveNickname =
-        (nicknameFromDetails == null || nicknameFromDetails.isEmpty)
-            ? (message.authorDisplayName.trim().isEmpty
-                ? 'Участник'
-                : message.authorDisplayName.trim())
-            : nicknameFromDetails;
+    final profile = _profiles[authorUserId];
+
+    // Всегда резолвим реальный никнейм — независимо от флага скрытия.
+    // Приоритет: профиль → nicknamesByUserId → authorDisplayName → 'Участник'
+    final profileNick = profile?.nickname?.trim() ?? '';
+    final fallbackNick = widget.nicknamesByUserId[authorUserId]?.trim() ?? '';
+    final displayName = message.authorDisplayName.trim();
+
+    final effectiveNickname = profileNick.isNotEmpty
+        ? profileNick
+        : fallbackNick.isNotEmpty
+            ? fallbackNick
+            : displayName.isNotEmpty
+                ? displayName
+                : 'Участник';
 
     return PlanChatPresentationMessage(
       id: message.id,
       authorUserId: authorUserId,
       authorNickname: effectiveNickname,
+      nicknameHidden: profile?.nicknameHidden ?? false,
+      avatarUrl: profile?.avatarUrl,
+      avatarHidden: profile?.avatarHidden ?? false,
       text: message.text,
       createdAt: message.createdAt,
       isMine: message.isMine,

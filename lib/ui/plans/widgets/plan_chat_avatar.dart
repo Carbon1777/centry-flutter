@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 class PlanChatAvatar extends StatelessWidget {
   final String userId;
   final String nickname;
+  final String? avatarUrl;
+  final bool avatarHidden;
   final double size;
 
   const PlanChatAvatar({
     super.key,
     required this.userId,
     required this.nickname,
+    this.avatarUrl,
+    this.avatarHidden = false,
     this.size = 38,
   });
 
@@ -41,13 +45,49 @@ class PlanChatAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(12);
+    final colors = Theme.of(context).colorScheme;
+
+    if (avatarHidden) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: colors.outlineVariant, width: 1.5),
+        ),
+        child: Icon(
+          Icons.visibility_off_outlined,
+          color: colors.outline,
+          size: size * 0.45,
+        ),
+      );
+    }
+
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: radius,
+        child: Image.network(
+          avatarUrl!,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initials(context, radius),
+        ),
+      );
+    }
+
+    return _initials(context, radius);
+  }
+
+  Widget _initials(BuildContext context, BorderRadius radius) {
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: _backgroundColor(),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
       ),
       child: Text(
         _initial,
