@@ -9,6 +9,7 @@ import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
 import '../../data/friends/friends_repository_impl.dart';
 import '../../data/plans/plan_details_dto.dart';
+import '../../features/profile/user_card_sheet.dart';
 import 'details/plan_add_member_flow.dart';
 
 class PlanMembersModal extends StatefulWidget {
@@ -52,6 +53,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
 
   late PlanMemberDto _owner;
   late List<PlanMemberDto> _members;
+  Map<String, UserMiniProfile> _profiles = {};
 
   bool _manualRefreshing = false;
   bool _autoRefreshing = false;
@@ -77,6 +79,17 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     _owner = widget.ownerMember;
     _members = List<PlanMemberDto>.from(widget.members);
     _startAutoRefresh();
+    unawaited(_loadProfiles());
+  }
+
+  Future<void> _loadProfiles() async {
+    final ids = [_owner.appUserId, ..._members.map((m) => m.appUserId)];
+    final profiles = await loadUserMiniProfiles(
+      userIds: ids,
+      context: 'in_plans',
+    );
+    if (!mounted) return;
+    setState(() => _profiles = profiles);
   }
 
   @override
@@ -199,6 +212,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       }
 
       _reconcileOptimisticPendingFromCurrentSnapshot();
+      unawaited(_loadProfiles());
     } catch (e) {
       if (!mounted) return;
       if (showError) {
@@ -411,6 +425,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: _MemberRow(
                   member: _owner,
+                  profile: _profiles[_owner.appUserId],
                   isReadOnly: widget.isReadOnly,
                   showAddFriend: _shouldShowAddFriend(_owner),
                   addFriendDisabled: _isAddFriendDisabled(_owner),
@@ -419,6 +434,13 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                       _removeMemberInFlight.contains(_owner.appUserId),
                   onRemoveMemberPressed: () =>
                       unawaited(_handleRemoveMemberPressed(_owner)),
+                  onOpenProfile: _owner.isMe == true ? () {} : () {
+                    unawaited(UserCardSheet.show(
+                      context,
+                      targetUserId: _owner.appUserId,
+                      cardContext: 'in_plans',
+                    ));
+                  },
                 ),
               ),
               const Divider(height: 1, thickness: 1),
@@ -432,6 +454,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                     final m = _members[index];
                     return _MemberRow(
                       member: m,
+                      profile: _profiles[m.appUserId],
                       isReadOnly: widget.isReadOnly,
                       showAddFriend: _shouldShowAddFriend(m),
                       addFriendDisabled: _isAddFriendDisabled(m),
@@ -440,6 +463,13 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                           _removeMemberInFlight.contains(m.appUserId),
                       onRemoveMemberPressed: () =>
                           unawaited(_handleRemoveMemberPressed(m)),
+                      onOpenProfile: m.isMe == true ? () {} : () {
+                        unawaited(UserCardSheet.show(
+                          context,
+                          targetUserId: m.appUserId,
+                          cardContext: 'in_plans',
+                        ));
+                      },
                     );
                   },
                 ),
@@ -504,6 +534,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
 
 class _MemberRow extends StatelessWidget {
   final PlanMemberDto member;
+  final UserMiniProfile? profile;
   final bool isReadOnly;
 
   final bool showAddFriend;
@@ -512,15 +543,18 @@ class _MemberRow extends StatelessWidget {
 
   final bool removeDisabled;
   final VoidCallback onRemoveMemberPressed;
+  final VoidCallback onOpenProfile;
 
   const _MemberRow({
     required this.member,
+    required this.profile,
     required this.isReadOnly,
     required this.showAddFriend,
     required this.addFriendDisabled,
     required this.onAddFriend,
     required this.removeDisabled,
     required this.onRemoveMemberPressed,
+    required this.onOpenProfile,
   });
 
   @override
@@ -549,23 +583,37 @@ class _MemberRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 50, // +10%
-            height: 50, // +10%
-            decoration: BoxDecoration(
-              color: Colors.grey.shade800,
+          GestureDetector(
+            onTap: member.isMe == true ? null : onOpenProfile,
+            child: UserAvatarWidget(
+              profile: profile,
+              size: 50,
               borderRadius: BorderRadius.circular(9),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              member.nickname,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: nicknameWeight,
-                fontSize: 20, // +10%
-              ),
+            child: GestureDetector(
+              onTap: member.isMe == true ? null : onOpenProfile,
+              child: Builder(builder: (context) {
+                final hidden = profile?.nicknameHidden == true;
+                final displayNick = hidden
+                    ? 'Скрыто'
+                    : (profile?.nickname ?? member.nickname);
+                return Text(
+                  displayNick,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: nicknameWeight,
+                    fontSize: 20,
+                    color: hidden
+                        ? Theme.of(context).colorScheme.outline
+                        : null,
+                    fontStyle:
+                        hidden ? FontStyle.italic : FontStyle.normal,
+                  ),
+                );
+              }),
             ),
           ),
           if (showAddFriendButton)
