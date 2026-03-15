@@ -7,6 +7,7 @@ import '../common/center_toast.dart';
 import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
+import '../../features/profile/user_card_sheet.dart';
 import 'widgets/add_friend_by_public_id_dialog.dart';
 import 'friends_refresh_bus.dart';
 import 'modals/add_friend_to_plan_modal.dart';
@@ -28,11 +29,15 @@ class FriendsScreen extends StatefulWidget {
 class _FriendsScreenState extends State<FriendsScreen> {
   bool _loading = true;
   List<FriendDto> _friends = const <FriendDto>[];
+  Map<String, UserMiniProfile> _profiles = {};
 
   RealtimeChannel? _friendshipsLowSub;
   RealtimeChannel? _friendshipsHighSub;
   RealtimeChannel? _inboxDeliveriesSub;
+  RealtimeChannel? _privacySub;
+  RealtimeChannel? _profilesSub;
   Timer? _refreshDebounce;
+  Timer? _profilesDebounce;
   VoidCallback? _refreshBusListener;
 
   @override
@@ -42,6 +47,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     FriendsRefreshBus.tick.addListener(_refreshBusListener!);
     _startRealtimeRefresh();
     _startInboxDrivenRefresh();
+    _startProfilesRealtimeRefresh();
     unawaited(_load());
   }
 
@@ -52,8 +58,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         appUserId: widget.appUserId,
       );
       if (!mounted) return;
+
+      final profiles = await loadUserMiniProfiles(
+        userIds: friends.map((f) => f.friendUserId).toList(),
+        context: 'friends',
+      );
+      if (!mounted) return;
+
       setState(() {
         _friends = friends;
+        _profiles = profiles;
         _loading = false;
       });
     } catch (e) {
@@ -66,14 +80,76 @@ class _FriendsScreenState extends State<FriendsScreen> {
   @override
   void dispose() {
     _refreshDebounce?.cancel();
+    _profilesDebounce?.cancel();
     _friendshipsLowSub?.unsubscribe();
     _friendshipsHighSub?.unsubscribe();
     _inboxDeliveriesSub?.unsubscribe();
+    _privacySub?.unsubscribe();
+    _profilesSub?.unsubscribe();
     if (_refreshBusListener != null) {
       FriendsRefreshBus.tick.removeListener(_refreshBusListener!);
       _refreshBusListener = null;
     }
     super.dispose();
+  }
+
+  /// Перезагружает только профили (без spinner) — вызывается по Realtime.
+  void _scheduleProfilesReload() {
+    _profilesDebounce?.cancel();
+    _profilesDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted || _friends.isEmpty) return;
+      final profiles = await loadUserMiniProfiles(
+        userIds: _friends.map((f) => f.friendUserId).toList(),
+        context: 'friends',
+      );
+      if (!mounted) return;
+      setState(() => _profiles = profiles);
+    });
+  }
+
+  void _startProfilesRealtimeRefresh() {
+    final client = Supabase.instance.client;
+
+    // Следим за изменениями настроек приватности любых пользователей.
+    // Если изменился кто-то из друзей — перезагружаем профили.
+    _privacySub = client
+        .channel('friends_privacy_${widget.appUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_privacy_settings',
+          callback: (payload) {
+            final record = payload.newRecord as Map<String, dynamic>?
+                ?? payload.oldRecord as Map<String, dynamic>?;
+            if (record == null) return;
+            final changedUserId = record['user_id']?.toString();
+            if (changedUserId == null) return;
+            if (_friends.any((f) => f.friendUserId == changedUserId)) {
+              _scheduleProfilesReload();
+            }
+          },
+        )
+        .subscribe();
+
+    // Следим за изменениями профилей (аватар, имя и т.д.).
+    _profilesSub = client
+        .channel('friends_user_profiles_${widget.appUserId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_profiles',
+          callback: (payload) {
+            final record = payload.newRecord as Map<String, dynamic>?
+                ?? payload.oldRecord as Map<String, dynamic>?;
+            if (record == null) return;
+            final changedUserId = record['user_id']?.toString();
+            if (changedUserId == null) return;
+            if (_friends.any((f) => f.friendUserId == changedUserId)) {
+              _scheduleProfilesReload();
+            }
+          },
+        )
+        .subscribe();
   }
 
   void _scheduleRefresh() {
@@ -227,8 +303,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
           final friend = _friends[index];
           return _FriendCard(
             friend: friend,
+            profile: _profiles[friend.friendUserId],
             onOpenProfile: () {
-              unawaited(_showProfileStub(context));
+              unawaited(UserCardSheet.show(
+                context,
+                targetUserId: friend.friendUserId,
+                cardContext: 'friends',
+              ));
             },
             onEditNote: () {
               unawaited(_editNote(context, friend));
@@ -331,14 +412,6 @@ class _FriendsScreenState extends State<FriendsScreen> {
   // =============================
   // Shared modals
   // =============================
-
-  Future<void> _showProfileStub(BuildContext context) async {
-    await _showInfo(
-      context,
-      title: 'Профиль',
-      message: 'В разработке',
-    );
-  }
 
   Future<void> _showInfo(
     BuildContext context, {
@@ -556,6 +629,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
 class _FriendCard extends StatelessWidget {
   final FriendDto friend;
+  final UserMiniProfile? profile;
 
   final VoidCallback onOpenProfile;
   final VoidCallback onEditNote;
@@ -564,6 +638,7 @@ class _FriendCard extends StatelessWidget {
 
   const _FriendCard({
     required this.friend,
+    required this.profile,
     required this.onOpenProfile,
     required this.onEditNote,
     required this.onAddToPlan,
@@ -599,31 +674,30 @@ class _FriendCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  ClipRRect(
+                  UserAvatarWidget(
+                    profile: profile,
+                    size: 48,
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      alignment: Alignment.center,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.08),
-                      child: Text(
-                        _initials(friend.displayName),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ник: ${friend.displayName}', style: titleStyle),
+                        Text(
+                          'Ник: ${_nickLabel(profile, friend.displayName)}',
+                          style: titleStyle?.copyWith(
+                            color: profile?.nicknameHidden == true
+                                ? Theme.of(context).colorScheme.outline
+                                : null,
+                            fontStyle: profile?.nicknameHidden == true
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                          ),
+                        ),
                         const SizedBox(height: 2),
                         Text(
-                          'Имя: не указано',
+                          _nameLabel(profile),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
@@ -708,9 +782,17 @@ class _FriendCard extends StatelessWidget {
     );
   }
 
-  static String _initials(String name) {
-    final t = name.trim();
-    if (t.isEmpty) return 'U';
-    return t.characters.take(1).toString().toUpperCase();
+  static String _nickLabel(UserMiniProfile? profile, String fallback) {
+    if (profile == null) return fallback;
+    if (profile.nicknameHidden) return 'Скрыто';
+    return profile.nickname ?? fallback;
+  }
+
+  static String _nameLabel(UserMiniProfile? profile) {
+    if (profile == null) return 'Имя: —';
+    if (profile.nameHidden) return 'Имя: Скрыто';
+    final name = profile.name;
+    if (name == null || name.isEmpty) return 'Имя: — Не указано';
+    return 'Имя: $name';
   }
 }

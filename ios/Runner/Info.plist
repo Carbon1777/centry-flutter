@@ -69,5 +69,8 @@
 	<key>NSUserNotificationUsageDescription</key>
 	<string>Нужно для уведомлений</string>
 
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Нужно для загрузки аватара из галереи</string>
+
 </dict>
 </plist>

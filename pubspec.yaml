@@ -44,6 +44,11 @@ dependencies:
   # EXTERNAL LINKS
   url_launcher: ^6.2.5
 
+  # PROFILE / AVATAR
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+  crop_your_image: ^2.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
