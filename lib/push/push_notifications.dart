@@ -295,7 +295,7 @@ class PushNotifications {
     if (_initedUi) return;
     _initedUi = true;
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings();
 
     const settings = InitializationSettings(
@@ -571,7 +571,7 @@ class PushNotifications {
     if (_initedBg) return;
     _initedBg = true;
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
     const iosInit = DarwinInitializationSettings();
 
     const settings = InitializationSettings(

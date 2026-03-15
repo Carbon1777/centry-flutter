@@ -100,38 +100,70 @@ class _NicknameScreenState extends State<NicknameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final error = _errorText ?? _lengthError;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ввод ника')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                labelText: 'Nickname',
-                errorText: error,
-                suffixText: '$_length/20',
+      appBar: AppBar(title: const Text('Никнейм')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: const Alignment(0, -0.25),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Придумайте никнейм',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Так вас будут видеть другие участники',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colors.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      TextField(
+                        controller: _controller,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: 'Никнейм',
+                          errorText: error,
+                          suffixText: '$_length/20',
+                        ),
+                        onChanged: (_) => setState(() {
+                          _errorText = null;
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              onChanged: (_) => setState(() {
-                _errorText = null;
-              }),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _isValid && !_loading ? _submit : null,
-                child: _loading
-                    ? const CircularProgressIndicator(strokeWidth: 2)
-                    : const Text('Далее'),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _isValid && !_loading ? _submit : null,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Далее'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

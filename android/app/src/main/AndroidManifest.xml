@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
-        android:label="centry"
+        android:label="Centry"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -59,6 +59,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- FCM: иконка и цвет для фоновых уведомлений -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/ic_launcher_background" />
 
     </application>
 
