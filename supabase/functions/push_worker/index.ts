@@ -6,11 +6,18 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // PUSH is a "budilnik". To avoid race duplicates (app consumes INBOX in foreground, but push_worker runs first),
 // we apply a small grace period before sending PUSH for app-handled events.
 const PUSH_GRACE_MS = 15_000;
+const PUSH_GRACE_CHAT_MS = 60_000;
 
 function shouldApplyGrace(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
   if (!t) return false;
   return t.startsWith("PLAN_") || t.startsWith("FRIEND_");
+}
+
+function graceMs(payload: Record<string, unknown>): number {
+  return String(payload["type"] ?? "") === "PLAN_CHAT_MESSAGE"
+    ? PUSH_GRACE_CHAT_MS
+    : PUSH_GRACE_MS;
 }
 
 const FCM_PROJECT_ID = Deno.env.get("FCM_PROJECT_ID")!;
@@ -262,7 +269,7 @@ serve(async () => {
       const createdMs = Date.parse(createdAtRaw);
       if (!Number.isNaN(createdMs)) {
         const ageMs = Date.now() - createdMs;
-        if (ageMs >= 0 && ageMs < PUSH_GRACE_MS) {
+        if (ageMs >= 0 && ageMs < graceMs(payload)) {
           await writeDeliveryDebug(deliveryId, {
             at: new Date().toISOString(),
             stage: "grace_skip",
