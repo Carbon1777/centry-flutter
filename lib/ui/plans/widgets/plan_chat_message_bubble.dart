@@ -6,6 +6,9 @@ class PlanChatPresentationMessage {
   final String id;
   final String authorUserId;
   final String authorNickname;
+  final bool nicknameHidden;
+  final String? avatarUrl;
+  final bool avatarHidden;
   final String text;
   final DateTime createdAt;
   final bool isMine;
@@ -20,6 +23,9 @@ class PlanChatPresentationMessage {
     required this.id,
     required this.authorUserId,
     required this.authorNickname,
+    this.nicknameHidden = false,
+    this.avatarUrl,
+    this.avatarHidden = false,
     required this.text,
     required this.createdAt,
     required this.isMine,
@@ -91,6 +97,8 @@ class PlanChatMessageBubble extends StatelessWidget {
                     child: PlanChatAvatar(
                       userId: message.authorUserId,
                       nickname: message.authorNickname,
+                      avatarUrl: message.avatarUrl,
+                      avatarHidden: message.avatarHidden,
                       size: 34,
                     ),
                   ),
@@ -100,14 +108,19 @@ class PlanChatMessageBubble extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          message.authorNickname,
+                          message.nicknameHidden ? 'Скрыто' : message.authorNickname,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             color: isTombstone
                                 ? Colors.white.withOpacity(0.35)
-                                : nicknameColor,
+                                : (message.nicknameHidden
+                                    ? theme.colorScheme.outline
+                                    : nicknameColor),
+                            fontStyle: message.nicknameHidden
+                                ? FontStyle.italic
+                                : FontStyle.normal,
                             height: 1.0,
                           ),
                         ),

@@ -1864,7 +1864,7 @@ class _Body extends StatelessWidget {
         return Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 92),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 92),
               child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1879,13 +1879,13 @@ class _Body extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.white.withOpacity(0.18)),
               borderRadius: BorderRadius.circular(14),
             ),
-            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1917,7 +1917,7 @@ class _Body extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           _KeyValueLine(
             label: 'Роль',
             value: roleLabel,
@@ -1945,7 +1945,7 @@ class _Body extends StatelessWidget {
               label: 'Событие',
               value: formatPlanDateTime(plan.eventAt),
             ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           const Divider(height: 1, thickness: 1),
           InkWell(
             onTap: () {
@@ -1976,7 +1976,7 @@ class _Body extends StatelessWidget {
               );
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 5),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -2003,7 +2003,6 @@ class _Body extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 2),
           const Divider(height: 1, thickness: 1),
           Row(
             children: [
@@ -2056,7 +2055,7 @@ class _Body extends StatelessWidget {
             onClearOwnerPriority: onClearOwnerPriorityDate,
             actionsDisabled: actionsDisabled,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           const Divider(height: 1, thickness: 1),
           Row(
             children: [
@@ -2090,7 +2089,7 @@ class _Body extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Expanded(
             child: PlanPlacesBlock(
               items: details.placeCandidates,
