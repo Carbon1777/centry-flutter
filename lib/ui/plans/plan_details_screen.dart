@@ -1879,7 +1879,7 @@ class _Body extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.white.withOpacity(0.18)),
@@ -1917,7 +1917,7 @@ class _Body extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 3),
           _KeyValueLine(
             label: 'Роль',
             value: roleLabel,

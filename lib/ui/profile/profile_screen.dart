@@ -299,12 +299,14 @@ class _ProfileContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TOP ROW
+          // TOP ROW: аватар+ник | CentryMarket+Приватность
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -312,7 +314,6 @@ class _ProfileContent extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar
                     _AvatarWidget(
                       avatarKind: profile.avatarKind,
                       avatarUrl: profile.avatarUrl,
@@ -346,36 +347,44 @@ class _ProfileContent extends StatelessWidget {
                 children: [
                   _CentryMarketCard(),
                   const SizedBox(height: 6),
-                  _MyPlacesCard(),
+                  _PrivacySettingsTextLink(),
+                  const SizedBox(height: 2),
+                  _MyPlacesTextLink(),
                 ],
               ),
             ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
 
-          // DETAILS
-          _TitleValue(title: 'Email', value: profile.email ?? ''),
-          const SizedBox(height: 12),
+          // ПОЛЯ
           _EditableNameField(value: profile.name, onReload: onReload),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           _EditableGenderField(value: profile.gender, onReload: onReload),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           _EditableAgeField(value: profile.age, onReload: onReload),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
-          // Вход в настройки приватности
-          _PrivacySettingsLink(),
+          // Email — под полями, мелко
+          Text('Email',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: colors.outline)),
+          const SizedBox(height: 2),
+          Text(profile.email ?? '',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: colors.outline)),
 
-          const SizedBox(height: 32),
+          Divider(height: 32, color: colors.outlineVariant.withValues(alpha: 0.5)),
 
-          // Заглушки
-          _StubBlock(title: 'Описание'),
-          const SizedBox(height: 16),
-          _StubBlock(title: 'Мои фото'),
-          const SizedBox(height: 16),
-          _StubBlock(title: 'Мои видео'),
+          // Заглушки — компактные строки
+          const _StubRow(title: 'Описание'),
+          const _StubRow(title: 'Мои фото'),
+          const _StubRow(title: 'Мои видео'),
         ],
       ),
     );
@@ -582,34 +591,31 @@ class _EditableAgeField extends StatelessWidget {
 }
 
 // =======================
-// Privacy settings link
+// Privacy settings — текстовая ссылка
 // =======================
 
-class _PrivacySettingsLink extends StatelessWidget {
+class _PrivacySettingsTextLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const PrivacySettingsScreen()),
-        );
-      },
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const PrivacySettingsScreen()),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outline, size: 16, color: colors.primary),
-            const SizedBox(width: 8),
-            Text(
-              'Настройки приватности',
-              style: text.bodyMedium?.copyWith(color: colors.primary),
-            ),
-            const Spacer(),
-            Icon(Icons.chevron_right, size: 18, color: colors.primary),
+            Icon(Icons.lock_outline, size: 14, color: colors.primary),
+            const SizedBox(width: 5),
+            Text('Приватность',
+                style: text.bodySmall?.copyWith(color: colors.primary)),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right, size: 14, color: colors.primary),
           ],
         ),
       ),
@@ -618,38 +624,63 @@ class _PrivacySettingsLink extends StatelessWidget {
 }
 
 // =======================
-// Stub blocks
+// Мои места — текстовая ссылка
 // =======================
 
-class _StubBlock extends StatelessWidget {
+class _MyPlacesTextLink extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        final repo = PlacesRepositoryImpl(Supabase.instance.client);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MyPlacesScreen(repository: repo)),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.bookmark_outline, size: 14, color: colors.primary),
+            const SizedBox(width: 5),
+            Text('Мои места',
+                style: text.bodySmall?.copyWith(color: colors.primary)),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right, size: 14, color: colors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Stub row (компактная строка-заглушка)
+// =======================
+
+class _StubRow extends StatelessWidget {
   final String title;
 
-  const _StubBlock({required this.title});
+  const _StubRow({required this.title});
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
         children: [
-          Text(title, style: text.titleSmall),
-          const SizedBox(height: 12),
-          Center(
-            child: Text(
-              'В разработке. Будет доступно с релизом проекта',
-              textAlign: TextAlign.center,
-              style: text.bodySmall?.copyWith(color: colors.outline),
-            ),
-          ),
+          Text(title, style: text.bodyMedium),
+          const Spacer(),
+          Text('В разработке',
+              style: text.bodySmall?.copyWith(color: colors.outline)),
         ],
       ),
     );
@@ -675,24 +706,31 @@ class _EditableRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
+    // Текст ограничен половиной ширины — карандаш выровнен по одной линии.
+    // Правая половина остаётся свободной зоной.
+    final textWidth = MediaQuery.of(context).size.width / 2 - 24;
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(
           children: [
-            Expanded(
+            SizedBox(
+              width: textWidth,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: text.bodySmall),
                   const SizedBox(height: 2),
-                  Text(displayValue, style: text.bodyMedium),
+                  Text(displayValue,
+                      style: text.bodyMedium,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Icon(Icons.edit_outlined, size: 16, color: colors.outline),
           ],
         ),
@@ -882,49 +920,6 @@ class _CentryMarketCard extends StatelessWidget {
               Text(
                 'CentryMarket',
                 style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MyPlacesCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        splashColor: colors.primary.withValues(alpha: 0.15),
-        onTap: () {
-          final repo = PlacesRepositoryImpl(Supabase.instance.client);
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => MyPlacesScreen(repository: repo)),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            border: Border.all(color: colors.outline),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.bookmark_outline, size: 16, color: colors.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Мои места',
-                style: text.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: colors.primary,
-                ),
               ),
             ],
           ),
