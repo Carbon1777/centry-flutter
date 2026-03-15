@@ -208,22 +208,15 @@ class _IntroText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: const [
-        SizedBox(height: 40),
-        Text(
-          'Для полноценной работы \n'
-          'всех фукций приложения \n'
-          'нам необходимы \n'
-          'ваши разрешения',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
+    final theme = Theme.of(context);
+
+    return Text(
+      'Для полноценной работы всех функций приложения нам необходимы ваши разрешения',
+      textAlign: TextAlign.center,
+      style: theme.textTheme.headlineSmall?.copyWith(
+        fontWeight: FontWeight.w500,
+        height: 1.4,
+      ),
     );
   }
 }
@@ -245,26 +238,25 @@ class _PermissionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 40),
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 20,
+          style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 12),
         Text(
           description,
-          style: TextStyle(
-            fontSize: 15,
-            color: colors.onSurface.withOpacity(0.7),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: colors.onSurface.withValues(alpha: 0.65),
+            height: 1.45,
           ),
         ),
         const SizedBox(height: 32),

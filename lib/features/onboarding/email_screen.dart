@@ -195,6 +195,9 @@ class _EmailScreenState extends State<EmailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     final showInput = _state == EmailFlowState.initial ||
         _state == EmailFlowState.emailExists;
 
@@ -203,105 +206,146 @@ class _EmailScreenState extends State<EmailScreen> {
         title: const Text('Почта'),
         automaticallyImplyLeading: false,
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 100),
-            if (showInput) ...[
-              const Text(
-                'Email',
-                style: TextStyle(
-                  color: Color.fromARGB(255, 246, 245, 245),
-                  fontSize: 20,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Укажите почту, чтобы иметь более широкий функционал и быстро восстановить доступ после переустановки приложения',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: _controller,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
-            if (_state == EmailFlowState.emailExists) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Эта почта уже зарегистрирована\nВосстановите доступ',
-              ),
-            ],
-            if (_state == EmailFlowState.confirmSent) ...[
-              const SizedBox(height: 16),
-              const Text('Письмо для подтверждения отправлено на почту'),
-              const SizedBox(height: 4),
-              const Text(
-                'Проверьте папку «Спам»',
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: _resetEmail,
-                child: Text(
-                  'Ошиблись в адресе электронной почты?\nВведите ещё раз',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w500,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height * 0.55,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(height: MediaQuery.of(context).size.height * 0.08),
+                if (showInput) ...[
+                  Text(
+                    'Укажите почту',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ),
-            ],
-            if (_state == EmailFlowState.recoverySent) ...[
-              const SizedBox(height: 16),
-              const Text('Письмо для восстановления отправлено на почту'),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            ],
-            const SizedBox(height: 32),
-            if (_state == EmailFlowState.initial ||
-                _state == EmailFlowState.emailExists) ...[
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: (_state == EmailFlowState.initial)
-                      ? ((!_validEmail || _state == EmailFlowState.sending)
-                          ? null
-                          : _submit)
-                      : (_state == EmailFlowState.sending ? null : _recover),
-                  child: Text(
-                    _state == EmailFlowState.initial
-                        ? 'Подтвердить'
-                        : 'Восстановить',
+                  const SizedBox(height: 10),
+                  Text(
+                    'Это позволит расширить функциональность и быстро восстановить доступ после переустановки приложения.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurface.withValues(alpha: 0.6),
+                      height: 1.45,
+                    ),
                   ),
-                ),
-              ),
-              if (_state == EmailFlowState.initial) ...[
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _finishOnboardingSkip,
-                  child: const Text(
-                    'Пропустить',
-                    style: TextStyle(color: Colors.grey),
+                  const SizedBox(height: 24),
+                  TextField(
+                    controller: _controller,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      hintText: 'example@mail.com',
+                    ),
+                    onChanged: (_) => setState(() {}),
                   ),
-                ),
+                ],
+                if (_state == EmailFlowState.emailExists) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    'Эта почта уже зарегистрирована. Восстановите доступ.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.error,
+                    ),
+                  ),
+                ],
+                if (_state == EmailFlowState.confirmSent) ...[
+                  Text(
+                    'Письмо отправлено',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Проверьте почту и перейдите по ссылке из письма. Если не нашли — загляните в папку «Спам».',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurface.withValues(alpha: 0.6),
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: _resetEmail,
+                    child: Text(
+                      'Ошиблись в адресе? Ввести другой',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colors.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+                if (_state == EmailFlowState.recoverySent) ...[
+                  Text(
+                    'Письмо отправлено',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Проверьте почту и перейдите по ссылке для восстановления доступа.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurface.withValues(alpha: 0.6),
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.error,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 32),
+                if (_state == EmailFlowState.initial ||
+                    _state == EmailFlowState.emailExists) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: (_state == EmailFlowState.initial)
+                          ? ((!_validEmail || _state == EmailFlowState.sending)
+                              ? null
+                              : _submit)
+                          : (_state == EmailFlowState.sending ? null : _recover),
+                      child: _state == EmailFlowState.sending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              _state == EmailFlowState.initial
+                                  ? 'Подтвердить'
+                                  : 'Восстановить',
+                            ),
+                    ),
+                  ),
+                  if (_state == EmailFlowState.initial) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: _finishOnboardingSkip,
+                        child: const Text(
+                          'Пропустить',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ],
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );
