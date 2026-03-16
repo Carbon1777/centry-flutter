@@ -1,8 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/geo/geo_service.dart';
+import '../../data/feed/feed_place_dto.dart';
+import '../../data/feed/feed_repository.dart';
+import '../../data/feed/feed_repository_impl.dart';
+import '../../data/places/places_repository_impl.dart' as places_impl;
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/friends/friends_repository_impl.dart';
@@ -11,6 +18,9 @@ import '../plans/plans_screen.dart';
 import '../plans/plan_details_screen.dart';
 import '../friends/friends_screen.dart';
 import '../profile/profile_screen.dart';
+import 'widgets/feed_geo_dialog.dart';
+import 'widgets/feed_place_card.dart';
+import 'widgets/feed_place_detail_sheet.dart';
 
 class ActivityFeedScreen extends StatefulWidget {
   final String userId; // ← доменный app_user_id
@@ -46,6 +56,7 @@ class ActivityFeedScreen extends StatefulWidget {
 class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   late Future<_FeedUserState> _future;
   StreamSubscription<AuthState>? _authSub;
+  final ValueNotifier<int> _feedReloadSignal = ValueNotifier(0);
 
   bool _handledInitialPlanNav = false;
   bool _appShellReadyNotified = false;
@@ -70,6 +81,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   @override
   void dispose() {
     _authSub?.cancel();
+    _feedReloadSignal.dispose();
     super.dispose();
   }
 
@@ -320,15 +332,189 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
               ),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(24),
-            children: const [],
+          body: _FeedBody(
+            appUserId: widget.userId,
+            reloadSignal: _feedReloadSignal,
           ),
           bottomNavigationBar: _BottomNavigationBar(
             appUserId: widget.userId,
+            onNavigatedBack: () => _feedReloadSignal.value++,
           ),
         );
       },
+    );
+  }
+}
+
+// =======================
+// Feed body
+// =======================
+
+class _FeedBody extends StatefulWidget {
+  final String appUserId;
+  final ValueListenable<int> reloadSignal;
+
+  const _FeedBody({
+    required this.appUserId,
+    required this.reloadSignal,
+  });
+
+  @override
+  State<_FeedBody> createState() => _FeedBodyState();
+}
+
+class _FeedBodyState extends State<_FeedBody> {
+  final FeedRepository _feedRepo =
+      FeedRepositoryImpl(Supabase.instance.client);
+  final _placesRepo =
+      places_impl.PlacesRepositoryImpl(Supabase.instance.client);
+
+  List<FeedPlaceDto>? _places;
+  bool _loading = true;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    widget.reloadSignal.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    widget.reloadSignal.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _maybeShowFeedGeoDialog() async {
+    final shouldShow = await FeedGeoDialog.shouldShow();
+    if (!shouldShow) return;
+
+    if (!FeedGeoDialog.canShowThisSession()) return;
+
+    final permission = await Geolocator.checkPermission();
+    final isDenied = permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever;
+    if (!isDenied) return;
+
+    if (!mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => FeedGeoDialog(
+        onPermissionGranted: _load,
+        onNeverShow: FeedGeoDialog.markNeverShow,
+      ),
+    );
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _hasError = false;
+    });
+
+    try {
+      await GeoService.instance.ensureInitialized();
+      final geo = GeoService.instance.current.value;
+
+      final places = await _feedRepo.getFeedNearby(
+        lat: geo?.lat,
+        lng: geo?.lng,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _places = places;
+        _loading = false;
+      });
+
+      // Задержка 1 сек после загрузки ленты — показываем гео-диалог если нужно
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) _maybeShowFeedGeoDialog();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _hasError = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Готовим для вас самое лучшее'),
+          ],
+        ),
+      );
+    }
+
+    if (_hasError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Не удалось загрузить ленту'),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _load,
+              child: const Text('Обновить'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final places = _places ?? [];
+
+    if (places.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.place_outlined, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('Мест поблизости не найдено'),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _load,
+              child: const Text('Обновить'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        itemCount: places.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final place = places[index];
+          return FeedPlaceCard(
+            place: place,
+            onTap: () => showFeedPlaceDetailSheet(
+              context: context,
+              place: place,
+              placesRepository: _placesRepo,
+              feedRepository: _feedRepo,
+              appUserId: widget.appUserId,
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -357,9 +543,11 @@ class _FeedUserState {
 
 class _BottomNavigationBar extends StatefulWidget {
   final String appUserId;
+  final VoidCallback onNavigatedBack;
 
   const _BottomNavigationBar({
     required this.appUserId,
+    required this.onNavigatedBack,
   });
 
   @override
@@ -450,7 +638,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                       MaterialPageRoute(
                         builder: (_) => const PlacesScreen(),
                       ),
-                    );
+                    ).then((_) => widget.onNavigatedBack());
                   },
                 ),
                 _NavItem(
@@ -464,7 +652,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                           appUserId: widget.appUserId,
                         ),
                       ),
-                    );
+                    ).then((_) => widget.onNavigatedBack());
                   },
                 ),
                 _NavItem(
@@ -482,7 +670,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                           );
                         },
                       ),
-                    );
+                    ).then((_) => widget.onNavigatedBack());
                   },
                 ),
               ],

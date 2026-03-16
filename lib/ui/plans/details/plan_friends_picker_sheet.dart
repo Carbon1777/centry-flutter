@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/friends/friend_dto.dart';
+import '../../../features/profile/user_card_sheet.dart';
 import '../../common/center_toast.dart';
 
 /// Server-first invite state for a friend relative to a plan.
@@ -33,23 +34,13 @@ class PlanFriendInviteState {
 }
 
 /// Bottom sheet UI: выбор друга для приглашения в план.
-///
-/// Канон:
-/// - Server-first: реальная истина (PENDING/DECLINED/is_member/can_invite) приходит с сервера
-///   через [inviteStatesByFriendUserId].
-/// - Optimistic pending используется только для мгновенной реакции на тап, пока не пришла серверная правда.
-/// - Этот файл НЕ показывает success-тосты и НЕ делает продуктовых решений.
-///   Success/toast — ответственность верхнего action-handler (screen/modal), который вызывает RPC.
 class PlanFriendsPickerSheet extends StatefulWidget {
   final List<FriendDto> friends;
 
-  /// Optional server-first state map by friend_user_id.
   final Map<String, PlanFriendInviteState> inviteStatesByFriendUserId;
 
-  /// Server-first entrypoint: invite into current plan by friend's public_id.
   final Future<void> Function(String friendPublicId) onInviteFriendByPublicId;
 
-  /// Optional hook: parent can re-fetch server snapshot (invite states).
   final Future<void> Function()? onAfterInvite;
 
   const PlanFriendsPickerSheet({
@@ -67,6 +58,24 @@ class PlanFriendsPickerSheet extends StatefulWidget {
 class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
   final Set<String> _pendingOptimistic = <String>{};
   final Set<String> _inFlight = <String>{};
+
+  Map<String, UserMiniProfile> _profiles = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    final ids = widget.friends.map((f) => f.friendUserId).toList();
+    if (ids.isEmpty) return;
+    final profiles = await loadUserMiniProfiles(
+      userIds: ids,
+      context: 'friends',
+    );
+    if (mounted) setState(() => _profiles = profiles);
+  }
 
   PlanFriendInviteState _stateFor(FriendDto f) =>
       widget.inviteStatesByFriendUserId[f.friendUserId] ??
@@ -95,7 +104,6 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
 
     final publicId = f.publicId.trim();
     if (publicId.isEmpty) {
-      // Локальная ошибка данных списка — верхний handler не узнает, мы не зовем RPC.
       unawaited(
         showCenterToast(
           context,
@@ -112,7 +120,6 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
     });
 
     try {
-      // Важно: успех/ошибку/тосты решает верхний action-handler.
       await widget.onInviteFriendByPublicId(publicId);
       if (!mounted) return;
 
@@ -121,12 +128,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       }
     } catch (_) {
       if (!mounted) return;
-
-      // rollback optimistic pending on error
       setState(() => _pendingOptimistic.remove(f.friendUserId));
-
-      // Ошибка/тост — ответственность верхнего handler (который вызывает RPC).
-      // Здесь не показываем, чтобы не было двойных тостов.
     } finally {
       if (!mounted) return;
       setState(() => _inFlight.remove(f.friendUserId));
@@ -139,7 +141,6 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
 
     final visibleFriends = widget.friends.where((f) {
       final s = _stateFor(f);
-      // server-first: если уже в плане — не показываем
       return !s.isMember;
     }).toList();
 
@@ -217,6 +218,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
                           final f = visibleFriends[index];
                           return _FriendCard(
                             friend: f,
+                            profile: _profiles[f.friendUserId],
                             pending: _showPendingOverlay(f),
                             enabled: !_isDisabled(f),
                             onTap: () => unawaited(_invite(f)),
@@ -232,7 +234,6 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    // 1-в-1 как FriendsScreen
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -263,12 +264,14 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
 
 class _FriendCard extends StatelessWidget {
   final FriendDto friend;
+  final UserMiniProfile? profile;
   final bool pending;
   final bool enabled;
   final VoidCallback onTap;
 
   const _FriendCard({
     required this.friend,
+    required this.profile,
     required this.pending,
     required this.enabled,
     required this.onTap,
@@ -278,13 +281,46 @@ class _FriendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final nick =
-        friend.displayName.trim().isEmpty ? '—' : friend.displayName.trim();
-    final name = 'не указано';
-    final note = friend.note.trim();
+    // Никнейм: из профиля с учётом приватности, fallback — displayName, затем '—'
+    final String nickDisplay;
+    if (profile?.nicknameHidden == true) {
+      nickDisplay = 'Скрыто';
+    } else {
+      final n = profile?.nickname?.trim() ?? friend.displayName.trim();
+      nickDisplay = n.isEmpty ? '—' : n;
+    }
 
+    // Имя: из профиля с учётом приватности
+    final String nameDisplay;
+    if (profile?.nameHidden == true) {
+      nameDisplay = 'Скрыто';
+    } else {
+      final n = profile?.name?.trim() ?? '';
+      nameDisplay = n.isEmpty ? '—' : n;
+    }
+
+    final note = friend.note.trim();
     final borderColor = theme.dividerColor.withOpacity(0.25);
     final noteBg = theme.dividerColor.withOpacity(0.10);
+
+    final nickStyle = profile?.nicknameHidden == true
+        ? theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: theme.colorScheme.outline,
+            fontStyle: FontStyle.italic,
+          )
+        : theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800);
+
+    final nameStyle = profile?.nameHidden == true
+        ? theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w700,
+          )
+        : theme.textTheme.bodySmall?.copyWith(
+            color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+            fontWeight: FontWeight.w700,
+          );
 
     final base = InkWell(
       onTap: enabled ? onTap : null,
@@ -298,15 +334,12 @@ class _FriendCard extends StatelessWidget {
           color: theme.colorScheme.surface,
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: theme.dividerColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: borderColor),
-              ),
+            UserAvatarWidget(
+              profile: profile,
+              size: 46,
+              borderRadius: const BorderRadius.all(Radius.circular(14)),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -314,23 +347,17 @@ class _FriendCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Ник: $nick',
+                    'Ник: $nickDisplay',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: nickStyle,
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Имя: $name',
+                    'Имя: $nameDisplay',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color:
-                          theme.textTheme.bodySmall?.color?.withOpacity(0.85),
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: nameStyle,
                   ),
                   const SizedBox(height: 10),
                   Container(
@@ -350,10 +377,8 @@ class _FriendCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: note.isEmpty
-                            ? theme.textTheme.bodyMedium?.color
-                                ?.withOpacity(0.35)
-                            : theme.textTheme.bodyMedium?.color
-                                ?.withOpacity(0.78),
+                            ? theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.35)
+                            : theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.78),
                       ),
                     ),
                   ),
@@ -374,7 +399,7 @@ class _FriendCard extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: const Color(0xFF0D0F14).withOpacity(0.28),
+              color: const Color(0xFF0D0F14).withValues(alpha: 0.28),
             ),
           ),
         ),
@@ -383,7 +408,7 @@ class _FriendCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2E36).withOpacity(0.9),
+                color: const Color(0xFF2A2E36).withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: const Color(0xFF3A3F49)),
               ),
