@@ -66,8 +66,10 @@ class _EmailScreenState extends State<EmailScreen> {
             'state': 'USER',
           });
 
+          if (!mounted) return;
           Navigator.of(context).popUntil((route) => route.isFirst);
         } catch (e) {
+          if (!mounted) return;
           setState(() {
             _error = 'Ошибка обновления профиля';
             _state = EmailFlowState.initial;
@@ -95,6 +97,7 @@ class _EmailScreenState extends State<EmailScreen> {
             'state': 'USER',
           });
 
+          if (!mounted) return;
           Navigator.of(context).popUntil((route) => route.isFirst);
         } catch (_) {}
       });

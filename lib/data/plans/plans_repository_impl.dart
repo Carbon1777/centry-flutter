@@ -49,22 +49,12 @@ class PlansRepositoryImpl implements PlansRepository {
     required String appUserId,
     required String planId,
   }) async {
-    final ctx = await _client.rpc('debug_rpc_context_v1');
-    print('RPC CTX: $ctx');
-
     final response = await _client.rpc(
       'get_plan_details_v1',
       params: {
         'p_app_user_id': appUserId,
         'p_plan_id': planId,
       },
-    );
-
-    final members =
-        (response is Map<String, dynamic>) ? response['members'] : null;
-    print('RPC get_plan_details_v1 members raw: $members');
-    print(
-      'RPC get_plan_details_v1 members count: ${members is List ? members.length : 'not-a-list'}',
     );
 
     return PlanDetailsDto.fromJson(response as Map<String, dynamic>);

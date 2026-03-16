@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -46,10 +45,6 @@ class PlanFriendsModal extends StatefulWidget {
 class _PlanFriendsModalState extends State<PlanFriendsModal>
     with WidgetsBindingObserver {
   static const Duration _kRefreshDebounce = Duration(milliseconds: 250);
-
-  /// Временный флаг для диагностики auto-refresh.
-  /// В release (kDebugMode=false) логи не печатаются.
-  static const bool _kDebugRealtimeLogs = true;
 
   late final SupabaseClient _client;
   late final FriendsRepository _friendsRepository;
@@ -103,7 +98,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     if (!mounted) return;
     if (state != AppLifecycleState.resumed) return;
 
-    _dbg('[PlanFriendsModal] lifecycle resumed -> refresh current plan snapshot');
     _scheduleInviteStatesRefresh(
       notifyParent: false,
       fromRealtime: true,
@@ -144,17 +138,12 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       // it can be Map, or can be missing/empty depending on realtime payload.
       final dynamic recDyn = (payload as dynamic).newRecord;
       if (recDyn is! Map) {
-        _dbg(
-          '[PlanFriendsModal][RT] ignore non-map newRecord event=$changeEvent type=${recDyn.runtimeType}',
-        );
         return;
       }
 
       final record = Map<String, dynamic>.from(recDyn);
 
       if (record.isEmpty) {
-        _dbg(
-            '[PlanFriendsModal][RT] ignore empty newRecord event=$changeEvent');
         return;
       }
       _onDeliveryChanged(record, changeEvent: changeEvent);
@@ -184,10 +173,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
           callback: (payload) => onChange(payload, 'update'),
         )
         .subscribe();
-
-    _dbg(
-      '[PlanFriendsModal][RT] subscribe channel=$channelName userId=$userId planId=$planId',
-    );
   }
 
   void _onDeliveryChanged(
@@ -220,15 +205,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     final type = rawType?.trim() ?? '';
     final isRelevantPlanEvent = _isRelevantPlanFriendsRefreshType(type);
     final planMatches = deliveryPlanId != null && _eqId(deliveryPlanId, planId);
-
-    _dbg(
-      '[PlanFriendsModal][RT] event=$changeEvent '
-      'deliveryId=${_asString(record['delivery_id']) ?? _asString(record['id']) ?? 'n/a'} '
-      'status=${_asString(record['status']) ?? 'n/a'} '
-      'type=$type '
-      'planId=${deliveryPlanId ?? 'null'} '
-      'match(relevant=$isRelevantPlanEvent plan=$planMatches)',
-    );
 
     if (!isRelevantPlanEvent) return;
     if (!planMatches) return;
@@ -292,8 +268,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       if (!mounted) return;
       setState(() => _inviteStatesByFriendUserId = states);
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -340,8 +315,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       _queuedNotifyParent = _queuedNotifyParent || notifyParent;
       _queuedFromRealtime = _queuedFromRealtime || fromRealtime;
       _queuedReason = reason;
-      _dbg(
-          '[PlanFriendsModal][RT] refresh queued (inFlight=true) reason=$reason');
       return;
     }
 
@@ -350,7 +323,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
     if (userId.isEmpty || planId.isEmpty) return;
 
     _refreshInFlight = true;
-    _dbg('[PlanFriendsModal] refreshInviteStates start reason=$reason');
 
     try {
       final next =
@@ -373,7 +345,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
         widget.onInviteSent?.call();
       }
     } catch (e) {
-      _dbg('[PlanFriendsModal] refreshInviteStates error=$e reason=$reason');
       // No rethrow: refresh is typically fire-and-forget (unawaited).
     } finally {
       _refreshInFlight = false;
@@ -407,8 +378,7 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
         if (decoded is Map<String, dynamic>) return decoded;
         if (decoded is Map) return decoded.cast<String, dynamic>();
       } catch (e) {
-        _dbg(
-            '[PlanFriendsModal][RT] payload jsonDecode error=$e raw="$rawPayload"');
+        // ignore decode error
       }
     }
     return null;
@@ -459,12 +429,6 @@ class _PlanFriendsModalState extends State<PlanFriendsModal>
       return s == 'true' || s == 't' || s == '1' || s == 'yes' || s == 'y';
     }
     return false;
-  }
-
-  void _dbg(String msg) {
-    if (!_kDebugRealtimeLogs) return;
-    if (!kDebugMode) return;
-    debugPrint(msg);
   }
 
   @override

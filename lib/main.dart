@@ -15,32 +15,16 @@ Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    if (kDebugMode) {
-      debugPrint('[main] start');
-    }
-
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
-      if (kDebugMode) {
-        debugPrint('[FlutterError] ${details.exceptionAsString()}');
-        if (details.stack != null) debugPrint(details.stack.toString());
-      }
     };
 
     if (!kIsWeb) {
       try {
         await Firebase.initializeApp();
-        if (kDebugMode) {
-          debugPrint('[Firebase] initialized');
-        }
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-        if (kDebugMode) {
-          debugPrint('[Firebase] onBackgroundMessage handler attached');
-        }
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[Firebase] init failed: $e');
-        }
+        // ignore
       }
     }
 
@@ -49,15 +33,8 @@ Future<void> main() async {
       anonKey: SupabaseConfig.anonKey,
     );
 
-    if (kDebugMode) {
-      debugPrint('[Supabase] initialized');
-    }
-
     runApp(const App());
   }, (error, stack) {
-    if (kDebugMode) {
-      debugPrint('[ZoneError] $error');
-      debugPrint(stack.toString());
-    }
+    // ignore
   });
 }

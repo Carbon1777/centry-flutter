@@ -254,7 +254,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
       unawaited(_markReadIfNeeded());
       unawaited(_loadProfiles(snapshot.messages));
     } catch (e) {
-      debugPrint('[PlanChatBlock] loadSnapshot error: $e');
+      // ignore
     }
   }
 
@@ -280,7 +280,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
         _profiles = profiles;
       });
     } catch (e) {
-      debugPrint('[PlanChatBlock] loadProfiles error: $e');
+      // ignore
     } finally {
       _profilesLoadInFlight = false;
     }
@@ -337,7 +337,7 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
         });
       }
     } catch (e) {
-      debugPrint('[PlanChatBlock] markRead error: $e');
+      // ignore
     } finally {
       _readInFlight = false;
     }
@@ -352,7 +352,6 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
         text: text,
       );
     } catch (e) {
-      debugPrint('[PlanChatBlock] editMessage error: $e');
       rethrow;
     }
     unawaited(_queueRefresh());
@@ -366,7 +365,6 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
         messageId: messageId,
       );
     } catch (e) {
-      debugPrint('[PlanChatBlock] deleteForAll error: $e');
       return;
     }
     unawaited(_queueRefresh());
@@ -380,7 +378,6 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
         messageId: messageId,
       );
     } catch (e) {
-      debugPrint('[PlanChatBlock] deleteForMe error: $e');
       return;
     }
     unawaited(_queueRefresh());

@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -75,22 +74,11 @@ class PlanMemberJoinedByInviteUiCoordinator {
     final key = request.stableKey();
     final last = _recent[key];
     if (last != null && now.difference(last) <= _dedupTtl) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanMemberJoinedByInviteCoordinator] enqueue ignored (dedup ttl) key=$key ageMs=${now.difference(last).inMilliseconds}',
-        );
-      }
       return;
     }
     _recent[key] = now;
 
     _queue.add(request);
-
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanMemberJoinedByInviteCoordinator] enqueue planId=${request.planId} joinedUserId=${request.joinedUserId} source=${request.source} queue=${_queue.length}',
-      );
-    }
 
     _tryShowNext();
   }
@@ -113,11 +101,6 @@ class PlanMemberJoinedByInviteUiCoordinator {
     final nav = _navigatorKey?.currentState;
     final ctx = _navigatorKey?.currentContext ?? nav?.overlay?.context;
     if (ctx == null) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanMemberJoinedByInviteCoordinator] ctx=null -> retry next frame (rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
-        );
-      }
       _scheduleRetry();
       return;
     }
@@ -126,22 +109,11 @@ class PlanMemberJoinedByInviteUiCoordinator {
     final next = _queue.first;
     _showing = true;
 
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanMemberJoinedByInviteCoordinator] show requested planId=${next.planId} joinedUserId=${next.joinedUserId} source=${next.source}',
-      );
-    }
-
     Future<void> doShow() async {
       final nav2 = _navigatorKey?.currentState;
       final ctx2 = _navigatorKey?.currentContext ?? nav2?.overlay?.context;
 
       if (ctx2 == null) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanMemberJoinedByInviteCoordinator] ctx2=null -> retry (queue=${_queue.length})',
-          );
-        }
         _showing = false;
         _scheduleRetry();
         return;
@@ -167,12 +139,6 @@ class PlanMemberJoinedByInviteUiCoordinator {
       } catch (e) {
         // Avoid silent drops during navigator churn.
         _queue.addFirst(next);
-
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanMemberJoinedByInviteCoordinator] showDialog failed: $e (requeued, retry)',
-          );
-        }
         _scheduleRetry();
       } finally {
         _showing = false;

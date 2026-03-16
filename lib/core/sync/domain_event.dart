@@ -23,15 +23,10 @@ abstract class UserDomainEvent extends DomainEvent {
 
   const UserDomainEvent({
     required this.userId,
-    required DomainChangeType changeType,
-    required DateTime receivedAt,
-    required Map<String, dynamic> raw,
-  }) : super(
-         table: 'users',
-         changeType: changeType,
-         receivedAt: receivedAt,
-         raw: raw,
-       );
+    required super.changeType,
+    required super.receivedAt,
+    required super.raw,
+  }) : super(table: 'users');
 }
 
 @immutable
@@ -39,17 +34,12 @@ class UserUpserted extends UserDomainEvent {
   final Map<String, dynamic>? userRow;
 
   const UserUpserted({
-    required String userId,
-    required DomainChangeType changeType,
-    required DateTime receivedAt,
-    required Map<String, dynamic> raw,
+    required super.userId,
+    required super.changeType,
+    required super.receivedAt,
+    required super.raw,
     required this.userRow,
-  }) : super(
-         userId: userId,
-         changeType: changeType,
-         receivedAt: receivedAt,
-         raw: raw,
-       );
+  });
 }
 
 @immutable
@@ -57,14 +47,9 @@ class UserDeleted extends UserDomainEvent {
   final Map<String, dynamic>? oldRow;
 
   const UserDeleted({
-    required String userId,
-    required DateTime receivedAt,
-    required Map<String, dynamic> raw,
+    required super.userId,
+    required super.receivedAt,
+    required super.raw,
     required this.oldRow,
-  }) : super(
-         userId: userId,
-         changeType: DomainChangeType.delete,
-         receivedAt: receivedAt,
-         raw: raw,
-       );
+  }) : super(changeType: DomainChangeType.delete);
 }

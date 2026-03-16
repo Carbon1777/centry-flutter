@@ -39,9 +39,6 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
   String get _userId {
     final id = widget.bootstrapResult['id'];
     if (id is! String || id.isEmpty) {
-      debugPrint(
-        '[ProfileEmailModal] ❌ Invalid bootstrap payload: ${widget.bootstrapResult}',
-      );
       throw StateError(
         'Invalid bootstrap payload (missing id): ${widget.bootstrapResult}',
       );
@@ -58,30 +55,14 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
   void initState() {
     super.initState();
 
-    debugPrint('[ProfileEmailModal] initState');
-    debugPrint(
-      '[ProfileEmailModal] bootstrapResult: ${widget.bootstrapResult}',
-    );
-
     final auth = Supabase.instance.client.auth;
 
     Future<void> handleUpgrade(Session session) async {
-      debugPrint(
-        '[ProfileEmailModal] handleUpgrade START | session.user.id=${session.user.id} | _upgradeHandled=$_upgradeHandled',
-      );
-
-      if (_upgradeHandled) {
-        debugPrint(
-          '[ProfileEmailModal] handleUpgrade ABORT — already handled',
-        );
-        return;
-      }
+      if (_upgradeHandled) return;
 
       _upgradeHandled = true;
-      debugPrint('[ProfileEmailModal] handleUpgrade FLAG SET');
 
-      try {        debugPrint('[ProfileEmailModal] Saving snapshot as USER (no DB state check)...');
-
+      try {
         await UserSnapshotStorage().save(
           UserSnapshot(
             id: _userId,
@@ -91,89 +72,45 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
           ),
         );
 
-        debugPrint('[ProfileEmailModal] Snapshot saved as USER');
+        if (!mounted) return;
 
-        if (!mounted) {
-          debugPrint('[ProfileEmailModal] Not mounted — abort pop');
-          return;
-        }
-
-        debugPrint('[ProfileEmailModal] Navigator.pop() after upgrade');
         if (widget.onUpgradeSuccess != null) {
-          debugPrint('[ProfileEmailModal] Calling onUpgradeSuccess callback');
           widget.onUpgradeSuccess!();
         }
         Navigator.of(context).pop();
-        return;} catch (e, st) {
-        debugPrint(
-          '[ProfileEmailModal] ❌ handleUpgrade ERROR: $e',
-        );
-        debugPrint(
-          '[ProfileEmailModal] ❌ handleUpgrade STACKTRACE: $st',
-        );
-
-        if (!mounted) {
-          debugPrint('[ProfileEmailModal] Not mounted in catch — abort');
-          return;
-        }
+      } catch (e) {
+        if (!mounted) return;
 
         setState(() {
           _state = ProfileEmailFlowState.initial;
           _error = 'Ошибка обновления профиля';
         });
-
-        debugPrint('[ProfileEmailModal] State reset to initial after error');
       }
     }
 
     _authSub = auth.onAuthStateChange.listen((data) {
-      debugPrint(
-        '[ProfileEmailModal] onAuthStateChange | event=${data.event} | session=${data.session?.user.id}',
-      );
-
       if (data.session != null && mounted) {
         handleUpgrade(data.session!);
       }
     });
 
     if (auth.currentSession != null) {
-      debugPrint(
-        '[ProfileEmailModal] currentSession exists at init: ${auth.currentSession!.user.id}',
-      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          debugPrint(
-            '[ProfileEmailModal] Not mounted in postFrame — abort handleUpgrade',
-          );
-          return;
-        }
-        debugPrint(
-          '[ProfileEmailModal] postFrame handleUpgrade call',
-        );
+        if (!mounted) return;
         handleUpgrade(auth.currentSession!);
       });
-    } else {
-      debugPrint('[ProfileEmailModal] No currentSession at init');
     }
   }
 
   @override
   void dispose() {
-    debugPrint('[ProfileEmailModal] dispose');
     _authSub?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    debugPrint('[ProfileEmailModal] _submit called');
-
-    if (!_validEmail || _state == ProfileEmailFlowState.sending) {
-      debugPrint(
-        '[ProfileEmailModal] _submit aborted | valid=$_validEmail | state=$_state',
-      );
-      return;
-    }
+    if (!_validEmail || _state == ProfileEmailFlowState.sending) return;
 
     setState(() {
       _state = ProfileEmailFlowState.sending;
@@ -183,33 +120,19 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
     final client = Supabase.instance.client;
     final email = _controller.text.trim();
 
-    debugPrint('[ProfileEmailModal] Checking email availability: $email');
-
     try {
       final available = await client.rpc(
         'check_email_available',
         params: {'p_email': email},
       ) as bool;
 
-      debugPrint(
-        '[ProfileEmailModal] check_email_available result: $available',
-      );
-
       if (available) {
-        debugPrint(
-          '[ProfileEmailModal] Setting email pending for user=$_userId',
-        );
-
         await client.rpc(
           'set_email_pending',
           params: {
             'p_user_id': _userId,
             'p_email': email,
           },
-        );
-
-        debugPrint(
-          '[ProfileEmailModal] Calling signInWithOtp (redirect centry://auth)',
         );
 
         await client.auth.signInWithOtp(
@@ -220,20 +143,12 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
         setState(() {
           _state = ProfileEmailFlowState.confirmSent;
         });
-
-        debugPrint('[ProfileEmailModal] OTP sent successfully');
       } else {
-        debugPrint(
-          '[ProfileEmailModal] Email already exists → switching state',
-        );
         setState(() {
           _state = ProfileEmailFlowState.emailExists;
         });
       }
-    } catch (e, st) {
-      debugPrint('[ProfileEmailModal] ❌ _submit ERROR: $e');
-      debugPrint('[ProfileEmailModal] ❌ _submit STACKTRACE: $st');
-
+    } catch (e) {
       setState(() {
         _state = ProfileEmailFlowState.initial;
         _error = 'Ошибка сервера';
@@ -242,12 +157,7 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
   }
 
   Future<void> _recover() async {
-    debugPrint('[ProfileEmailModal] _recover called');
-
-    if (_state == ProfileEmailFlowState.sending) {
-      debugPrint('[ProfileEmailModal] _recover aborted — already sending');
-      return;
-    }
+    if (_state == ProfileEmailFlowState.sending) return;
 
     setState(() {
       _state = ProfileEmailFlowState.sending;
@@ -263,12 +173,7 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
       setState(() {
         _state = ProfileEmailFlowState.recoverySent;
       });
-
-      debugPrint('[ProfileEmailModal] Recovery OTP sent');
-    } catch (e, st) {
-      debugPrint('[ProfileEmailModal] ❌ _recover ERROR: $e');
-      debugPrint('[ProfileEmailModal] ❌ _recover STACKTRACE: $st');
-
+    } catch (e) {
       setState(() {
         _state = ProfileEmailFlowState.emailExists;
         _error = 'Не удалось отправить письмо восстановления';
@@ -277,7 +182,6 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
   }
 
   void _resetEmail() {
-    debugPrint('[ProfileEmailModal] _resetEmail called');
     setState(() {
       _controller.clear();
       _state = ProfileEmailFlowState.initial;
@@ -330,8 +234,6 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
                         InkWell(
                           borderRadius: BorderRadius.circular(18),
                           onTap: () {
-                            debugPrint(
-                                '[ProfileEmailModal] Close button pressed');
                             Navigator.of(context).pop();
                           },
                           child: const Padding(

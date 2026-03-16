@@ -276,7 +276,7 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.22),
+              color: theme.dividerColor.withValues(alpha: 0.22),
             ),
           ),
           child: Column(
@@ -287,7 +287,7 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: theme.dividerColor.withOpacity(0.45),
+                  color: theme.dividerColor.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
@@ -314,7 +314,7 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
                             'Нажмите на план для добавления участника.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.85),
+                                  ?.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -434,7 +434,7 @@ class _PlanCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
           color: theme.colorScheme.surface,
         ),
         child: Column(
@@ -450,7 +450,7 @@ class _PlanCard extends StatelessWidget {
             Text(
               'Открыт',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -459,7 +459,7 @@ class _PlanCard extends StatelessWidget {
               children: [
                 Icon(Icons.group_outlined,
                     size: 18,
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8)),
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8)),
                 const SizedBox(width: 8),
                 Text(
                   '$membersCount участников',
@@ -468,7 +468,7 @@ class _PlanCard extends StatelessWidget {
                 const Spacer(),
                 Icon(Icons.schedule,
                     size: 18,
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8)),
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8)),
                 const SizedBox(width: 8),
                 Text(
                   _formatDeadline(votingDeadlineAt),
@@ -490,7 +490,7 @@ class _PlanCard extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: const Color(0xFF0D0F14).withOpacity(0.28),
+              color: const Color(0xFF0D0F14).withValues(alpha: 0.28),
             ),
           ),
         ),
@@ -499,7 +499,7 @@ class _PlanCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF2A2E36).withOpacity(0.9),
+                color: const Color(0xFF2A2E36).withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: const Color(0xFF3A3F49)),
               ),

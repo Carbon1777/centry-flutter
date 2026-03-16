@@ -349,24 +349,23 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!mounted) return;
 
       if (r.requestStatus == 'ALREADY_FRIENDS') {
-        await showCenterToast(
-          context,
-          message: 'Уже в друзьях',
-        );
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously — guarded above, exclusive branch
+        await showCenterToast(context, message: 'Уже в друзьях');
         return;
       }
 
       if (r.requestStatus == 'PENDING' && r.requestDirection == 'OUTGOING') {
-        await showCenterToast(
-          context,
-          message: 'Запрос отправлен',
-        );
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously — guarded above, exclusive branch
+        await showCenterToast(context, message: 'Запрос отправлен');
         return;
       }
 
       if (r.requestStatus == 'PENDING' && r.requestDirection == 'INCOMING') {
+        if (!mounted) return;
         final accepted = await _confirm(
-          context,
+          context, // ignore: use_build_context_synchronously
           title: 'Запрос в друзья',
           message:
               'У тебя уже есть входящий запрос от «${r.targetDisplayName}». Принять сейчас?',
@@ -374,9 +373,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
           cancelText: 'Позже',
         );
         if (!accepted) return;
+        if (!mounted) return;
 
         final requestId = r.requestId;
         if (requestId == null || requestId.isEmpty) {
+          // ignore: use_build_context_synchronously — guarded by mounted check above
           await _showError(context, 'request_id is missing');
           return;
         }
@@ -387,25 +388,23 @@ class _FriendsScreenState extends State<FriendsScreen> {
         );
 
         if (!mounted) return;
-
-        await showCenterToast(
-          context,
-          message: 'Запрос принят',
-        );
+        // ignore: use_build_context_synchronously — guarded above
+        await showCenterToast(context, message: 'Запрос принят');
 
         await _load();
         return;
       }
 
+      if (!mounted) return;
       await _showInfo(
-        context,
+        context, // ignore: use_build_context_synchronously
         title: 'Статус',
         message:
             'request_status=${r.requestStatus}, direction=${r.requestDirection}',
       );
     } catch (e) {
       if (!mounted) return;
-      await _showError(context, e);
+      await _showError(context, e); // ignore: use_build_context_synchronously
     }
   }
 
@@ -588,40 +587,43 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
       if (!mounted) return;
 
-      unawaited(showCenterToast(
-        context,
+      await showCenterToast(
+        context, // ignore: use_build_context_synchronously
         message:
             trimmed.isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
         isError: false,
-      ));
+      );
 
+      if (!mounted) return;
       await _load();
     } catch (e) {
       if (!mounted) return;
-      await _showError(context, e);
+      await _showError(context, e); // ignore: use_build_context_synchronously
     }
   }
 
   Future<void> _removeFriend(BuildContext context, FriendDto friend) async {
     final confirmed = await _confirmRemove(context, friend.displayName);
     if (!confirmed) return;
+    if (!context.mounted) return;
 
     try {
       await widget.repository.removeFriend(
         appUserId: widget.appUserId,
         friendUserId: friend.friendUserId,
       );
-      if (!mounted) return;
+      if (!context.mounted) return;
 
-      unawaited(showCenterToast(
+      await showCenterToast(
         context,
         message: 'Удален из друзей',
         isError: true,
-      ));
+      );
 
+      if (!mounted) return;
       await _load();
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       await _showError(context, e);
     }
   }
@@ -652,7 +654,7 @@ class _FriendCard extends StatelessWidget {
         );
 
     final hintStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.8),
+          color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
         );
 
     return Container(
@@ -661,7 +663,7 @@ class _FriendCard extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.25),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.25),
         ),
       ),
       child: Column(
@@ -709,7 +711,7 @@ class _FriendCard extends StatelessWidget {
                         .textTheme
                         .bodyMedium
                         ?.color
-                        ?.withOpacity(0.7),
+                        ?.withValues(alpha: 0.7),
                   ),
                 ],
               ),
@@ -720,7 +722,7 @@ class _FriendCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).dividerColor.withOpacity(0.35),
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.35),
               ),
             ),
             child: Row(

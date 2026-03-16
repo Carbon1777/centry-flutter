@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -93,12 +92,6 @@ class PlanScheduledNotificationUiCoordinator {
   void enqueue(PlanScheduledNotificationUiRequest request) {
     final key = request.dedupKey();
     if (_dedup.contains(key)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanScheduledNotificationCoordinator] skip duplicate '
-          'key=$key type=${request.type} planId=${request.planId} eventId=${request.eventId}',
-        );
-      }
       return;
     }
 
@@ -108,14 +101,6 @@ class PlanScheduledNotificationUiCoordinator {
     }
 
     _queue.add(request);
-
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanScheduledNotificationCoordinator] enqueue '
-        'type=${request.type} planId=${request.planId} eventId=${request.eventId} '
-        'source=${request.source} queue=${_queue.length}',
-      );
-    }
 
     _tryShowNext();
   }
@@ -138,12 +123,6 @@ class PlanScheduledNotificationUiCoordinator {
     final nav = _navigatorKey?.currentState;
     final ctx = _navigatorKey?.currentContext ?? nav?.overlay?.context;
     if (ctx == null) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanScheduledNotificationCoordinator] ctx=null -> retry next frame '
-          '(rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
-        );
-      }
       _scheduleRetry();
       return;
     }
@@ -151,25 +130,11 @@ class PlanScheduledNotificationUiCoordinator {
     final next = _queue.first;
     _showing = true;
 
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanScheduledNotificationCoordinator] show requested '
-        'type=${next.type} planId=${next.planId} eventId=${next.eventId} '
-        'source=${next.source}',
-      );
-    }
-
     Future<void> doShow() async {
       final nav2 = _navigatorKey?.currentState;
       final ctx2 = _navigatorKey?.currentContext ?? nav2?.overlay?.context;
 
       if (ctx2 == null) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanScheduledNotificationCoordinator] ctx2=null -> retry '
-            '(queue=${_queue.length})',
-          );
-        }
         _showing = false;
         _scheduleRetry();
         return;
@@ -193,13 +158,6 @@ class PlanScheduledNotificationUiCoordinator {
         );
       } catch (e) {
         _queue.addFirst(next);
-
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanScheduledNotificationCoordinator] showDialog failed: $e '
-            '(requeued, retry)',
-          );
-        }
         _scheduleRetry();
       } finally {
         _showing = false;

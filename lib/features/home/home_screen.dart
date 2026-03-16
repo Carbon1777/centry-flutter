@@ -230,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen>
                       style: TextStyle(
                         fontSize: 18,
                         height: 1.1,
-                        color: colors.onSurface.withOpacity(0.7),
+                        color: colors.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ),

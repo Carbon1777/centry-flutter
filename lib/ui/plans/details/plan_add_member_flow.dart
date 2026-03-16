@@ -89,7 +89,7 @@ class PlanAddMemberModal extends StatelessWidget {
                             context: context,
                             isScrollControlled: true,
                             backgroundColor: Colors.transparent,
-                            barrierColor: Colors.black.withOpacity(0.55),
+                            barrierColor: Colors.black.withValues(alpha: 0.55),
                             builder: (_) => PlanFriendsModal(
                               appUserId: appUserId, // ✅ FIX: каноничный userId
                               planId: planId,

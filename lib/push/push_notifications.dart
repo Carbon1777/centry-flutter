@@ -39,10 +39,6 @@ class PushNotifications {
     );
 
     await androidPlugin.createNotificationChannel(channel);
-
-    if (kDebugMode) {
-      debugPrint('[PushNotifications] ensured channel $kInviteChannelId');
-    }
   }
 
   static String _trimToString(dynamic v) {
@@ -120,7 +116,7 @@ class PushNotifications {
 
     // Boundaries: start/end OR whitespace/punctuation (excluding quote chars).
     final re = RegExp(
-      '(^|[\\s\\(\\[\\{\\-—–,:;.!?])' + escaped + r'(?=$|[\s\)\]\}\-—–,:;.!?])',
+      '(^|[\\s\\(\\[\\{\\-—–,:;.!?])$escaped(?=\$|[\\s\\)\\]\\}\\-—–,:;.!?])',
       multiLine: true,
     );
 
@@ -179,12 +175,6 @@ class PushNotifications {
       '$base/rest/v1/rpc/respond_plan_internal_invite_by_token_v1',
     );
 
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] token rpc start action=$act token=${token.isNotEmpty}',
-      );
-    }
-
     final client = HttpClient();
     try {
       final req = await client.postUrl(uri);
@@ -199,22 +189,7 @@ class PushNotifications {
 
       req.add(utf8.encode(body));
 
-      final resp = await req.close();
-      final responseText = await resp.transform(utf8.decoder).join();
-
-      if (kDebugMode) {
-        debugPrint(
-          '[PushNotifications] token rpc status=${resp.statusCode} body=$responseText',
-        );
-      }
-
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] token rpc failed: status=${resp.statusCode}',
-          );
-        }
-      }
+      await req.close();
     } finally {
       client.close(force: true);
     }
@@ -305,9 +280,6 @@ class PushNotifications {
 
     Future<void> handleResponse(NotificationResponse resp) async {
       final actionId = (resp.actionId ?? '').toString();
-      if (kDebugMode) {
-        debugPrint('[LocalNotifUI] actionId=$actionId payload=${resp.payload}');
-      }
 
       // Canon: for internal invite push no product actions in system notification.
       // Both tap on body and tap on "Посмотреть" route to OPEN.
@@ -345,12 +317,6 @@ class PushNotifications {
 
         if (planId.isEmpty || ownerUserId.isEmpty) return;
 
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] open PLAN_DELETED plan_id=$planId owner_user_id=$ownerUserId event_id=$eventId',
-          );
-        }
-
         final cb = onPlanDeletedOpen;
         if (cb == null) return;
 
@@ -377,11 +343,6 @@ class PushNotifications {
                 .trim();
         final planTitle = (map['plan_title'] ?? '').toString().trim();
         if (planId.isEmpty || leftUserId.isEmpty) return;
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_LEFT plan_id=$planId left_user_id=$leftUserId event_id=$eventId',
-          );
-        }
         final cb = onPlanMemberLeftOpen;
         if (cb == null) return;
         await cb(
@@ -406,12 +367,6 @@ class PushNotifications {
           return;
         }
 
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_REMOVED plan_id=$planId removed_user_id=$removedUserId owner_user_id=$ownerUserId',
-          );
-        }
-
         final cb = onPlanMemberRemovedOpen;
         if (cb == null) return;
 
@@ -432,12 +387,6 @@ class PushNotifications {
         final joinedNickname = (map['joined_nickname'] ?? '').toString().trim();
         final planTitle = (map['plan_title'] ?? '').toString().trim();
         if (planId.isEmpty || joinedUserId.isEmpty) return;
-
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] open PLAN_MEMBER_JOINED_BY_INVITE plan_id=$planId joined_user_id=$joinedUserId',
-          );
-        }
 
         final cb = onPlanMemberJoinedByInviteOpen;
         if (cb == null) return;
@@ -477,12 +426,6 @@ class PushNotifications {
 
         if (planId.isEmpty) return;
 
-        if (kDebugMode) {
-          debugPrint(
-            '[PushNotifications] open scheduled kind=$kind event_id=$eventId plan_id=$planId',
-          );
-        }
-
         await cb(
           type: kind,
           planId: planId,
@@ -508,11 +451,6 @@ class PushNotifications {
         final requestId =
             (map['request_id'] ?? map['requestId'] ?? '').toString().trim();
 
-        if (kDebugMode) {
-          debugPrint(
-              '[PushNotifications] open FRIEND kind=$kind event_id=$eventId request_id=$requestId');
-        }
-
         await cb(
           type: kind,
           eventId: eventId.isEmpty ? null : eventId,
@@ -529,12 +467,6 @@ class PushNotifications {
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
       if (inviteId.isEmpty || planId.isEmpty) return;
-
-      if (kDebugMode) {
-        debugPrint(
-          '[PushNotifications] open invite_id=$inviteId plan_id=$planId',
-        );
-      }
 
       await onInviteAction(
         inviteId: inviteId,
@@ -557,11 +489,6 @@ class PushNotifications {
 
     final launch = await _local.getNotificationAppLaunchDetails();
     final resp = launch?.notificationResponse;
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] launchFromNotif=${launch?.didNotificationLaunchApp} hasResp=${resp != null}',
-      );
-    }
     if (launch?.didNotificationLaunchApp == true && resp != null) {
       await handleResponse(resp);
     }
@@ -581,7 +508,6 @@ class PushNotifications {
 
     await _local.initialize(settings);
     await _ensureAndroidChannelCreated();
-    if (kDebugMode) debugPrint('[PushNotifications] initForBackground done');
   }
 
   static bool isInternalInvite(RemoteMessage m) {
@@ -682,18 +608,6 @@ class PushNotifications {
   }
 
   static Future<void> showPlanScheduledNotification(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanScheduledNotification id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint(
-        '[PushNotifications] showPlanScheduledNotification data=${m.data}',
-      );
-      debugPrint(
-        '[PushNotifications] showPlanScheduledNotification notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!isPlanScheduledNotification(m)) return;
 
     final type = (m.data['type'] ?? '').toString().trim();
@@ -745,11 +659,6 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=$type planId=$planId eventId=$eventId',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -781,22 +690,9 @@ class PushNotifications {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _local.show(id, title, body, details, payload: payload);
-    if (kDebugMode) {
-      debugPrint('[PushNotifications] local.show done id=$id kind=$type');
-    }
   }
 
   static Future<void> showInternalInvite(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showInternalInvite id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showInternalInvite data=${m.data}');
-      debugPrint(
-        '[PushNotifications] showInternalInvite notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!isInternalInvite(m)) return;
 
     final inviteId = (m.data['invite_id'] ?? '').toString();
@@ -839,11 +735,6 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) inviteId=$inviteId kind=${isOwnerResult ? 'OWNER_RESULT' : 'INVITEE_INVITE'}',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -876,17 +767,9 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showFriendRequest(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showFriendRequest id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showFriendRequest data=${m.data}');
-    }
-
     final t = (m.data['type'] ?? '').toString();
     final isReceived = t == 'FRIEND_REQUEST_RECEIVED';
     final isAccepted = t == 'FRIEND_REQUEST_ACCEPTED';
@@ -970,18 +853,9 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode)
-      debugPrint('[PushNotifications] local.show done id=$id kind=$t');
   }
 
   static Future<void> showFriendRemoved(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showFriendRemoved id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showFriendRemoved data=${m.data}');
-    }
-
     final t = (m.data['type'] ?? '').toString();
     if (t != 'FRIEND_REMOVED') return;
 
@@ -1054,21 +928,9 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode)
-      debugPrint('[PushNotifications] local.show done id=$id kind=$t');
   }
 
   static Future<void> showPlanDeleted(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanDeleted id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showPlanDeleted data=${m.data}');
-      debugPrint(
-        '[PushNotifications] showPlanDeleted notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!isPlanDeleted(m)) return;
 
     final planId = (m.data['plan_id'] ?? '').toString();
@@ -1139,11 +1001,6 @@ class PushNotifications {
     });
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_DELETED planId=$planId ownerUserId=$ownerUserId eventId=$eventId',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -1176,20 +1033,9 @@ class PushNotifications {
 
     await _local.show(id, normalizedTitle, normalizedBody, details,
         payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showPlanMemberLeft(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanMemberLeft id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showPlanMemberLeft data=${m.data}');
-      debugPrint(
-        '[PushNotifications] showPlanMemberLeft notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!isPlanMemberLeft(m)) return;
 
     final planId = (m.data['plan_id'] ?? '').toString();
@@ -1254,11 +1100,6 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_LEFT planId=$planId leftUserId=$leftUserId',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -1290,20 +1131,9 @@ class PushNotifications {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _local.show(id, title, normalizedBody, details, payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showPlanMemberRemoved(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanMemberRemoved id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showPlanMemberRemoved data=${m.data}');
-      debugPrint(
-        '[PushNotifications] showPlanMemberRemoved notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!PushNotifications.isPlanMemberRemoved(m)) return;
 
     final planId = (m.data['plan_id'] ?? '').toString();
@@ -1360,11 +1190,6 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_REMOVED planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -1396,21 +1221,9 @@ class PushNotifications {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _local.show(id, title, normalizedBody, details, payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showPlanMemberJoinedByInvite(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanMemberJoinedByInvite id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint(
-          '[PushNotifications] showPlanMemberJoinedByInvite data=${m.data}');
-      debugPrint(
-        '[PushNotifications] showPlanMemberJoinedByInvite notificationTitle=${m.notification?.title} notificationBody=${m.notification?.body}',
-      );
-    }
-
     if (!isPlanMemberJoinedByInvite(m)) return;
 
     final planId = (m.data['plan_id'] ?? '').toString();
@@ -1462,11 +1275,6 @@ class PushNotifications {
     final id = idSeed.hashCode & 0x7fffffff;
 
     await _local.cancel(id);
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] local.cancel($id) then show($id) kind=PLAN_MEMBER_JOINED_BY_INVITE planId=$planId joinedUserId=$joinedUserId',
-      );
-    }
 
     const android = AndroidNotificationDetails(
       kInviteChannelId,
@@ -1498,17 +1306,9 @@ class PushNotifications {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _local.show(id, title, normalizedBody, details, payload: payload);
-    if (kDebugMode) debugPrint('[PushNotifications] local.show done id=$id');
   }
 
   static Future<void> showPlanChatMessage(RemoteMessage m) async {
-    if (kDebugMode) {
-      debugPrint(
-        '[PushNotifications] showPlanChatMessage id=${m.messageId} sentAt=${m.sentTime}',
-      );
-      debugPrint('[PushNotifications] showPlanChatMessage data=${m.data}');
-    }
-
     if (!isPlanChatMessage(m)) return;
 
     final planId = (m.data['plan_id'] ?? '').toString().trim();
@@ -1575,23 +1375,12 @@ class PushNotifications {
     const details = NotificationDetails(android: android, iOS: ios);
 
     await _local.show(id, title, body, details, payload: payload);
-    if (kDebugMode) {
-      debugPrint('[PushNotifications] showPlanChatMessage local.show done id=$id');
-    }
   }
 }
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    if (kDebugMode) {
-      debugPrint(
-          '[FCM-BG] received id=${message.messageId} sentAt=${message.sentTime}');
-      debugPrint('[FCM-BG] data=${message.data}');
-      debugPrint(
-        '[FCM-BG] notificationTitle=${message.notification?.title} notificationBody=${message.notification?.body}',
-      );
-    }
     await Firebase.initializeApp();
     await PushNotifications.initForBackground();
     await PushNotifications.showInternalInvite(message);
@@ -1604,6 +1393,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showFriendRemoved(message);
     await PushNotifications.showPlanChatMessage(message);
   } catch (e) {
-    if (kDebugMode) debugPrint('[FCM-BG] error: $e');
+    // ignore
   }
 }

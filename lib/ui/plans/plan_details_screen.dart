@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -210,7 +209,6 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     } catch (e) {
       _details = null;
       _error = _userMessageForError(e);
-      debugPrint('[PlanDetailsScreen] load error: $e');
     }
 
     if (!mounted) return;
@@ -245,6 +243,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         visible: newValue,
       );
 
+      if (!mounted) return;
       await showCenterToast(context, message: newValue ? 'Видим' : 'Не видим');
       await _load(showSpinner: false);
     } catch (e) {
@@ -1393,9 +1392,9 @@ class _PlanSubmissionCandidateDetailsDialogState
 
   Color _statusBackgroundColor(BuildContext context) {
     if (widget.candidate.isRejected) {
-      return Theme.of(context).colorScheme.error.withOpacity(0.12);
+      return Theme.of(context).colorScheme.error.withValues(alpha: 0.12);
     }
-    return Colors.amber.withOpacity(0.14);
+    return Colors.amber.withValues(alpha: 0.14);
   }
 
   Future<void> _onPrimaryPressed() async {
@@ -1427,7 +1426,7 @@ class _PlanSubmissionCandidateDetailsDialogState
 
     const addToPlanFillColor = Color(0xFF19D3C5);
     const addToPlanTextColor = Color(0xFF081217);
-    final secondaryButtonBorderColor = Colors.white.withOpacity(0.82);
+    final secondaryButtonBorderColor = Colors.white.withValues(alpha: 0.82);
     const secondaryButtonTextColor = Color(0xFF4E8DFF);
 
     return Dialog(
@@ -1463,7 +1462,7 @@ class _PlanSubmissionCandidateDetailsDialogState
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.55),
+                                color: Colors.black.withValues(alpha: 0.55),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
@@ -1568,9 +1567,9 @@ class _PlanSubmissionCandidateDetailsDialogState
                                 backgroundColor: addToPlanFillColor,
                                 foregroundColor: addToPlanTextColor,
                                 disabledBackgroundColor:
-                                    addToPlanFillColor.withOpacity(0.45),
+                                    addToPlanFillColor.withValues(alpha: 0.45),
                                 disabledForegroundColor:
-                                    addToPlanTextColor.withOpacity(0.75),
+                                    addToPlanTextColor.withValues(alpha: 0.75),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
@@ -1882,7 +1881,7 @@ class _Body extends StatelessWidget {
           const SizedBox(height: 2),
           Container(
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.white.withOpacity(0.18)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
               borderRadius: BorderRadius.circular(14),
             ),
             padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
@@ -2027,7 +2026,7 @@ class _Body extends StatelessWidget {
                             .textTheme
                             .bodyMedium
                             ?.color
-                            ?.withOpacity(0.88),
+                            ?.withValues(alpha: 0.88),
                         height: 1.0,
                       ),
                   maxLines: 1,
@@ -2080,7 +2079,7 @@ class _Body extends StatelessWidget {
                             .textTheme
                             .bodyMedium
                             ?.color
-                            ?.withOpacity(0.88),
+                            ?.withValues(alpha: 0.88),
                         height: 1.0,
                       ),
                   maxLines: 1,

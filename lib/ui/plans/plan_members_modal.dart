@@ -223,11 +223,12 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
         ));
       }
     } finally {
-      if (!mounted) return;
-      if (showSpinner) {
-        setState(() => _manualRefreshing = false);
-      } else {
-        _autoRefreshing = false;
+      if (mounted) {
+        if (showSpinner) {
+          setState(() => _manualRefreshing = false);
+        } else {
+          _autoRefreshing = false;
+        }
       }
     }
   }
@@ -381,8 +382,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
         isError: true,
       ));
     } finally {
-      if (!mounted) return;
-      setState(() => _removeMemberInFlight.remove(member.appUserId));
+      if (mounted) setState(() => _removeMemberInFlight.remove(member.appUserId));
     }
   }
 
@@ -562,10 +562,10 @@ class _MemberRow extends StatelessWidget {
     final isSelfParticipant = member.isMe == true && member.role != 'OWNER';
 
     final bg =
-        isSelfParticipant ? Colors.white.withOpacity(0.06) : Colors.transparent;
+        isSelfParticipant ? Colors.white.withValues(alpha: 0.06) : Colors.transparent;
 
     final border = isSelfParticipant
-        ? Border.all(color: Colors.white.withOpacity(0.18), width: 1)
+        ? Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1)
         : null;
 
     final nicknameWeight =
@@ -622,13 +622,13 @@ class _MemberRow extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: addFriendDisabled
-                      ? Colors.white.withOpacity(0.06)
-                      : Colors.greenAccent.withOpacity(0.14),
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.greenAccent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: addFriendDisabled
-                        ? Colors.white.withOpacity(0.14)
-                        : Colors.greenAccent.withOpacity(0.38),
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : Colors.greenAccent.withValues(alpha: 0.38),
                     width: 1,
                   ),
                 ),
@@ -654,10 +654,10 @@ class _MemberRow extends StatelessWidget {
               padding: EdgeInsets.only(left: showAddFriendButton ? 0 : 4),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.redAccent.withOpacity(0.12),
+                  color: Colors.redAccent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.redAccent.withOpacity(0.38),
+                    color: Colors.redAccent.withValues(alpha: 0.38),
                     width: 1,
                   ),
                 ),
