@@ -692,8 +692,19 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   Future<void> _addPlanDateCandidate() async {
     if (_details == null || _actionLoading) return;
 
-    final picked = await _pickDateTime();
+    final deadline = _details!.plan.votingDeadlineAt;
+    final picked = await _pickDateTime(minDate: deadline);
     if (picked == null) return;
+
+    if (deadline != null && !picked.isAfter(deadline)) {
+      if (!mounted) return;
+      await showCenterToast(
+        context,
+        message: 'Дата события должна быть позже дедлайна голосования.',
+        isError: true,
+      );
+      return;
+    }
 
     setState(() => _actionLoading = true);
     try {
@@ -1107,16 +1118,17 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
     }
   }
 
-  Future<DateTime?> _pickDateTime({DateTime? initial}) async {
+  Future<DateTime?> _pickDateTime({DateTime? initial, DateTime? minDate}) async {
     final now = DateTime.now();
-    final initialDate = (initial ?? now.add(const Duration(days: 1)));
-    final safeInitialDate = initialDate.isBefore(now) ? now : initialDate;
+    final firstDate = (minDate != null && minDate.isAfter(now)) ? minDate : now;
+    final initialDate = (initial ?? firstDate.add(const Duration(days: 1)));
+    final safeInitialDate = initialDate.isBefore(firstDate) ? firstDate : initialDate;
 
     final date = await showDatePicker(
       context: context,
       locale: const Locale('ru'),
       initialDate: safeInitialDate,
-      firstDate: now,
+      firstDate: firstDate,
       lastDate: now.add(const Duration(days: 365)),
     );
     if (date == null) return null;
