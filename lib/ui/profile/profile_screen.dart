@@ -10,6 +10,7 @@ import '../../features/profile/privacy_settings_screen.dart';
 import 'centry_market_screen.dart';
 import '../../features/places/my_places_screen.dart';
 import '../../data/places/places_repository_impl.dart';
+import '../../data/bonus/bonus_repository_impl.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -124,10 +125,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Профиль'),
-        actions: const [
+        actions: [
           Padding(
-            padding: EdgeInsets.only(right: bodyH),
-            child: _TokensAppBar(),
+            padding: const EdgeInsets.only(right: bodyH),
+            child: _TokensAppBar(userId: widget.userId),
           ),
         ],
       ),
@@ -166,6 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           return _ProfileContent(
             profile: profile,
             onReload: _reload,
+            userId: widget.userId,
           );
         },
       ),
@@ -294,8 +296,13 @@ class _GuestProfileContent extends StatelessWidget {
 class _ProfileContent extends StatelessWidget {
   final _ProfileData profile;
   final VoidCallback onReload;
+  final String userId;
 
-  const _ProfileContent({required this.profile, required this.onReload});
+  const _ProfileContent({
+    required this.profile,
+    required this.onReload,
+    required this.userId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +352,7 @@ class _ProfileContent extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _CentryMarketCard(),
+                  _CentryMarketCard(userId: userId),
                   const SizedBox(height: 6),
                   _PrivacySettingsTextLink(),
                   const SizedBox(height: 2),
@@ -385,8 +392,68 @@ class _ProfileContent extends StatelessWidget {
           const _StubRow(title: 'Описание'),
           const _StubRow(title: 'Мои фото'),
           const _StubRow(title: 'Мои видео'),
+
+          const SizedBox(height: 32),
+          const _AppVersionLabel(),
         ],
       ),
+    );
+  }
+}
+
+// =======================
+// App Version Label
+// =======================
+
+class _AppVersionLabel extends StatefulWidget {
+  const _AppVersionLabel();
+
+  @override
+  State<_AppVersionLabel> createState() => _AppVersionLabelState();
+}
+
+class _AppVersionLabelState extends State<_AppVersionLabel> {
+  late final Future<String?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<String?> _load() async {
+    try {
+      final data = await Supabase.instance.client
+          .rpc('get_app_version_v1') as Map<String, dynamic>?;
+      if (data == null) return null;
+      final phase = data['phase'] as String? ?? '';
+      final version = data['version'] as String? ?? '';
+      final build = data['build'] as int? ?? 0;
+      return '$phase $version.$build';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _future,
+      builder: (context, snapshot) {
+        final label = snapshot.data;
+        if (label == null) return const SizedBox.shrink();
+        return Center(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.3),
+                ),
+          ),
+        );
+      },
     );
   }
 }
@@ -859,30 +926,54 @@ class _GenderPickerSheet extends StatelessWidget {
 // AppBar: Tokens
 // =======================
 
-class _TokensAppBar extends StatelessWidget {
-  const _TokensAppBar();
+class _TokensAppBar extends StatefulWidget {
+  final String userId;
+
+  const _TokensAppBar({required this.userId});
+
+  @override
+  State<_TokensAppBar> createState() => _TokensAppBarState();
+}
+
+class _TokensAppBarState extends State<_TokensAppBar> {
+  late final Future<int?> _balanceFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _balanceFuture = BonusRepositoryImpl(Supabase.instance.client)
+        .getSummary(appUserId: widget.userId)
+        .then<int?>((s) => s.currentBalance)
+        .catchError((_) => null);
+  }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.outline),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.monetization_on_outlined, size: 16),
-          const SizedBox(width: 6),
-          Text('Tokens', style: text.bodyMedium),
-          const SizedBox(width: 8),
-          Text('—', style: text.bodyMedium),
-        ],
-      ),
+    return FutureBuilder<int?>(
+      future: _balanceFuture,
+      builder: (context, snapshot) {
+        final label = snapshot.hasData ? '${snapshot.data}' : '—';
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            border: Border.all(color: colors.outline),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.monetization_on_outlined, size: 16),
+              const SizedBox(width: 6),
+              Text('Tokens', style: text.bodyMedium),
+              const SizedBox(width: 8),
+              Text(label, style: text.bodyMedium),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -892,6 +983,10 @@ class _TokensAppBar extends StatelessWidget {
 // =======================
 
 class _CentryMarketCard extends StatelessWidget {
+  final String userId;
+
+  const _CentryMarketCard({required this.userId});
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -903,7 +998,9 @@ class _CentryMarketCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CentryMarketScreen()),
+            MaterialPageRoute(
+              builder: (_) => CentryMarketScreen(userId: userId),
+            ),
           );
         },
         child: Container(
