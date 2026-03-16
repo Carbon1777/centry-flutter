@@ -612,7 +612,7 @@ class _PrivacySettingsTextLink extends StatelessWidget {
           children: [
             Icon(Icons.lock_outline, size: 14, color: colors.primary),
             const SizedBox(width: 5),
-            Text('Приватность',
+            Text('Настройки',
                 style: text.bodySmall?.copyWith(color: colors.primary)),
             const SizedBox(width: 2),
             Icon(Icons.chevron_right, size: 14, color: colors.primary),

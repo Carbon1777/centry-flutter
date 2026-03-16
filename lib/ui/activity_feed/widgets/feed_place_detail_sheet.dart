@@ -1,0 +1,46 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../data/feed/feed_place_dto.dart';
+import '../../../data/feed/feed_repository.dart';
+import '../../../data/places/places_repository.dart';
+import '../../../features/places/details/place_details_dialog.dart';
+
+/// Открывает детали места из ленты.
+/// Копирует все механики PlaceDetailsDialog + добавляет feed-блоки.
+Future<void> showFeedPlaceDetailSheet({
+  required BuildContext context,
+  required FeedPlaceDto place,
+  required PlacesRepository placesRepository,
+  required FeedRepository feedRepository,
+  String? appUserId,
+}) async {
+  // photo_url из get_feed_nearby — это storage_key из place_enrichment
+  final storageKey = place.photoStorageKey;
+  final photoUrl = storageKey != null && storageKey.isNotEmpty
+      ? Supabase.instance.client.storage.from('brand-media').getPublicUrl(storageKey)
+      : null;
+
+  await showDialog<void>(
+    context: context,
+    builder: (_) => PlaceDetailsDialog(
+      repository: placesRepository,
+      placeId: place.placeId,
+      title: place.name,
+      typeLabel: place.category,
+      address: '',
+      lat: 0,
+      lng: 0,
+      previewMediaUrl: photoUrl,
+      previewStorageKey: storageKey,
+      metroName: place.metroName,
+      metroDistanceM: place.metroDistanceMeters,
+      // Feed-specific
+      feedCountPlans: place.countPlans,
+      feedInterestedCount: place.interestedCount,
+      feedPlannedCount: place.plannedCount,
+      feedVisitedCount: place.visitedCount,
+      feedRepository: feedRepository,
+    ),
+  );
+}

@@ -5,6 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../data/feed/feed_repository.dart';
+import '../../../data/feed/plan_shell_dto.dart';
+import '../../profile/user_card_sheet.dart';
 import '../../../data/places/place_dto.dart';
 import '../../../data/places/places_repository.dart';
 import '../../../ui/common/center_toast.dart';
@@ -38,6 +41,13 @@ class PlaceDetailsDialog extends StatefulWidget {
   final bool isAlreadyInCurrentPlan;
   final Future<void> Function()? onRemoveFromCurrentPlan;
 
+  /// Feed-specific (optional): агрегаты из ленты
+  final int? feedCountPlans;
+  final int? feedInterestedCount;
+  final int? feedPlannedCount;
+  final int? feedVisitedCount;
+  final FeedRepository? feedRepository;
+
   const PlaceDetailsDialog({
     super.key,
     required this.repository,
@@ -57,6 +67,11 @@ class PlaceDetailsDialog extends StatefulWidget {
     this.sourcePlanTitle,
     this.isAlreadyInCurrentPlan = false,
     this.onRemoveFromCurrentPlan,
+    this.feedCountPlans,
+    this.feedInterestedCount,
+    this.feedPlannedCount,
+    this.feedVisitedCount,
+    this.feedRepository,
   });
 
   @override
@@ -800,6 +815,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       ),
     );
 
+    final screenHeight = MediaQuery.of(context).size.height;
+    final dialogMaxHeight = screenHeight - MediaQuery.of(context).viewInsets.bottom - 80;
+    final imageHeight = (screenHeight * 0.22).clamp(120.0, 200.0);
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -811,18 +830,15 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
               child: Center(child: CircularProgressIndicator()),
             )
           else
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.9,
-              ),
+            SizedBox(
+              height: dialogMaxHeight,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   ClipRRect(
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(20)),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
+                    child: SizedBox(
+                      height: imageHeight,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -882,14 +898,13 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                       ),
                     ),
                   ),
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                             Text(
                               widget.typeLabel,
                               style: theme.textTheme.labelMedium?.copyWith(
@@ -927,14 +942,51 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 2),
+                            // Feed-specific: сигналы + планы — сразу под названием
+                            if (widget.feedCountPlans != null) ...[
+                              const SizedBox(height: 6),
+                              const Divider(height: 1),
+                              const SizedBox(height: 6),
+                              _FeedSignalsRow(
+                                interestedCount: widget.feedInterestedCount ?? 0,
+                                plannedCount: widget.feedPlannedCount ?? 0,
+                                visitedCount: widget.feedVisitedCount ?? 0,
+                              ),
+                              const SizedBox(height: 6),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: widget.feedCountPlans! > 0 &&
+                                          widget.feedRepository != null
+                                      ? () {
+                                          showDialog<void>(
+                                            context: context,
+                                            builder: (_) =>
+                                                _FeedPlanShellsDialog(
+                                              placeId: widget.placeId,
+                                              feedRepository:
+                                                  widget.feedRepository!,
+                                            ),
+                                          );
+                                        }
+                                      : null,
+                                  icon: const Icon(Icons.event_note_outlined,
+                                      size: 18),
+                                  label: Text(
+                                      'Планов — ${widget.feedCountPlans}'),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Divider(height: 1),
+                            ],
+                            const SizedBox(height: 4),
                             if (_effectiveCityName != null &&
                                 _effectiveCityName!.trim().isNotEmpty) ...[
                               Text(
                                 _effectiveCityName!,
                                 style: theme.textTheme.bodySmall,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 2),
                             ],
                             if (_effectiveAreaName != null &&
                                 _effectiveAreaName!.trim().isNotEmpty) ...[
@@ -942,7 +994,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 _effectiveAreaName!,
                                 style: theme.textTheme.bodySmall,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 2),
                             ],
                             if (_effectiveMetroName != null &&
                                 _effectiveMetroName!.trim().isNotEmpty) ...[
@@ -950,7 +1002,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 'м. ${_effectiveMetroName}${_effectiveMetroDistanceM != null ? " · ${_effectiveMetroDistanceM} м" : ""}',
                                 style: theme.textTheme.bodySmall,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 2),
                             ],
                             Row(
                               children: [
@@ -1003,7 +1055,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 ],
                               ),
                             ],
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
@@ -1023,7 +1075,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                             : '—',
                                         style: theme.textTheme.titleSmall,
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4),
                                       Row(
                                         children: [
                                           _Vote(
@@ -1061,7 +1113,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
@@ -1115,7 +1167,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -1173,6 +1224,403 @@ class _Vote extends StatelessWidget {
                 color: color,
                 fontWeight: FontWeight.w600,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+// Feed: строка сигналов
+// ──────────────────────────────────────────────
+
+class _FeedSignalsRow extends StatelessWidget {
+  final int interestedCount;
+  final int plannedCount;
+  final int visitedCount;
+
+  const _FeedSignalsRow({
+    required this.interestedCount,
+    required this.plannedCount,
+    required this.visitedCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Expanded(
+            child: _SignalColumn(
+              icon: Icons.visibility_outlined,
+              color: const Color(0xFF7986CB), // индиго светлее
+              count: interestedCount,
+              label: 'Интересуются',
+            ),
+          ),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: Theme.of(context).dividerColor,
+          ),
+          Expanded(
+            child: _SignalColumn(
+              icon: Icons.directions_walk,
+              color: const Color(0xFF43A047), // зелёный ярче
+              count: plannedCount,
+              label: 'Идут',
+            ),
+          ),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: Theme.of(context).dividerColor,
+          ),
+          Expanded(
+            child: _SignalColumn(
+              icon: Icons.check_circle_outline,
+              color: const Color(0xFF78909C), // серо-синий
+              count: visitedCount,
+              label: 'Были',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignalColumn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final int count;
+  final String label;
+
+  const _SignalColumn({
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 22, color: color),
+        const SizedBox(height: 2),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: count > 0 ? color : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+            height: 1.0,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+// Feed: модалка оболочек планов
+// ──────────────────────────────────────────────
+
+class _FeedPlanShellsDialog extends StatefulWidget {
+  final String placeId;
+  final FeedRepository feedRepository;
+
+  const _FeedPlanShellsDialog({
+    required this.placeId,
+    required this.feedRepository,
+  });
+
+  @override
+  State<_FeedPlanShellsDialog> createState() => _FeedPlanShellsDialogState();
+}
+
+class _FeedPlanShellsDialogState extends State<_FeedPlanShellsDialog> {
+  late Future<List<PlanShellDto>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.feedRepository.getPlanShells(widget.placeId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Планы на это место',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: FutureBuilder<List<PlanShellDto>>(
+                future: _future,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snap.hasError || snap.data == null || snap.data!.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: Text('Нет активных планов')),
+                    );
+                  }
+                  final shells = snap.data!;
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    itemCount: shells.length,
+                    itemBuilder: (context, i) {
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: i < shells.length - 1 ? 10 : 0),
+                        child: _PlanShellTile(shell: shells[i]),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanShellTile extends StatelessWidget {
+  final PlanShellDto shell;
+
+  const _PlanShellTile({required this.shell});
+
+  String _participantsLabel(int count) {
+    if (count % 10 == 1 && count % 100 != 11) return '$count участник';
+    if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) {
+      return '$count участника';
+    }
+    return '$count участников';
+  }
+
+  Color get _phaseColor {
+    switch (shell.signalPhase) {
+      case 'PLANNED':
+        return const Color(0xFF43A047);
+      case 'VISITED':
+        return const Color(0xFF78909C);
+      default:
+        return const Color(0xFF7986CB);
+    }
+  }
+
+  void _openParticipants(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => _FeedPlanParticipantsDialog(shell: shell),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isHidden = !shell.isVisible;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isHidden ? null : () => _openParticipants(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isHidden
+                  ? colors.outline.withValues(alpha: 0.25)
+                  : colors.outline.withValues(alpha: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Цветная точка — фаза сигнала
+              Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isHidden ? Colors.grey.shade600 : _phaseColor,
+                ),
+              ),
+              // Название + участники
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isHidden ? 'Закрытый план' : (shell.title ?? 'Без названия'),
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isHidden ? colors.onSurface.withValues(alpha: 0.4) : null,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _participantsLabel(shell.participantsCount),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: isHidden
+                            ? colors.onSurface.withValues(alpha: 0.3)
+                            : colors.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Стрелка — только для видимых
+              if (!isHidden) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: colors.onSurface.withValues(alpha: 0.4),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+// Feed: модалка участников плана
+// ──────────────────────────────────────────────
+
+class _FeedPlanParticipantsDialog extends StatelessWidget {
+  final PlanShellDto shell;
+
+  const _FeedPlanParticipantsDialog({required this.shell});
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = shell.participantsPublicPreview;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      shell.title ?? 'Участники',
+                      style: Theme.of(context).textTheme.titleMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: preview.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: Text('Нет участников')),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: preview.length,
+                      itemBuilder: (context, i) {
+                        final p = preview[i];
+                        // Конвертируем в UserMiniProfile для единого стиля аватара
+                        final miniProfile = p.isPublic
+                            ? UserMiniProfile(
+                                userId: p.userId ?? '',
+                                nickname: p.nickname,
+                                nicknameHidden: p.nicknameHidden,
+                                avatarUrl: p.avatarUrl,
+                                avatarHidden: p.avatarHidden,
+                              )
+                            : null;
+
+                        return ListTile(
+                          leading: UserAvatarWidget(
+                            profile: miniProfile,
+                            size: 40,
+                            borderRadius: const BorderRadius.all(Radius.circular(10)),
+                          ),
+                          title: Text(
+                            !p.isPublic || p.nicknameHidden
+                                ? 'Скрыто'
+                                : (p.nickname?.isNotEmpty == true ? p.nickname! : '—'),
+                            style: (!p.isPublic || p.nicknameHidden)
+                                ? const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)
+                                : null,
+                          ),
+                          onTap: p.userId != null
+                              ? () => UserCardSheet.show(
+                                    context,
+                                    targetUserId: p.userId!,
+                                    cardContext: 'in_feed',
+                                  )
+                              : null,
+                        );
+                      },
+                    ),
             ),
           ],
         ),
