@@ -52,8 +52,7 @@ class _PlanAddByIdModalState extends State<PlanAddByIdModal> {
       if (!mounted) return;
       setState(() => _error = _humanizeError(e));
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

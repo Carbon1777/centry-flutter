@@ -18,7 +18,7 @@ class _CreatePlanDialogState extends State<CreatePlanDialog> {
 
   DateTime? _deadline;
 
-  bool _submitting = false;
+  final bool _submitting = false;
 
   @override
   void initState() {
@@ -299,7 +299,7 @@ class _CreatePlanDialogState extends State<CreatePlanDialog> {
             top: 12,
             right: 12,
             child: Material(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),

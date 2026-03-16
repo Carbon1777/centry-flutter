@@ -95,7 +95,7 @@ class _PlansScreenState extends State<PlansScreen>
       try {
         Supabase.instance.client.removeChannel(ch);
       } catch (e) {
-        debugPrint('[PlansScreen] removeChannel on resume error: $e');
+        // ignore
       }
       _inboxChannel = null;
     }
@@ -170,7 +170,6 @@ class _PlansScreenState extends State<PlansScreen>
         _activePlans = [];
       }
     } catch (e) {
-      debugPrint('[PlansScreen] getMyPlans error: $e');
       _activePlans = [];
     }
 
@@ -189,7 +188,6 @@ class _PlansScreenState extends State<PlansScreen>
         _archivePlans = [];
       }
     } catch (e) {
-      debugPrint('[PlansScreen] getMyPlansArchive error: $e');
       _archivePlans = [];
     }
 
@@ -226,18 +224,14 @@ class _PlansScreenState extends State<PlansScreen>
           ..addAll(unreadPlanIds);
       });
     } catch (e) {
-      debugPrint('[PlansScreen] getMyPlanChatBadges error: $e');
+      // ignore
     }
   }
 
   Future<void> _openDetails(PlanSummaryDto plan) async {
     final appUserId = await _resolveDomainAppUserId();
     if (appUserId == null) return;
-
-    debugPrint('[PlansScreen] opening details planId=${plan.id}');
-    // print() as a fallback in case debugPrint is filtered out.
-    // ignore: avoid_print
-    print('[PlansScreen] opening details planId=${plan.id}');
+    if (!mounted) return;
 
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -248,12 +242,6 @@ class _PlansScreenState extends State<PlansScreen>
         ),
       ),
     );
-
-    debugPrint(
-      '[PlansScreen] details result changed=$changed for planId=${plan.id}',
-    );
-    // ignore: avoid_print
-    print('[PlansScreen] details result changed=$changed for planId=${plan.id}');
 
     if (!mounted) return;
 
@@ -293,6 +281,7 @@ class _PlansScreenState extends State<PlansScreen>
 
       final snapshot = await UserSnapshotStorage().read();
       if (snapshot == null) return;
+      if (!mounted) return;
 
       await showDialog(
         context: context,
@@ -315,6 +304,7 @@ class _PlansScreenState extends State<PlansScreen>
     }
 
     // USER → открываем диалог создания
+    if (!mounted) return;
     final dialogResult = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => const CreatePlanDialog(),
@@ -346,8 +336,8 @@ class _PlansScreenState extends State<PlansScreen>
       );
 
       await _loadAll();
-    } catch (e) {
-      debugPrint('[PlansScreen] createPlan error: $e');
+    } catch (_) {
+      // ignore
     }
   }
 
@@ -427,15 +417,12 @@ class _PlansScreenState extends State<PlansScreen>
           // Server-first: refetch canonical list from server.
           await _loadAll();
         } catch (e) {
-          debugPrint('[PlansScreen] inbox realtime handler error: $e');
+          // ignore
         }
       },
     );
 
-    await channel.subscribe();
-    debugPrint(
-      '[PlansScreen] subscribed inbox realtime for appUserId=$appUserId',
-    );
+    channel.subscribe();
   }
 
   @override

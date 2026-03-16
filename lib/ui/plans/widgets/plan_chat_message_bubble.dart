@@ -57,15 +57,15 @@ class PlanChatMessageBubble extends StatelessWidget {
     final isEdited = !isTombstone && message.editedAt != null;
 
     final bubbleColor = isTombstone
-        ? theme.colorScheme.surface.withOpacity(0.40)
+        ? theme.colorScheme.surface.withValues(alpha: 0.40)
         : (message.isMine
             ? const Color(0xFF10233F)
-            : theme.colorScheme.surface.withOpacity(0.94));
+            : theme.colorScheme.surface.withValues(alpha: 0.94));
     final borderColor = isTombstone
-        ? Colors.white.withOpacity(0.08)
+        ? Colors.white.withValues(alpha: 0.08)
         : (message.isMine
-            ? const Color(0xFF2A62C7).withOpacity(0.50)
-            : Colors.white.withOpacity(0.14));
+            ? const Color(0xFF2A62C7).withValues(alpha: 0.50)
+            : Colors.white.withValues(alpha: 0.14));
     final nicknameColor = message.isMine
         ? const Color(0xFF7FB0FF)
         : const Color(0xFF8BE4D4);
@@ -114,7 +114,7 @@ class PlanChatMessageBubble extends StatelessWidget {
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             color: isTombstone
-                                ? Colors.white.withOpacity(0.35)
+                                ? Colors.white.withValues(alpha: 0.35)
                                 : (message.nicknameHidden
                                     ? theme.colorScheme.outline
                                     : nicknameColor),
@@ -130,7 +130,7 @@ class PlanChatMessageBubble extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(
+                            color: Colors.white.withValues(alpha: 
                               isTombstone ? 0.35 : 0.68,
                             ),
                             fontWeight: FontWeight.w500,
@@ -149,7 +149,7 @@ class PlanChatMessageBubble extends StatelessWidget {
                   style: theme.textTheme.bodyLarge?.copyWith(
                     height: 1.35,
                     fontSize: 15.5,
-                    color: Colors.white.withOpacity(0.38),
+                    color: Colors.white.withValues(alpha: 0.38),
                     fontStyle: FontStyle.italic,
                   ),
                 )
@@ -167,7 +167,7 @@ class PlanChatMessageBubble extends StatelessWidget {
                     child: Text(
                       'Изменено',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white.withOpacity(0.45),
+                        color: Colors.white.withValues(alpha: 0.45),
                         fontWeight: FontWeight.w500,
                         height: 1.0,
                       ),

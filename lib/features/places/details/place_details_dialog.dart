@@ -1,5 +1,4 @@
 import '../../../data/local/user_snapshot_storage.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
@@ -152,17 +151,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   void initState() {
     super.initState();
 
-    if (kDebugMode) {
-      debugPrint('[PlaceDetailsDialog] initState placeId=${widget.placeId}');
-    }
-
-    Future.microtask(() async {
-      final snapshot = await UserSnapshotStorage().read();
-      debugPrint(
-        'SNAPSHOT DEBUG (initState) → id=${snapshot?.id}, state=${snapshot?.state}',
-      );
-    });
-
     _loadDetails();
     _loadMeta();
   }
@@ -242,6 +230,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         return;
       }
 
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -297,11 +286,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         _savingSaved = false;
         _hasChanged = true;
       });
-    } catch (e, st) {
-      if (kDebugMode) {
-        debugPrint('[PlaceDetailsDialog] toggleSavedPlace failed: $e');
-        debugPrint('$st');
-      }
+    } catch (_) {
       if (!mounted) return;
       setState(() {
         _savingSaved = false;
@@ -329,8 +314,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         placeId: widget.placeId,
       );
 
-      debugPrint('DETAILS RESULT → $result');
-
       if (!mounted) return;
 
       setState(() {
@@ -355,7 +338,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
       if (!mounted) return;
 
-      dynamic asString(dynamic v) => v == null ? null : v.toString();
+      dynamic asString(dynamic v) => v?.toString();
 
       int? asIntNullable(dynamic v) {
         if (v == null) return null;
@@ -422,9 +405,6 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       });
     } catch (e) {
       if (!mounted) return;
-      if (kDebugMode) {
-        debugPrint('[PlaceDetailsDialog] meta load failed: $e');
-      }
     }
   }
 
@@ -692,12 +672,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
           planTitle: planTitle,
         ),
       );
-    } catch (e, st) {
-      if (kDebugMode) {
-        debugPrint('[PlaceDetailsDialog] direct add to source plan failed: $e');
-        debugPrint('$st');
-      }
-
+    } catch (e) {
       if (!mounted) return;
 
       setState(() {
@@ -733,12 +708,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         });
 
         Navigator.of(context).pop(true);
-      } catch (e, st) {
-        if (kDebugMode) {
-          debugPrint('[PlaceDetailsDialog] remove from plan failed: $e');
-          debugPrint('$st');
-        }
-
+      } catch (e) {
         if (!mounted) return;
 
         setState(() {
@@ -784,12 +754,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       });
 
       Navigator.of(context).pop(result);
-    } catch (e, st) {
-      if (kDebugMode) {
-        debugPrint('[PlaceDetailsDialog] add to plan failed: $e');
-        debugPrint('$st');
-      }
-
+    } catch (_) {
       if (!mounted) return;
 
       setState(() {
@@ -999,7 +964,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                             if (_effectiveMetroName != null &&
                                 _effectiveMetroName!.trim().isNotEmpty) ...[
                               Text(
-                                'м. ${_effectiveMetroName}${_effectiveMetroDistanceM != null ? " · ${_effectiveMetroDistanceM} м" : ""}',
+                                'м. $_effectiveMetroName${_effectiveMetroDistanceM != null ? " · $_effectiveMetroDistanceM м" : ""}',
                                 style: theme.textTheme.bodySmall,
                               ),
                               const SizedBox(height: 2),

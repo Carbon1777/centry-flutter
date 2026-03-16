@@ -297,7 +297,7 @@ class _AddPlaceToPlanSheetState extends State<_AddPlaceToPlanSheet>
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.22),
+              color: theme.dividerColor.withValues(alpha: 0.22),
             ),
           ),
           child: Column(
@@ -308,7 +308,7 @@ class _AddPlaceToPlanSheetState extends State<_AddPlaceToPlanSheet>
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: theme.dividerColor.withOpacity(0.45),
+                  color: theme.dividerColor.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
@@ -333,7 +333,7 @@ class _AddPlaceToPlanSheetState extends State<_AddPlaceToPlanSheet>
                             'Нажмите на план, чтобы добавить место.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.85),
+                                  ?.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -452,7 +452,7 @@ class _PlanCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
           color: theme.colorScheme.surface,
         ),
         child: Column(
@@ -472,7 +472,7 @@ class _PlanCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.88),
+                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.88),
                   ),
                 ),
               ),
@@ -480,7 +480,7 @@ class _PlanCard extends StatelessWidget {
             Text(
               plan.roleLabel,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -520,7 +520,7 @@ class _PlanCard extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: const Color(0xFF0D0F14).withOpacity(0.28),
+              color: const Color(0xFF0D0F14).withValues(alpha: 0.28),
             ),
           ),
         ),
@@ -560,7 +560,7 @@ class _MetaItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color =
-        Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.8);
+        Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8);
 
     return Row(
       mainAxisSize: MainAxisSize.min,

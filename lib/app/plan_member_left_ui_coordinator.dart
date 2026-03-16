@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -85,11 +84,6 @@ class PlanMemberLeftUiCoordinator {
   void enqueue(PlanMemberLeftUiRequest request) {
     final key = request.dedupKey();
     if (_dedup.contains(key)) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanMemberLeftCoordinator] skip duplicate key=$key planId=${request.planId} leftUserId=${request.leftUserId} eventId=${request.eventId}',
-        );
-      }
       return;
     }
 
@@ -100,12 +94,6 @@ class PlanMemberLeftUiCoordinator {
     }
 
     _queue.add(request);
-
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanMemberLeftCoordinator] enqueue planId=${request.planId} leftUserId=${request.leftUserId} eventId=${request.eventId} source=${request.source} queue=${_queue.length}',
-      );
-    }
 
     _tryShowNext();
   }
@@ -128,11 +116,6 @@ class PlanMemberLeftUiCoordinator {
     final nav = _navigatorKey?.currentState;
     final ctx = _navigatorKey?.currentContext ?? nav?.overlay?.context;
     if (ctx == null) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanMemberLeftCoordinator] ctx=null -> retry next frame (rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
-        );
-      }
       _scheduleRetry();
       return;
     }
@@ -141,22 +124,11 @@ class PlanMemberLeftUiCoordinator {
     final next = _queue.first;
     _showing = true;
 
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanMemberLeftCoordinator] show requested planId=${next.planId} leftUserId=${next.leftUserId} eventId=${next.eventId} source=${next.source}',
-      );
-    }
-
     Future<void> doShow() async {
       final nav2 = _navigatorKey?.currentState;
       final ctx2 = _navigatorKey?.currentContext ?? nav2?.overlay?.context;
 
       if (ctx2 == null) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanMemberLeftCoordinator] ctx2=null -> retry (queue=${_queue.length})',
-          );
-        }
         _showing = false;
         _scheduleRetry();
         return;
@@ -179,12 +151,6 @@ class PlanMemberLeftUiCoordinator {
       } catch (e) {
         // Avoid silent drops during navigator churn.
         _queue.addFirst(next);
-
-        if (kDebugMode) {
-          debugPrint(
-            '[PlanMemberLeftCoordinator] showDialog failed: $e (requeued, retry)',
-          );
-        }
         _scheduleRetry();
       } finally {
         _showing = false;

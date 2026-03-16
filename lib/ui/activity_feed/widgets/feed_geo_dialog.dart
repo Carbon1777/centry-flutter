@@ -102,7 +102,7 @@ class _FeedGeoDialogState extends State<FeedGeoDialog> {
                   Text(
                     'Лента построена случайным образом, так как вы не предоставили доступ к геолокации. Мы можем персонализировать её специально для вас.',
                     style: textTheme.bodyMedium?.copyWith(
-                      color: colors.onSurface.withOpacity(0.85),
+                      color: colors.onSurface.withValues(alpha: 0.85),
                     ),
                   ),
                   const SizedBox(height: 16),

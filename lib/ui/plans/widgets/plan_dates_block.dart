@@ -282,7 +282,7 @@ class _DateCandidateCard extends StatelessWidget {
                                           color: canDeleteTap
                                               ? Colors.redAccent
                                               : Colors.redAccent
-                                                  .withOpacity(0.45),
+                                                  .withValues(alpha: 0.45),
                                         ),
                                       ),
                                     )
@@ -362,7 +362,7 @@ class _CalendarTile extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -487,10 +487,10 @@ class _ActionChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: enabled
-              ? activeColor.withOpacity(0.16)
-              : disabledColor.withOpacity(0.12),
+              ? activeColor.withValues(alpha: 0.16)
+              : disabledColor.withValues(alpha: 0.12),
           border: enabled && isPriority
-              ? Border.all(color: Colors.amber.withOpacity(0.65))
+              ? Border.all(color: Colors.amber.withValues(alpha: 0.65))
               : null,
         ),
         child: Text(

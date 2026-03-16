@@ -130,8 +130,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       if (!mounted) return;
       setState(() => _pendingOptimistic.remove(f.friendUserId));
     } finally {
-      if (!mounted) return;
-      setState(() => _inFlight.remove(f.friendUserId));
+      if (mounted) setState(() => _inFlight.remove(f.friendUserId));
     }
   }
 
@@ -156,7 +155,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.22),
+              color: theme.dividerColor.withValues(alpha: 0.22),
             ),
           ),
           child: Column(
@@ -167,7 +166,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: theme.dividerColor.withOpacity(0.45),
+                  color: theme.dividerColor.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
@@ -192,7 +191,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
                             'Выберите друга для добавления в план.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.85),
+                                  ?.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -300,8 +299,8 @@ class _FriendCard extends StatelessWidget {
     }
 
     final note = friend.note.trim();
-    final borderColor = theme.dividerColor.withOpacity(0.25);
-    final noteBg = theme.dividerColor.withOpacity(0.10);
+    final borderColor = theme.dividerColor.withValues(alpha: 0.25);
+    final noteBg = theme.dividerColor.withValues(alpha: 0.10);
 
     final nickStyle = profile?.nicknameHidden == true
         ? theme.textTheme.titleMedium?.copyWith(
@@ -318,7 +317,7 @@ class _FriendCard extends StatelessWidget {
             fontWeight: FontWeight.w700,
           )
         : theme.textTheme.bodySmall?.copyWith(
-            color: theme.textTheme.bodySmall?.color?.withOpacity(0.85),
+            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
             fontWeight: FontWeight.w700,
           );
 

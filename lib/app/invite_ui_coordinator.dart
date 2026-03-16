@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -187,7 +186,6 @@ class InviteUiCoordinator {
 
   void attachNavigatorKey(GlobalKey<NavigatorState> navigatorKey) {
     _navigatorKey = navigatorKey;
-    _log('attachNavigatorKey');
     _scheduleFlush();
   }
 
@@ -201,14 +199,12 @@ class InviteUiCoordinator {
     _onOpenPlan = onOpenPlan;
     _onToast = onToast;
     _onError = onError;
-    _log('configure callbacks');
     _scheduleFlush();
   }
 
   void setRootUiReady(bool value) {
     if (_rootUiReady == value) return;
     _rootUiReady = value;
-    _log('setRootUiReady=$_rootUiReady');
     if (_rootUiReady) {
       _scheduleFlush();
     }
@@ -218,63 +214,45 @@ class InviteUiCoordinator {
 
   void enqueue(InviteUiRequest request) {
     if (request.inviteId.isEmpty || request.planId.isEmpty) {
-      _log('enqueue ignored: empty inviteId/planId');
       return;
     }
 
     if (_handledInviteIds.contains(request.inviteId)) {
-      _log('enqueue ignored: already handled inviteId=${request.inviteId}');
       return;
     }
 
     if (_queuedInviteIds.contains(request.inviteId)) {
-      _log('enqueue ignored: already queued inviteId=${request.inviteId}');
       return;
     }
 
     _queue.addLast(request);
     _queuedInviteIds.add(request.inviteId);
 
-    _log(
-      'enqueue inviteId=${request.inviteId} '
-      'planId=${request.planId} source=${request.source} '
-      'queueSize=${_queue.length}',
-    );
-
     _scheduleFlush();
   }
 
   void enqueueOwnerResult(OwnerResultUiRequest request) {
     if (request.inviteId.isEmpty || request.planId.isEmpty) {
-      _log('enqueueOwnerResult ignored: empty inviteId/planId');
       return;
     }
 
     final key = request.dedupKey;
 
     if (_handledOwnerResultKeys.contains(key)) {
-      _log('enqueueOwnerResult ignored: already handled key=$key');
       return;
     }
 
     if (_queuedOwnerResultKeys.contains(key)) {
-      _log('enqueueOwnerResult ignored: already queued key=$key');
       return;
     }
 
     // ✅ NEW: пока диалог уже показывается/обрабатывается — игнорим дубль (backgroundIntent часто дергает дважды).
     if (_inFlightOwnerResultKeys.contains(key)) {
-      _log('enqueueOwnerResult ignored: in-flight key=$key');
       return;
     }
 
     _ownerResultQueue.add(request);
     _queuedOwnerResultKeys.add(key);
-
-    _log(
-      'enqueue owner-result inviteId=${request.inviteId} planId=${request.planId} action=${request.action} '
-      'source=${request.source} queueSize=${_ownerResultQueue.length}',
-    );
 
     _scheduleFlush();
   }
@@ -291,9 +269,6 @@ class InviteUiCoordinator {
       InviteUiToastRequest(message: m, planId: planId, source: source),
     );
 
-    _log(
-      'enqueueToast message="$m" planId=$planId source=$source toastQueueSize=${_toastQueue.length}',
-    );
     _scheduleFlush();
   }
 
@@ -312,7 +287,6 @@ class InviteUiCoordinator {
 
     _dialogVisible = false;
     _isFlushing = false;
-    _log('resetForDebug');
   }
 
   void _scheduleFlush() {
@@ -327,25 +301,21 @@ class InviteUiCoordinator {
     try {
       while (true) {
         if (_dialogVisible) {
-          _log('flush blocked: dialog already visible');
           return;
         }
 
         if (!_rootUiReady) {
-          _log('flush blocked: root UI not ready');
           _scheduleRetry();
           return;
         }
 
         if (_navigatorKey?.currentState == null ||
             _navigatorKey?.currentContext == null) {
-          _log('flush blocked: navigator not ready');
           _scheduleRetry();
           return;
         }
 
         if (_onAction == null || _onOpenPlan == null || _onToast == null) {
-          _log('flush blocked: callbacks not configured');
           return;
         }
 
@@ -391,10 +361,6 @@ class InviteUiCoordinator {
     final context = _navigatorKey!.currentContext!;
 
     _dialogVisible = true;
-    _log(
-      'show dialog inviteId=${request.inviteId} '
-      'planId=${request.planId} source=${request.source}',
-    );
 
     InviteUiDecision? decision;
     try {
@@ -445,7 +411,6 @@ class InviteUiCoordinator {
       );
     } catch (e, st) {
       _dialogVisible = false;
-      _log('show dialog error inviteId=${request.inviteId}: $e');
       await _safeOnError(e, st);
       if (!_handledInviteIds.contains(request.inviteId) &&
           !_queuedInviteIds.contains(request.inviteId)) {
@@ -459,7 +424,6 @@ class InviteUiCoordinator {
     _dialogVisible = false;
 
     if (decision == null) {
-      _log('dialog dismissed without decision inviteId=${request.inviteId}');
       return;
     }
 
@@ -474,13 +438,6 @@ class InviteUiCoordinator {
     final onAction = _onAction!;
     final onOpenPlan = _onOpenPlan!;
     final onToast = _onToast!;
-
-    final actionName =
-        decision == InviteUiDecision.accept ? 'ACCEPT' : 'DECLINE';
-    _log(
-      'action start inviteId=${request.inviteId} '
-      'planId=${request.planId} action=$actionName',
-    );
 
     try {
       final result = await onAction(request, decision);
@@ -501,23 +458,9 @@ class InviteUiCoordinator {
           decision == InviteUiDecision.accept &&
           result.openPlanId != null &&
           result.openPlanId!.isNotEmpty) {
-        _log(
-          'open plan request inviteId=${request.inviteId} '
-          'planId=${result.openPlanId}',
-        );
         await onOpenPlan(result.openPlanId!);
       }
-
-      _log(
-        'action done inviteId=${request.inviteId} '
-        'action=$actionName success=${result.success}',
-      );
     } catch (e, st) {
-      _log(
-        'action error inviteId=${request.inviteId} '
-        'action=$actionName error=$e',
-      );
-
       await _safeOnError(e, st);
       await onToast('Ошибка. Попробуйте еще раз.');
     } finally {
@@ -532,19 +475,11 @@ class InviteUiCoordinator {
     final authUserIdNorm = authUserId?.trim();
 
     if (authUserIdNorm == null || authUserIdNorm.isEmpty) {
-      _log(
-        'ack owner-result skipped: no auth user '
-        'inviteId=${request.inviteId} planId=${request.planId} action=${request.action}',
-      );
       return;
     }
 
     final action = request.action.trim().toUpperCase();
     if (action != 'ACCEPT' && action != 'DECLINE') {
-      _log(
-        'ack owner-result skipped: invalid action=${request.action} '
-        'inviteId=${request.inviteId} planId=${request.planId}',
-      );
       return;
     }
 
@@ -557,14 +492,7 @@ class InviteUiCoordinator {
           'p_action': action,
         },
       );
-
-      _log(
-        'ack owner-result ok inviteId=${request.inviteId} planId=${request.planId} action=$action',
-      );
     } catch (e, st) {
-      _log(
-        'ack owner-result error inviteId=${request.inviteId} planId=${request.planId} action=$action error=$e',
-      );
       await _safeOnError(e, st);
     }
   }
@@ -590,11 +518,6 @@ class InviteUiCoordinator {
         : (isAccept ? 'Приглашение принято' : 'Приглашение отклонено');
     final body =
         (request.body?.trim().isNotEmpty == true) ? request.body!.trim() : '';
-
-    _log(
-      'show owner-result dialog inviteId=${request.inviteId} planId=${request.planId} '
-      'action=${request.action} source=${request.source}',
-    );
 
     try {
       await showDialog<void>(
@@ -648,7 +571,6 @@ class InviteUiCoordinator {
     } catch (e, st) {
       _handledOwnerResultKeys.add(key);
       _onError?.call(e, st);
-      _log('owner-result dialog error: $e');
     } finally {
       _inFlightOwnerResultKeys.remove(key);
       _dialogVisible = false;
@@ -656,7 +578,4 @@ class InviteUiCoordinator {
     }
   }
 
-  void _log(String message) {
-    debugPrint('[InviteCoordinator] $message');
-  }
 }

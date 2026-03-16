@@ -79,7 +79,7 @@ class _PlacesGeoInfoDialogState extends State<PlacesGeoInfoDialog> {
               Text(
                 widget.text,
                 style: textTheme.bodyMedium?.copyWith(
-                  color: colors.onSurface.withOpacity(0.8),
+                  color: colors.onSurface.withValues(alpha: 0.8),
                 ),
               ),
               const SizedBox(height: 16),

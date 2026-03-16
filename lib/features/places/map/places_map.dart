@@ -174,7 +174,6 @@ class _PlacesMapState extends State<PlacesMap> {
 
       _scheduleRecomputeLabels();
     } catch (e) {
-      if (kDebugMode) debugPrint('PLACES MAP load error: $e');
       if (!mounted) return;
       setState(() => _loading = false);
     }
@@ -356,7 +355,7 @@ class _PlacesMapState extends State<PlacesMap> {
         constraints: const BoxConstraints(maxWidth: _labelMaxWidth),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.72),
+          color: Colors.black.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(

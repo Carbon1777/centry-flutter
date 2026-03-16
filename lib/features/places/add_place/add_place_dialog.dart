@@ -215,7 +215,7 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedType,
+                      initialValue: _selectedType,
                       decoration: _inputDecoration('Тип'),
                       items: _types
                           .map(
@@ -232,7 +232,7 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _selectedCity,
+                      initialValue: _selectedCity,
                       decoration: _inputDecoration('Город'),
                       items: _cities
                           .map(

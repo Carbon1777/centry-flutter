@@ -46,7 +46,7 @@ class _PlanPlaceAddSourceSheet extends StatelessWidget {
             color: theme.colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.22),
+              color: theme.dividerColor.withValues(alpha: 0.22),
             ),
           ),
           child: Column(
@@ -57,7 +57,7 @@ class _PlanPlaceAddSourceSheet extends StatelessWidget {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: theme.dividerColor.withOpacity(0.45),
+                  color: theme.dividerColor.withValues(alpha: 0.45),
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
@@ -82,7 +82,7 @@ class _PlanPlaceAddSourceSheet extends StatelessWidget {
                             'План: «$planTitle»',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.textTheme.bodyMedium?.color
-                                  ?.withOpacity(0.85),
+                                  ?.withValues(alpha: 0.85),
                             ),
                           ),
                         ],
@@ -165,7 +165,7 @@ class _SourceCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+          border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
           color: theme.colorScheme.surface,
         ),
         child: Row(
@@ -192,7 +192,7 @@ class _SourceCard extends StatelessWidget {
                     subtitle,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color:
-                          theme.textTheme.bodyMedium?.color?.withOpacity(0.85),
+                          theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.85),
                     ),
                   ),
                 ],

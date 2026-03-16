@@ -29,7 +29,7 @@ class CentryMarketScreen extends StatelessWidget {
                   'Здесь будет описание правил начисления Tokens.\n'
                   'Контент будет добавлен позже.',
                   style: text.bodyMedium?.copyWith(
-                    color: colors.onSurface.withOpacity(0.75),
+                    color: colors.onSurface.withValues(alpha: 0.75),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -153,7 +153,7 @@ class CentryMarketScreen extends StatelessWidget {
                     'На этапе бета-тестирования недоступен.',
                     textAlign: TextAlign.center,
                     style: text.bodyMedium?.copyWith(
-                      color: colors.onSurface.withOpacity(0.75),
+                      color: colors.onSurface.withValues(alpha: 0.75),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -162,7 +162,7 @@ class CentryMarketScreen extends StatelessWidget {
                     'они сохранятся и будут доступны после открытия.',
                     textAlign: TextAlign.center,
                     style: text.bodyMedium?.copyWith(
-                      color: colors.onSurface.withOpacity(0.75),
+                      color: colors.onSurface.withValues(alpha: 0.75),
                     ),
                   ),
                 ],

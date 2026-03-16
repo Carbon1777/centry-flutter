@@ -239,7 +239,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
 
         final user = snap.data!;
         final accentBlue = colors.primary;
-        final outlineWhite = Colors.white.withOpacity(0.75);
+        final outlineWhite = Colors.white.withValues(alpha: 0.75);
 
         // ✅ Feed is the first real working screen after welcome.
         _notifyAppShellReadyAfterBuild();
@@ -275,14 +275,14 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
                     padding: const EdgeInsets.only(right: 8),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(16),
-                      overlayColor: MaterialStateProperty.resolveWith<Color?>(
+                      overlayColor: WidgetStateProperty.resolveWith<Color?>(
                         (states) {
-                          if (states.contains(MaterialState.pressed)) {
-                            return accentBlue.withOpacity(0.18);
+                          if (states.contains(WidgetState.pressed)) {
+                            return accentBlue.withValues(alpha: 0.18);
                           }
-                          if (states.contains(MaterialState.hovered) ||
-                              states.contains(MaterialState.focused)) {
-                            return accentBlue.withOpacity(0.10);
+                          if (states.contains(WidgetState.hovered) ||
+                              states.contains(WidgetState.focused)) {
+                            return accentBlue.withValues(alpha: 0.10);
                           }
                           return null;
                         },
@@ -602,7 +602,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
             badges.hasAnyUnread || badges.unreadPlansCount > 0;
       });
     } catch (e) {
-      debugPrint('[ActivityFeedScreen] getMyPlanChatBadges error: $e');
+      // ignore
     } finally {
       _loading = false;
     }
@@ -621,7 +621,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.08),
                 width: 1,
               ),
             ),

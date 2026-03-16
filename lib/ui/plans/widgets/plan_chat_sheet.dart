@@ -594,7 +594,7 @@ class _PlanChatSheetState extends State<PlanChatSheet>
         _unreadDividerKey.currentContext ??
         _keyForMessage(_messages[clampedIndex].id).currentContext;
 
-    if (targetContext != null) {
+    if (targetContext != null && targetContext.mounted) {
       await Scrollable.ensureVisible(
         targetContext,
         duration: const Duration(milliseconds: 220),
@@ -866,13 +866,13 @@ class _PlanChatSheetState extends State<PlanChatSheet>
         decoration: BoxDecoration(
           color: const Color(0xB8181E27),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.white.withOpacity(0.055),
-              Colors.white.withOpacity(0.015),
+              Colors.white.withValues(alpha: 0.055),
+              Colors.white.withValues(alpha: 0.015),
             ],
           ),
         ),
@@ -1003,7 +1003,7 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                                             side: BorderSide(
                                                               color: Colors
                                                                   .white
-                                                                  .withOpacity(
+                                                                  .withValues(alpha: 
                                                                 0.40,
                                                               ),
                                                             ),
@@ -1138,7 +1138,7 @@ class _PlanChatHeader extends StatelessWidget {
                   width: 72,
                   height: 5,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.40),
+                    color: Colors.white.withValues(alpha: 0.40),
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
@@ -1156,7 +1156,7 @@ class _PlanChatHeader extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                           fontSize: 28,
                           letterSpacing: 0.1,
-                          color: Colors.white.withOpacity(0.96),
+                          color: Colors.white.withValues(alpha: 0.96),
                         ),
                       ),
                       if (unreadCount > 0)
@@ -1210,7 +1210,7 @@ class _UnreadMessagesDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Colors.white.withOpacity(0.26);
+    final color = Colors.white.withValues(alpha: 0.26);
     final labelStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
           color: const Color(0xFFFB7185),
           fontWeight: FontWeight.w800,
@@ -1276,9 +1276,9 @@ class _PlanChatComposer extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.08),
+          color: Colors.black.withValues(alpha: 0.08),
           border: Border(
-            top: BorderSide(color: Colors.white.withOpacity(0.08)),
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
           ),
         ),
         child: TextFieldTapRegion(
@@ -1298,7 +1298,7 @@ class _PlanChatComposer extends StatelessWidget {
                   decoration: InputDecoration(
                     hintText: 'Напишите сообщение…',
                     filled: true,
-                    fillColor: theme.colorScheme.surface.withOpacity(0.90),
+                    fillColor: theme.colorScheme.surface.withValues(alpha: 0.90),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
@@ -1306,12 +1306,12 @@ class _PlanChatComposer extends StatelessWidget {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                       borderSide:
-                          BorderSide(color: Colors.white.withOpacity(0.10)),
+                          BorderSide(color: Colors.white.withValues(alpha: 0.10)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
                       borderSide:
-                          BorderSide(color: Colors.white.withOpacity(0.10)),
+                          BorderSide(color: Colors.white.withValues(alpha: 0.10)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
@@ -1371,7 +1371,7 @@ class _MessageActionSheet extends StatelessWidget {
           thickness: 1,
           indent: 16,
           endIndent: 16,
-          color: Colors.white.withOpacity(0.07),
+          color: Colors.white.withValues(alpha: 0.07),
         );
 
     return Container(
@@ -1386,15 +1386,15 @@ class _MessageActionSheet extends StatelessWidget {
             Color(0xFF181E2B),
           ],
         ),
-        border: Border.all(color: Colors.white.withOpacity(0.13)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.45),
+            color: Colors.black.withValues(alpha: 0.45),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
           BoxShadow(
-            color: Colors.white.withOpacity(0.04),
+            color: Colors.white.withValues(alpha: 0.04),
             blurRadius: 0,
             spreadRadius: 0,
             offset: const Offset(0, 1),
@@ -1410,7 +1410,7 @@ class _MessageActionSheet extends StatelessWidget {
             if (hasEdit) ...[
               _ActionTile(
                 icon: Icons.edit_outlined,
-                iconColor: Colors.white.withOpacity(0.80),
+                iconColor: Colors.white.withValues(alpha: 0.80),
                 label: 'Редактировать',
                 labelColor: Colors.white,
                 onTap: onEdit!,
@@ -1419,9 +1419,9 @@ class _MessageActionSheet extends StatelessWidget {
             ],
             _ActionTile(
               icon: Icons.visibility_off_outlined,
-              iconColor: Colors.white.withOpacity(0.60),
+              iconColor: Colors.white.withValues(alpha: 0.60),
               label: 'Удалить у себя',
-              labelColor: Colors.white.withOpacity(0.90),
+              labelColor: Colors.white.withValues(alpha: 0.90),
               onTap: onDeleteForMe,
             ),
             if (hasDeleteForAll) ...[
@@ -1438,9 +1438,9 @@ class _MessageActionSheet extends StatelessWidget {
               divider(),
               _ActionTile(
                 icon: Icons.checklist_rounded,
-                iconColor: Colors.white.withOpacity(0.60),
+                iconColor: Colors.white.withValues(alpha: 0.60),
                 label: 'Выбрать несколько',
-                labelColor: Colors.white.withOpacity(0.90),
+                labelColor: Colors.white.withValues(alpha: 0.90),
                 onTap: onSelectMultiple!,
               ),
             ],
@@ -1474,9 +1474,9 @@ class _SelectionActionBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.12),
+        color: Colors.black.withValues(alpha: 0.12),
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.08)),
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
         ),
       ),
       child: Row(
@@ -1484,7 +1484,7 @@ class _SelectionActionBar extends StatelessWidget {
           TextButton(
             onPressed: onCancel,
             style: TextButton.styleFrom(
-              foregroundColor: Colors.white.withOpacity(0.70),
+              foregroundColor: Colors.white.withValues(alpha: 0.70),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             child: Text(
@@ -1501,7 +1501,7 @@ class _SelectionActionBar extends StatelessWidget {
                   : 'Выбрано: $selectedCount',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: Colors.white.withOpacity(0.60),
+                color: Colors.white.withValues(alpha: 0.60),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1521,8 +1521,8 @@ class _SelectionActionBar extends StatelessWidget {
             icon: Icon(
               Icons.visibility_off_outlined,
               color: onDeleteForMe != null
-                  ? Colors.white.withOpacity(0.75)
-                  : Colors.white.withOpacity(0.25),
+                  ? Colors.white.withValues(alpha: 0.75)
+                  : Colors.white.withValues(alpha: 0.25),
             ),
           ),
         ],
@@ -1582,9 +1582,9 @@ class _PlanChatEditBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.12),
+        color: Colors.black.withValues(alpha: 0.12),
         border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.08)),
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
         ),
       ),
       child: Row(

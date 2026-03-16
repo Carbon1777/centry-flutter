@@ -67,7 +67,7 @@ class PlanPlacesBlock extends StatelessWidget {
                       .textTheme
                       .bodyMedium
                       ?.color
-                      ?.withOpacity(0.8),
+                      ?.withValues(alpha: 0.8),
                 ),
           ),
           const SizedBox(height: 8),
@@ -263,11 +263,11 @@ class _AddCandidateSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cardRadius = BorderRadius.circular(16);
-    final borderColor = Colors.grey.withOpacity(0.55);
+    final borderColor = Colors.grey.withValues(alpha: 0.55);
     final iconColor =
-        enabled ? const Color(0xFF3B82F6) : Colors.grey.withOpacity(0.7);
+        enabled ? const Color(0xFF3B82F6) : Colors.grey.withValues(alpha: 0.7);
     final textColor =
-        enabled ? Colors.grey.shade400 : Colors.grey.withOpacity(0.7);
+        enabled ? Colors.grey.shade400 : Colors.grey.withValues(alpha: 0.7);
 
     return Material(
       color: Colors.transparent,
@@ -489,7 +489,7 @@ class _PlaceCandidateCard extends StatelessWidget {
     final opacity =
         isOwnerPriorityCandidate ? 1.0 : (item.isDimmed ? 0.55 : 1.0);
     final canDeleteTap = onRemove != null && !actionsDisabled;
-    final voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
+    const voteRight = _buttonRight + (_buttonWidth - _voteWidth) / 2;
     final distanceLabel = _distanceLabel();
     final coreSecondaryLine = _coreSecondaryLine();
     final submissionSecondaryLine = _submissionSecondaryLine();
@@ -791,10 +791,10 @@ class _PlaceActionChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: enabled
-              ? activeColor.withOpacity(0.16)
-              : disabledColor.withOpacity(0.12),
+              ? activeColor.withValues(alpha: 0.16)
+              : disabledColor.withValues(alpha: 0.12),
           border: enabled && isPriority
-              ? Border.all(color: Colors.amber.withOpacity(0.65))
+              ? Border.all(color: Colors.amber.withValues(alpha: 0.65))
               : null,
         ),
         child: Text(

@@ -169,11 +169,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       },
       onOpenPlan: (planId) async {},
       onToast: (message) async {},
-      onError: (error, stackTrace) async {
-        if (kDebugMode) {
-          debugPrint('[InviteCoordinator] error: $error');
-        }
-      },
+      onError: (error, stackTrace) async {},
     );
     InviteUiCoordinator.instance.setRootUiReady(false);
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
@@ -229,9 +225,6 @@ class _BootstrapGateState extends State<BootstrapGate>
             : <String, dynamic>{};
 
         final intentData = (map['intent_data'] ?? '').toString();
-        if (kDebugMode) {
-          debugPrint('[IntentBridge] intent_data=$intentData extras=$extras');
-        }
 
         if (intentData.isNotEmpty) {
           final uri = Uri.tryParse(intentData);
@@ -553,9 +546,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           }
         }
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[IntentBridge] handler error: $e');
-        }
+        // ignore handler errors
       }
     });
   }
@@ -584,9 +575,6 @@ class _BootstrapGateState extends State<BootstrapGate>
           return;
         }
 
-        if (kDebugMode) {
-          debugPrint('[InviteModal] ignore local notif action=$normalized');
-        }
       },
       onFriendOpen: ({
         required String type,
@@ -724,14 +712,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     _fcmMessageSub?.cancel();
 
-    if (kDebugMode) {
-      debugPrint('[FCM] installing onMessage listener');
-    }
     _fcmMessageSub = FirebaseMessaging.onMessage.listen((m) async {
-      if (kDebugMode) {
-        debugPrint('[FCM] onMessage data=${m.data}');
-      }
-
       // Existing working flows: keep unchanged.
       await PushNotifications.showInternalInvite(m);
       await PushNotifications.showFriendRequest(m);
@@ -965,9 +946,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (prevKey == normalized &&
         prevAt != null &&
         now.difference(prevAt).inSeconds < 3) {
-      if (kDebugMode) {
-        debugPrint('[OPEN] skip duplicate key=$normalized');
-      }
       return true;
     }
 
@@ -988,28 +966,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     final deliveryId =
         (payload['delivery_id'] ?? payload['deliveryId'] ?? '').toString();
     _scheduleConsumeInboxDelivery(deliveryId);
-  }
-
-  void _logResolvedInboxOpen({
-    required String label,
-    required Map<String, dynamic>? payload,
-  }) {
-    if (!kDebugMode) return;
-
-    if (payload == null) {
-      debugPrint('[OPEN] $label inbox_resolve result=not_found');
-      return;
-    }
-
-    final title = (payload['title'] ?? '').toString();
-    final body = (payload['body'] ?? '').toString();
-    final actionsRaw = payload['actions'];
-    final actionsLen = actionsRaw is List ? actionsRaw.length : 0;
-    debugPrint(
-      '[OPEN] $label inbox_resolve delivery_id=${payload['delivery_id']} '
-      'status=${payload['delivery_status']} type=${payload['type']} '
-      'title=$title body=$body actions_len=$actionsLen',
-    );
   }
 
   Map<String, dynamic>? _extractPayloadMap(dynamic payloadRaw) {
@@ -1479,11 +1435,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventDatetimeLabel: eventDatetimeLabel,
       placeTitle: placeTitle,
     );
-    _logResolvedInboxOpen(
-      label:
-          'plan_scheduled type=$trimmedType plan_id=$trimmedPlanId source=$openSource',
-      payload: resolved,
-    );
 
     final effective = resolved ??
         <String, dynamic>{
@@ -1614,11 +1565,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     final resolved = await _resolveInviteOpenInboxDelivery(
       inviteId: trimmedInviteId,
       planId: trimmedPlanId,
-    );
-    _logResolvedInboxOpen(
-      label:
-          'invite open invite_id=$trimmedInviteId plan_id=$trimmedPlanId source=$openSource',
-      payload: resolved,
     );
 
     if (resolved != null) {
@@ -1787,11 +1733,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       leftUserId: trimmedLeftUserId,
       eventId: eventId,
     );
-    _logResolvedInboxOpen(
-      label:
-          'plan_member_left plan_id=$trimmedPlanId left_user_id=$trimmedLeftUserId source=$openSource',
-      payload: resolved,
-    );
 
     final effective = resolved ??
         <String, dynamic>{
@@ -1919,11 +1860,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       ownerUserId: trimmedOwnerUserId,
       eventId: eventId,
     );
-    _logResolvedInboxOpen(
-      label:
-          'plan_member_removed plan_id=$trimmedPlanId removed_user_id=$trimmedRemovedUserId owner_user_id=$trimmedOwnerUserId source=$openSource',
-      payload: resolved,
-    );
 
     final effective = resolved ??
         <String, dynamic>{
@@ -2030,11 +1966,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       joinedUserId: trimmedJoinedUserId,
       eventId: eventId,
     );
-    _logResolvedInboxOpen(
-      label:
-          'plan_member_joined_by_invite plan_id=$trimmedPlanId joined_user_id=$trimmedJoinedUserId source=$openSource',
-      payload: resolved,
-    );
 
     final effective = resolved ??
         <String, dynamic>{
@@ -2136,11 +2067,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       planId: trimmedPlanId,
       ownerUserId: trimmedOwnerUserId,
       eventId: eventId,
-    );
-    _logResolvedInboxOpen(
-      label:
-          'plan_deleted plan_id=$trimmedPlanId owner_user_id=$trimmedOwnerUserId source=$openSource',
-      payload: resolved,
     );
 
     final effective = resolved ??
@@ -2359,14 +2285,9 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     // If we couldn't correlate, do NOT consume anything.
-    if (kDebugMode) {
-      debugPrint(
-        '[Friends] open-from-local-notif: no INBOX found type=$type eventId=$eventId requestId=$requestId',
-      );
-    }
 
     final ctx = App.navigatorKey.currentContext;
-    if (ctx != null) {
+    if (ctx != null && ctx.mounted) {
       await showCenterToast(
         ctx,
         message: (title ?? '').trim().isNotEmpty
@@ -2707,7 +2628,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     FriendsRefreshBus.ping();
 
     final ctx = App.navigatorKey.currentContext;
-    if (ctx != null) {
+    if (ctx != null && ctx.mounted) {
       await showCenterToast(
         ctx,
         message: 'Запрос принят',
@@ -2735,7 +2656,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     FriendsRefreshBus.ping();
 
     final ctx = App.navigatorKey.currentContext;
-    if (ctx != null) {
+    if (ctx != null && ctx.mounted) {
       await showCenterToast(
         ctx,
         message: 'Запрос отклонён',
@@ -2808,11 +2729,6 @@ class _BootstrapGateState extends State<BootstrapGate>
         // ignore (connect() may not exist / may already be connected)
       }
 
-      if (kDebugMode) {
-        debugPrint(
-            '[INBOX] subscribe notification_deliveries (userId=$userId)');
-      }
-
       final channel = _supabase.channel('inbox_invites_$userId');
 
       channel.onPostgresChanges(
@@ -2839,11 +2755,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                 .toString();
 
             if (rowUserId.isNotEmpty && rowUserId != userId) {
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] ignore delivery for other user rowUserId=$rowUserId currentUserId=$userId keys=${newRow.keys.toList()}',
-                );
-              }
               return;
             }
 
@@ -2865,20 +2776,10 @@ class _BootstrapGateState extends State<BootstrapGate>
                 .toUpperCase();
 
             if (deliveryChannel != 'INBOX') {
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] ignore non-INBOX delivery channel=$deliveryChannel status=$status keys=${newRow.keys.toList()}',
-                );
-              }
               return;
             }
 
             if (status.isNotEmpty && status != 'PENDING') {
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] ignore non-PENDING delivery status=$status keys=${newRow.keys.toList()}',
-                );
-              }
               return;
             }
 
@@ -2909,9 +2810,8 @@ class _BootstrapGateState extends State<BootstrapGate>
             }
 
             // Ensure delivery id is available in payload for later ACK/consume logic.
-            final _deliveryId = (newRow['id'] ?? '').toString();
-            if (_deliveryId.isNotEmpty) {
-              payloadMap['delivery_id'] = _deliveryId;
+            if (deliveryId.isNotEmpty) {
+              payloadMap['delivery_id'] = deliveryId;
             }
 
             // Canonical routing:
@@ -2921,16 +2821,6 @@ class _BootstrapGateState extends State<BootstrapGate>
             // Everything else is ignored.
             final payloadType = (payloadMap['type'] ?? '').toString();
 
-            if (kDebugMode) {
-              debugPrint(
-                '[INBOX] insert delivery parsed type=$payloadType payloadKeys=${payloadMap.keys.toList()}',
-              );
-              if (payloadType.trim().isEmpty) {
-                debugPrint(
-                  '[INBOX] insert delivery has empty payloadType payloadRawType=${payloadRaw.runtimeType} rowKeys=${newRow.keys.toList()}',
-                );
-              }
-            }
             if (payloadType.isNotEmpty &&
                 payloadType != 'PLAN_INTERNAL_INVITE' &&
                 payloadType != 'PLAN_INTERNAL_INVITE_ACCEPTED' &&
@@ -3002,12 +2892,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                       .toString()
                       .trim();
 
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-scheduled insert type=$requestType planId=$planId eventId=$eventId',
-                );
-              }
-
               PlanScheduledNotificationUiCoordinator.instance.enqueue(
                 PlanScheduledNotificationUiRequest(
                   type: requestType,
@@ -3052,12 +2936,6 @@ class _BootstrapGateState extends State<BootstrapGate>
               final planTitle =
                   (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
                       .toString();
-
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-member-left insert planId=$planId leftUserId=$leftUserId',
-                );
-              }
 
               final cleanLeftNickname =
                   leftNickname.trim().isEmpty ? null : leftNickname.trim();
@@ -3128,12 +3006,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                   (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
                       .toString();
 
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-member-joined-by-invite insert planId=$planId joinedUserId=$joinedUserId',
-                );
-              }
-
               final cleanJoinedNickname =
                   joinedNickname.trim().isEmpty ? null : joinedNickname.trim();
               final cleanPlanTitle =
@@ -3178,7 +3050,9 @@ class _BootstrapGateState extends State<BootstrapGate>
                   .toString();
               if (planId.isEmpty ||
                   removedUserId.isEmpty ||
-                  ownerUserId.isEmpty) return;
+                  ownerUserId.isEmpty) {
+                return;
+              }
 
               final title = (payloadMap['title'] ?? '').toString();
               final body = (payloadMap['body'] ?? '').toString();
@@ -3189,12 +3063,6 @@ class _BootstrapGateState extends State<BootstrapGate>
               final planTitle =
                   (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
                       .toString();
-
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-member-removed insert planId=$planId removedUserId=$removedUserId ownerUserId=$ownerUserId',
-                );
-              }
 
               final cleanOwnerNickname =
                   ownerNickname.trim().isEmpty ? null : ownerNickname.trim();
@@ -3238,13 +3106,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                   .toString()
                   .trim();
 
-              // ✅ Always log precheck so we never "silently return" again.
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-deleted precheck planId="$planId" ownerUserId="$ownerUserId" keys=${payloadMap.keys.toList()}',
-                );
-              }
-
               if (planId.isEmpty || ownerUserId.isEmpty) return;
 
               final title = (payloadMap['title'] ?? '').toString();
@@ -3256,12 +3117,6 @@ class _BootstrapGateState extends State<BootstrapGate>
               final planTitle =
                   (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
                       .toString();
-
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] plan-deleted insert planId=$planId ownerUserId=$ownerUserId',
-                );
-              }
 
               PlanDeletedUiCoordinator.instance.enqueue(
                 PlanDeletedUiRequest(
@@ -3363,12 +3218,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                   ? 'Приглашение принято'
                   : 'Приглашение отклонено';
 
-              if (kDebugMode) {
-                debugPrint(
-                  '[INBOX] owner-result insert inviteId=$inviteId planId=$planId action=$ownerAction',
-                );
-              }
-
               InviteUiCoordinator.instance.enqueueOwnerResult(
                 OwnerResultUiRequest(
                   inviteId: inviteId,
@@ -3390,12 +3239,6 @@ class _BootstrapGateState extends State<BootstrapGate>
                 (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
                     .toString();
 
-            if (kDebugMode) {
-              debugPrint(
-                '[INBOX] invite insert inviteId=$inviteId planId=$planId payloadType=$payloadType',
-              );
-            }
-
             InviteUiCoordinator.instance.enqueue(
               InviteUiRequest(
                 inviteId: inviteId,
@@ -3407,9 +3250,7 @@ class _BootstrapGateState extends State<BootstrapGate>
               ),
             );
           } catch (e) {
-            if (kDebugMode) {
-              debugPrint('[INBOX] handler error: $e');
-            }
+            // ignore handler errors
           }
         },
       );
@@ -3417,9 +3258,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       _inboxInvitesChannel = channel;
       channel.subscribe((status, [error]) {
         _inboxInvitesLastStatus = status;
-        if (kDebugMode) {
-          debugPrint('[INBOX] realtime status=$status error=$error');
-        }
 
         if (status == RealtimeSubscribeStatus.subscribed) {
           _resetInboxInvitesRealtimeRetry();
@@ -3460,13 +3298,8 @@ class _BootstrapGateState extends State<BootstrapGate>
           'p_delivery_id': id,
         },
       );
-      if (kDebugMode) {
-        debugPrint('[INBOX] consumed delivery id=$id');
-      }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[INBOX] consume failed delivery id=$id error=$e');
-      }
+      // ignore consume errors
     }
   }
 
@@ -3520,12 +3353,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       }
     }
 
-    if (kDebugMode) {
-      debugPrint(
-        '[INBOX] schedule retry in ${delayMs}ms (attempt=$attempt) reason=$reason error=$error',
-      );
-    }
-
     _inboxInvitesRealtimeRetryTimer =
         Timer(Duration(milliseconds: delayMs), () {
       // Mark timer as consumed before running ensure() so status flaps can schedule next one.
@@ -3568,29 +3395,16 @@ class _BootstrapGateState extends State<BootstrapGate>
     String? actionToken,
   }) async {
     if (_processingInviteAction) {
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] ignored: already processing inviteId=$inviteId action=$action');
-      }
       return;
     }
 
     final userId = _userId;
     if (userId == null || userId.isEmpty) {
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] ignored: userId missing inviteId=$inviteId action=$action');
-      }
       return;
     }
 
     _processingInviteAction = true;
     try {
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] rpc start inviteId=$inviteId action=$action planId=$planId userId=$userId');
-      }
-
       await _supabase.rpc(
         'respond_plan_internal_invite_v1',
         params: {
@@ -3600,42 +3414,25 @@ class _BootstrapGateState extends State<BootstrapGate>
         },
       );
 
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] rpc success inviteId=$inviteId action=$action planId=$planId appShell=$_appShellReady');
-      }
-
       if (action == 'ACCEPT') {
-        if (kDebugMode) {
-          debugPrint(
-              '[InviteAction] queue open details inviteId=$inviteId planId=$planId');
-        }
         _queuePendingPlanOpen(
           planId,
           toastMessage: kInviteAcceptedToast,
         );
       } else if (action == 'DECLINE') {
         final toastCtx = App.navigatorKey.currentContext;
-        if (toastCtx != null) {
+        if (toastCtx != null && toastCtx.mounted) {
           unawaited(showCenterToast(toastCtx, message: kInviteDeclinedToast));
         }
       }
     } on PostgrestException catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] PostgrestException inviteId=$inviteId action=$action message=${e.message}');
-      }
       final toastCtx = App.navigatorKey.currentContext;
-      if (toastCtx != null) {
+      if (toastCtx != null && toastCtx.mounted) {
         unawaited(showCenterToast(toastCtx, message: e.message, isError: true));
       }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-            '[InviteAction] error inviteId=$inviteId action=$action error=$e');
-      }
       final toastCtx = App.navigatorKey.currentContext;
-      if (toastCtx != null) {
+      if (toastCtx != null && toastCtx.mounted) {
         unawaited(
             showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
       }
@@ -3649,10 +3446,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     String? toastMessage,
   }) async {
     final userId = _userId;
-    if (kDebugMode) {
-      debugPrint(
-          '[InviteNav] open details requested planId=$planId userId=$userId');
-    }
     if (userId == null || userId.isEmpty) return;
 
     final nav = App.navigatorKey.currentState;
@@ -3689,11 +3482,6 @@ class _BootstrapGateState extends State<BootstrapGate>
           ),
         );
 
-        if (kDebugMode) {
-          debugPrint(
-              '[InviteNav] PlanDetails popped changed=$changed planId=$planId');
-        }
-
         // If the user left/deleted the plan inside details (server-confirmed),
         // force-refresh the Plans screen snapshot so a "dead" card cannot linger.
         if (changed == true) {
@@ -3713,7 +3501,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (toastMessage != null && toastMessage.isNotEmpty) {
         Future<void>.delayed(const Duration(milliseconds: 350), () async {
           final toastCtx = App.navigatorKey.currentContext;
-          if (toastCtx == null) return;
+          if (toastCtx == null || !toastCtx.mounted) return;
           await showCenterToast(toastCtx, message: toastMessage);
         });
       }
@@ -3724,10 +3512,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     String planId, {
     String? toastMessage,
   }) {
-    if (kDebugMode) {
-      debugPrint(
-          '[InviteNav] queue plan open planId=$planId toast=$toastMessage');
-    }
     if (mounted) {
       setState(() {
         _pendingOpenPlanId = planId;
@@ -3952,9 +3736,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
       await _registerDeviceToken(token);
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[FCM] ensureDeviceTokenRegistered error: $e');
-      }
+      // ignore
     } finally {
       _registeringDeviceToken = false;
       if (_registerDeviceTokenRetryRequested) {
@@ -3990,13 +3772,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         },
       );
 
-      if (kDebugMode) {
-        debugPrint('[FCM] token registered for $platform appUserId=$userId');
-      }
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[FCM] token register failed: $e');
-      }
       if (_lastRegisteredDeviceTokenKey == dedupeKey) {
         _lastRegisteredDeviceTokenKey = null;
       }

@@ -479,7 +479,6 @@ class _PlacesListState extends State<_PlacesList> {
           _searchLoading = false;
         });
       } catch (e) {
-        if (kDebugMode) debugPrint('PLACES suggestions error: $e');
         if (!mounted) return;
         setState(() {
           _searchLoading = false;
@@ -556,7 +555,6 @@ class _PlacesListState extends State<_PlacesList> {
         _loading = false;
       });
     } catch (e) {
-      if (kDebugMode) debugPrint('PLACES loadNext error: $e');
       setState(() {
         _loading = false;
         _hasMore = false;
@@ -575,9 +573,7 @@ class _PlacesListState extends State<_PlacesList> {
           return snapshotUserId;
         }
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('PLACES user_snapshot parse error: $e');
-        }
+        // ignore and fallback below
       }
     }
 
@@ -693,10 +689,6 @@ class _PlacesListState extends State<_PlacesList> {
         message: 'Место отправлено на модерацию.',
       );
     } catch (error) {
-      if (kDebugMode) {
-        debugPrint('PLACE SUBMISSION create error: $error');
-      }
-
       if (!mounted) return;
 
       await showCenterToast(
@@ -725,7 +717,7 @@ class _PlacesListState extends State<_PlacesList> {
 
   Widget _buildSearchBlock(BuildContext context) {
     final theme = Theme.of(context);
-    final borderColor = theme.dividerColor.withOpacity(0.25);
+    final borderColor = theme.dividerColor.withValues(alpha: 0.25);
 
     final canClear = (_searchController.text.trim().isNotEmpty) ||
         (_appliedSearchTitle != null && _appliedSearchTitle!.isNotEmpty);

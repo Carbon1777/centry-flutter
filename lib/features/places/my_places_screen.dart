@@ -150,7 +150,6 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
       _places = places;
       _submissions = submissions;
     } catch (e) {
-      debugPrint('[MyPlacesScreen] load error: $e');
       _places = [];
       _submissions = [];
     }
@@ -203,7 +202,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         }).toList();
       });
     } catch (e) {
-      debugPrint('[MyPlacesScreen] ack rejected seen error: $e');
+      // ignore
     } finally {
       _rejectedSeenAckInFlightIds.remove(submission.submissionId);
     }
@@ -227,8 +226,6 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         ),
       );
     } catch (e) {
-      debugPrint('[MyPlacesScreen] open plan details failed: $e');
-
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -386,7 +383,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
                         child: Text(
                           'Пока пусто',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.onSurface.withOpacity(0.7),
+                            color: colors.onSurface.withValues(alpha: 0.7),
                           ),
                         ),
                       )
@@ -568,13 +565,13 @@ class _MyPlaceSubmissionItem {
   Color statusBackgroundColor(BuildContext context) {
     switch (status) {
       case 'PENDING':
-        return Colors.amber.withOpacity(0.14);
+        return Colors.amber.withValues(alpha: 0.14);
       case 'REJECTED':
-        return Theme.of(context).colorScheme.error.withOpacity(0.12);
+        return Theme.of(context).colorScheme.error.withValues(alpha: 0.12);
       case 'APPROVED':
-        return Colors.green.withOpacity(0.12);
+        return Colors.green.withValues(alpha: 0.12);
       default:
-        return Theme.of(context).colorScheme.primary.withOpacity(0.12);
+        return Theme.of(context).colorScheme.primary.withValues(alpha: 0.12);
     }
   }
 }
@@ -926,7 +923,7 @@ class _MyPlaceSubmissionDetailsDialogState
 
     const addToPlanFillColor = Color(0xFF19D3C5);
     const addToPlanTextColor = Color(0xFF081217);
-    final secondaryButtonBorderColor = Colors.white.withOpacity(0.82);
+    final secondaryButtonBorderColor = Colors.white.withValues(alpha: 0.82);
     const secondaryButtonTextColor = Color(0xFF4E8DFF);
 
     return Dialog(
@@ -962,7 +959,7 @@ class _MyPlaceSubmissionDetailsDialogState
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.55),
+                                color: Colors.black.withValues(alpha: 0.55),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
@@ -1075,9 +1072,9 @@ class _MyPlaceSubmissionDetailsDialogState
                                 backgroundColor: addToPlanFillColor,
                                 foregroundColor: addToPlanTextColor,
                                 disabledBackgroundColor:
-                                    addToPlanFillColor.withOpacity(0.45),
+                                    addToPlanFillColor.withValues(alpha: 0.45),
                                 disabledForegroundColor:
-                                    addToPlanTextColor.withOpacity(0.75),
+                                    addToPlanTextColor.withValues(alpha: 0.75),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(

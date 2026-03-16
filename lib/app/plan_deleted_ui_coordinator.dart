@@ -1,6 +1,5 @@
 import 'dart:collection';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -71,21 +70,11 @@ class PlanDeletedUiCoordinator {
     final key = request.stableKey();
     final last = _recent[key];
     if (last != null && now.difference(last) <= _dedupTtl) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanDeletedCoordinator] enqueue ignored (dedup ttl) key=$key ageMs=${now.difference(last).inMilliseconds}',
-        );
-      }
       return;
     }
     _recent[key] = now;
 
     _queue.add(request);
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanDeletedCoordinator] enqueue planId=${request.planId} ownerUserId=${request.ownerUserId} source=${request.source} queueSize=${_queue.length}',
-      );
-    }
     _tryShowNext();
   }
 
@@ -97,22 +86,11 @@ class PlanDeletedUiCoordinator {
     final navState = _navigatorKey?.currentState;
     final ctx = _navigatorKey?.currentContext ?? navState?.overlay?.context;
     if (ctx == null) {
-      if (kDebugMode) {
-        debugPrint(
-          '[PlanDeletedCoordinator] cannot show: ctx=null (rootUiReady=$_rootUiReady showing=$_showing queue=${_queue.length})',
-        );
-      }
       return;
     }
 
     final next = _queue.removeFirst();
     _showing = true;
-
-    if (kDebugMode) {
-      debugPrint(
-        '[PlanDeletedCoordinator] show modal planId=${next.planId} ownerUserId=${next.ownerUserId} source=${next.source}',
-      );
-    }
 
     void doShow() {
       final nav2 = _navigatorKey?.currentState;

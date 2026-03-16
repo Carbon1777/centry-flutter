@@ -19,11 +19,9 @@ class AppTheme {
       cardColor: surface,
 
       colorScheme: const ColorScheme.dark(
-        background: background,
         surface: surface,
         primary: accent,
         onPrimary: primaryText,
-        onBackground: primaryText,
         onSurface: primaryText,
       ),
 

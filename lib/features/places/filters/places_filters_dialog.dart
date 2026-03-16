@@ -243,10 +243,10 @@ class _FilterColumn extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(8),
-                      splashColor: activeColor.withOpacity(0.18),
+                      splashColor: activeColor.withValues(alpha: 0.18),
                       highlightColor: Colors.transparent,
-                      overlayColor: MaterialStateProperty.all(
-                          activeColor.withOpacity(0.12)),
+                      overlayColor: WidgetStateProperty.all(
+                          activeColor.withValues(alpha: 0.12)),
                       onTap: () => onTap(e.id),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(

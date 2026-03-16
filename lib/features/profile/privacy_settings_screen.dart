@@ -104,7 +104,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           // Таблица
           Table(
             columnWidths: {
-              0: FixedColumnWidth(fieldColW),
+              0: const FixedColumnWidth(fieldColW),
               1: FixedColumnWidth(ctxColW),
               2: FixedColumnWidth(ctxColW),
               3: FixedColumnWidth(ctxColW),
