@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/profile/profile_email_modal.dart';
 import '../../features/profile/avatar_picker_screen.dart';
 import '../../features/profile/privacy_settings_screen.dart';
+import '../../features/profile/leisure_constants.dart';
 import 'centry_market_screen.dart';
 import '../../features/places/my_places_screen.dart';
 import '../../data/places/places_repository_impl.dart';
@@ -97,6 +98,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       avatarKind: (res['avatar_kind'] as String?) ?? 'none',
       avatarUrl: res['avatar_url'] as String?,
       city: res['city'] as String?,
+      restPreferences: List<String>.from(res['rest_preferences'] as List? ?? []),
+      restDislikes: List<String>.from(res['rest_dislikes'] as List? ?? []),
+      socialFormat: res['social_format'] as String?,
+      restTempo: res['rest_tempo'] as String?,
+      meetingTimePreferences: List<String>.from(res['meeting_time_preferences'] as List? ?? []),
+      vibe: res['vibe'] as String?,
+      shortBio: res['short_bio'] as String?,
     );
   }
 
@@ -193,6 +201,13 @@ class _ProfileData {
   final String? city;
   final String avatarKind;
   final String? avatarUrl;
+  final List<String> restPreferences;
+  final List<String> restDislikes;
+  final String? socialFormat;
+  final String? restTempo;
+  final List<String> meetingTimePreferences;
+  final String? vibe;
+  final String? shortBio;
 
   _ProfileData({
     required this.nickname,
@@ -205,6 +220,13 @@ class _ProfileData {
     this.city,
     this.avatarKind = 'none',
     this.avatarUrl,
+    this.restPreferences = const [],
+    this.restDislikes = const [],
+    this.socialFormat,
+    this.restTempo,
+    this.meetingTimePreferences = const [],
+    this.vibe,
+    this.shortBio,
   });
 }
 
@@ -313,14 +335,18 @@ class _ProfileContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Stack(
+          children: [
+            Column(
               children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 92),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                 // Stack: левый контент на всю высоту + правая колонка Positioned
                 // Stack сам становится высотой левого контента → Positioned внутри bounds → нет конфликтов тапов
                 Stack(
@@ -417,6 +443,20 @@ class _ProfileContent extends StatelessWidget {
                     ),
                   ],
                 ),
+
+                const SizedBox(height: 20),
+
+                // Секция "Стиль отдыха" — нижняя часть профиля
+                _LeisureSection(
+                  restPreferences: profile.restPreferences,
+                  restDislikes: profile.restDislikes,
+                  socialFormat: profile.socialFormat,
+                  restTempo: profile.restTempo,
+                  meetingTimePreferences: profile.meetingTimePreferences,
+                  vibe: profile.vibe,
+                  shortBio: profile.shortBio,
+                  onReload: onReload,
+                ),
               ],
             ),
           ),
@@ -428,6 +468,11 @@ class _ProfileContent extends StatelessWidget {
           child: _AppVersionLabel(),
         ),
       ],
+    ),
+            _ProfileMediaSheet(availableHeight: constraints.maxHeight),
+          ],
+        );
+      },
     );
   }
 }
@@ -1074,7 +1119,7 @@ class _TokensAppBarState extends State<_TokensAppBar> {
       builder: (context, snapshot) {
         final label = snapshot.hasData ? '${snapshot.data}' : '—';
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             border: Border.all(color: colors.outline),
             borderRadius: BorderRadius.circular(16),
@@ -1226,6 +1271,707 @@ class _CopyableValue extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+// =======================
+// Leisure section (view + inline edit)
+// =======================
+
+class _LeisureSection extends StatefulWidget {
+  final List<String> restPreferences;
+  final List<String> restDislikes;       // pass-through, not shown
+  final String? socialFormat;
+  final String? restTempo;               // pass-through, not shown
+  final List<String> meetingTimePreferences;
+  final String? vibe;
+  final String? shortBio;               // pass-through, not shown
+  final VoidCallback onReload;
+
+  const _LeisureSection({
+    required this.restPreferences,
+    required this.restDislikes,
+    this.socialFormat,
+    this.restTempo,
+    required this.meetingTimePreferences,
+    this.vibe,
+    this.shortBio,
+    required this.onReload,
+  });
+
+  @override
+  State<_LeisureSection> createState() => _LeisureSectionState();
+}
+
+class _LeisureSectionState extends State<_LeisureSection> {
+  late List<String> _restPreferences;
+  late List<String> _restDislikes;
+  late String? _socialFormat;
+  late String? _restTempo;
+  late List<String> _meetingTimePreferences;
+  late String? _vibe;
+  late String? _shortBio;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_LeisureSection old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    _restPreferences = List.from(widget.restPreferences);
+    _restDislikes = List.from(widget.restDislikes);
+    _socialFormat = widget.socialFormat;
+    _restTempo = widget.restTempo;
+    _meetingTimePreferences = List.from(widget.meetingTimePreferences);
+    _vibe = widget.vibe;
+    _shortBio = widget.shortBio;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await Supabase.instance.client.rpc('set_profile_leisure', params: {
+        'p_rest_preferences': _restPreferences,
+        'p_rest_dislikes': _restDislikes,
+        'p_social_format': _socialFormat,
+        'p_rest_tempo': _restTempo,
+        'p_meeting_time_preferences': _meetingTimePreferences,
+        'p_vibe': _vibe,
+        'p_short_bio': _shortBio,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+        // revert on error
+        _sync();
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _pickMulti({
+    required String title,
+    required List<LeisureOption> options,
+    required List<String> current,
+    required int maxCount,
+    required void Function(List<String>) onChanged,
+  }) async {
+    final result = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _MultiPickerSheet(
+        title: title,
+        options: options,
+        current: current,
+        maxCount: maxCount,
+      ),
+    );
+    if (result != null) {
+      setState(() => onChanged(result));
+      await _save();
+    }
+  }
+
+  Future<void> _pickSingle({
+    required String title,
+    required List<LeisureOption> options,
+    required String? current,
+    required void Function(String?) onChanged,
+  }) async {
+    final result = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _SinglePickerSheet(
+        title: title,
+        options: options,
+        current: current,
+      ),
+    );
+    // result == '' means "deselect"
+    if (result != null) {
+      setState(() => onChanged(result.isEmpty ? null : result));
+      await _save();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 8),
+        Row(
+          children: [
+            Text(
+              'Стиль отдыха',
+              style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            if (_saving) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: colors.outline,
+                ),
+              ),
+            ],
+          ],
+        ),
+        
+
+        _LeisureRow(
+          title: 'Как люблю отдыхать',
+          selectedKeys: _restPreferences,
+          options: LeisureConstants.restPreferences,
+          hint: 'до 3 вариантов',
+          onTap: () => _pickMulti(
+            title: 'Как люблю отдыхать',
+            options: LeisureConstants.restPreferences,
+            current: _restPreferences,
+            maxCount: 3,
+            onChanged: (v) => _restPreferences = v,
+          ),
+        ),
+
+        _LeisureRow(
+          title: 'Формат компании',
+          selectedKeys: _socialFormat != null ? [_socialFormat!] : [],
+          options: LeisureConstants.socialFormats,
+          hint: 'выбери один',
+          onTap: () => _pickSingle(
+            title: 'Формат компании',
+            options: LeisureConstants.socialFormats,
+            current: _socialFormat,
+            onChanged: (v) => _socialFormat = v,
+          ),
+        ),
+
+        _LeisureRow(
+          title: 'Когда удобнее встречаться',
+          selectedKeys: _meetingTimePreferences,
+          options: LeisureConstants.meetingTimes,
+          hint: 'до 2 вариантов',
+          onTap: () => _pickMulti(
+            title: 'Когда удобнее встречаться',
+            options: LeisureConstants.meetingTimes,
+            current: _meetingTimePreferences,
+            maxCount: 2,
+            onChanged: (v) => _meetingTimePreferences = v,
+          ),
+        ),
+
+        _LeisureRow(
+          title: 'Мой вайб',
+          selectedKeys: _vibe != null ? [_vibe!] : [],
+          options: LeisureConstants.vibes,
+          hint: 'выбери один',
+          onTap: () => _pickSingle(
+            title: 'Мой вайб',
+            options: LeisureConstants.vibes,
+            current: _vibe,
+            onChanged: (v) => _vibe = v,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// =======================
+// Leisure row (compact)
+// =======================
+
+class _LeisureRow extends StatelessWidget {
+  final String title;
+  final List<String> selectedKeys;
+  final List<LeisureOption> options;
+  final String hint;
+  final VoidCallback onTap;
+
+  const _LeisureRow({
+    required this.title,
+    required this.selectedKeys,
+    required this.options,
+    required this.hint,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final isEmpty = selectedKeys.isEmpty;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 0, bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: textTheme.bodySmall?.copyWith(color: colors.outline),
+                  ),
+                  const SizedBox(height: 3),
+                  if (isEmpty)
+                    Text(
+                      hint,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurface.withValues(alpha: 0.28),
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 5,
+                      children: selectedKeys.map((key) {
+                        final opt = LeisureConstants.findByKey(options, key);
+                        if (opt == null) return const SizedBox.shrink();
+                        return _LeisureChip(
+                          label: '${opt.emoji} ${opt.label}',
+                        );
+                      }).toList(),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: colors.outline,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LeisureChip extends StatelessWidget {
+  final String label;
+
+  const _LeisureChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Text(label, style: textTheme.bodySmall, maxLines: 1),
+    );
+  }
+}
+
+// =======================
+// Multi picker sheet
+// =======================
+
+class _MultiPickerSheet extends StatefulWidget {
+  final String title;
+  final List<LeisureOption> options;
+  final List<String> current;
+  final int maxCount;
+
+  const _MultiPickerSheet({
+    required this.title,
+    required this.options,
+    required this.current,
+    required this.maxCount,
+  });
+
+  @override
+  State<_MultiPickerSheet> createState() => _MultiPickerSheetState();
+}
+
+class _MultiPickerSheetState extends State<_MultiPickerSheet> {
+  late List<String> _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = List.from(widget.current);
+  }
+
+  void _toggle(String key) {
+    setState(() {
+      if (_selected.contains(key)) {
+        _selected.remove(key);
+      } else if (_selected.length < widget.maxCount) {
+        _selected.add(key);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final atLimit = _selected.length >= widget.maxCount;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.title,
+                  style: textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      'до ${widget.maxCount}',
+                      style: textTheme.bodySmall?.copyWith(
+                        color:
+                            atLimit ? colors.primary : colors.outline,
+                        fontWeight: atLimit
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.of(context).pop(_selected),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Готово'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            ...widget.options.map((opt) {
+              final isSelected = _selected.contains(opt.key);
+              final isDisabled = atLimit && !isSelected;
+              return _PickerTile(
+                option: opt,
+                isSelected: isSelected,
+                isDisabled: isDisabled,
+                onTap: isDisabled ? null : () => _toggle(opt.key),
+              );
+            }),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Single picker sheet
+// =======================
+
+class _SinglePickerSheet extends StatelessWidget {
+  final String title;
+  final List<LeisureOption> options;
+  final String? current;
+
+  const _SinglePickerSheet({
+    required this.title,
+    required this.options,
+    this.current,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style:
+                  textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            ...options.map((opt) {
+              final isSelected = current == opt.key;
+              return _PickerTile(
+                option: opt,
+                isSelected: isSelected,
+                isDisabled: false,
+                // tap selected → deselect (pass empty string = "clear")
+                onTap: () => Navigator.of(context)
+                    .pop(isSelected ? '' : opt.key),
+              );
+            }),
+            if (current != null)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(''),
+                child: const Text('Очистить'),
+              ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Picker tile (shared)
+// =======================
+
+class _PickerTile extends StatelessWidget {
+  final LeisureOption option;
+  final bool isSelected;
+  final bool isDisabled;
+  final VoidCallback? onTap;
+
+  const _PickerTile({
+    required this.option,
+    required this.isSelected,
+    required this.isDisabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Opacity(
+      opacity: isDisabled ? 0.38 : 1.0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+          child: Row(
+            children: [
+              Text(option.emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(option.label, style: textTheme.bodyMedium),
+                    if (option.subLabel.isNotEmpty)
+                      Text(
+                        option.subLabel,
+                        style: textTheme.bodySmall
+                            ?.copyWith(color: colors.outline),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                isSelected ? Icons.check_circle : Icons.circle_outlined,
+                size: 20,
+                color: isSelected ? colors.primary : colors.outline,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Profile Media Sheet
+// =======================
+
+class _ProfileMediaSheet extends StatefulWidget {
+  final double availableHeight;
+
+  const _ProfileMediaSheet({required this.availableHeight});
+
+  @override
+  State<_ProfileMediaSheet> createState() => _ProfileMediaSheetState();
+}
+
+class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
+  static const double _kCollapsedHeight = 76;
+  static const Duration _kAnimDuration = Duration(milliseconds: 320);
+
+  bool _expanded = false;
+  double _dragOffsetY = 0;
+
+  void _toggle() => setState(() => _expanded = !_expanded);
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    _dragOffsetY += d.delta.dy;
+    if (!_expanded && _dragOffsetY <= -10) {
+      setState(() {
+        _expanded = true;
+        _dragOffsetY = 0;
+      });
+    } else if (_expanded && _dragOffsetY >= 12) {
+      setState(() {
+        _expanded = false;
+        _dragOffsetY = 0;
+      });
+    }
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    final velocity = d.primaryVelocity ?? 0;
+    if (!_expanded && velocity < -220) {
+      setState(() => _expanded = true);
+    } else if (_expanded && velocity > 220) {
+      setState(() => _expanded = false);
+    }
+    _dragOffsetY = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final maxHeight = widget.availableHeight
+        .clamp(_kCollapsedHeight, widget.availableHeight)
+        .toDouble();
+    final targetHeight = _expanded ? maxHeight : _kCollapsedHeight;
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: AnimatedContainer(
+        duration: _kAnimDuration,
+        curve: Curves.easeOutCubic,
+        width: double.infinity,
+        height: targetHeight,
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHigh,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Drag handle + header — фиксированная высота, тапается и свайпается
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggle,
+                onVerticalDragUpdate: _onDragUpdate,
+                onVerticalDragEnd: _onDragEnd,
+                child: SizedBox(
+                  height: _kCollapsedHeight,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      // Drag handle pill
+                      const SizedBox(height: 10),
+                      Center(
+                        child: Container(
+                          width: 52,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: colors.onSurface.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // Заголовок — сразу после ручки
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          'Мои фото и видео',
+                          textAlign: TextAlign.center,
+                          style: textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+              ),
+              if (_expanded)
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: colors.onSurface.withValues(alpha: 0.08),
+                ),
+              if (_expanded)
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.camera_alt_outlined,
+                            size: 72,
+                            color: colors.onSurface.withValues(alpha: 0.25),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Нужно чуть-чуть потерпеть, ждём релиза! 😊',
+                            textAlign: TextAlign.center,
+                            style: textTheme.titleMedium?.copyWith(
+                              color: colors.onSurface.withValues(alpha: 0.55),
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
