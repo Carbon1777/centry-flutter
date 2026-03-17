@@ -308,95 +308,104 @@ class _ProfileContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // TOP ROW: аватар+ник | CentryMarket+Приватность
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Row(
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // TOP ROW: аватар+ник | CentryMarket+Приватность
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _AvatarWidget(
-                      avatarKind: profile.avatarKind,
-                      avatarUrl: profile.avatarUrl,
-                      onReload: onReload,
-                    ),
-                    const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _TitleValue(
-                            title: 'Никнейм:',
-                            value: profile.nickname,
-                            isPrimary: true,
+                          _AvatarWidget(
+                            avatarKind: profile.avatarKind,
+                            avatarUrl: profile.avatarUrl,
+                            onReload: onReload,
                           ),
-                          const SizedBox(height: 6),
-                          _CopyableValue(
-                            title: 'Public ID',
-                            value: profile.publicId,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _TitleValue(
+                                  title: 'Никнейм:',
+                                  value: profile.nickname,
+                                  isPrimary: true,
+                                ),
+                                const SizedBox(height: 6),
+                                _CopyableValue(
+                                  title: 'Public ID',
+                                  value: profile.publicId,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 10),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _CentryMarketCard(userId: userId),
+                        const SizedBox(height: 6),
+                        _PrivacySettingsTextLink(),
+                        const SizedBox(height: 2),
+                        _MyPlacesTextLink(),
+                      ],
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _CentryMarketCard(userId: userId),
-                  const SizedBox(height: 6),
-                  _PrivacySettingsTextLink(),
-                  const SizedBox(height: 2),
-                  _MyPlacesTextLink(),
-                ],
-              ),
-            ],
+
+                const SizedBox(height: 14),
+
+                // ПОЛЯ
+                _EditableNameField(value: profile.name, onReload: onReload),
+                const SizedBox(height: 4),
+                _EditableGenderField(value: profile.gender, onReload: onReload),
+                const SizedBox(height: 4),
+                _EditableAgeField(value: profile.age, onReload: onReload),
+
+                const SizedBox(height: 14),
+
+                // Email — под полями, мелко
+                Text('Email',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: colors.outline)),
+                const SizedBox(height: 2),
+                Text(profile.email ?? '',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: colors.outline)),
+
+                Divider(height: 32, color: colors.outlineVariant.withValues(alpha: 0.5)),
+
+                // Заглушки — компактные строки
+                const _StubRow(title: 'Описание'),
+                const _StubRow(title: 'Мои фото'),
+                const _StubRow(title: 'Мои видео'),
+              ],
+            ),
           ),
+        ),
 
-          const SizedBox(height: 14),
-
-          // ПОЛЯ
-          _EditableNameField(value: profile.name, onReload: onReload),
-          const SizedBox(height: 4),
-          _EditableGenderField(value: profile.gender, onReload: onReload),
-          const SizedBox(height: 4),
-          _EditableAgeField(value: profile.age, onReload: onReload),
-
-          const SizedBox(height: 14),
-
-          // Email — под полями, мелко
-          Text('Email',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: colors.outline)),
-          const SizedBox(height: 2),
-          Text(profile.email ?? '',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: colors.outline)),
-
-          Divider(height: 32, color: colors.outlineVariant.withValues(alpha: 0.5)),
-
-          // Заглушки — компактные строки
-          const _StubRow(title: 'Описание'),
-          const _StubRow(title: 'Мои фото'),
-          const _StubRow(title: 'Мои видео'),
-
-          const SizedBox(height: 32),
-          const _AppVersionLabel(),
-        ],
-      ),
+        // Версия сборки — прибита к низу экрана
+        const Padding(
+          padding: EdgeInsets.only(bottom: 20),
+          child: _AppVersionLabel(),
+        ),
+      ],
     );
   }
 }
