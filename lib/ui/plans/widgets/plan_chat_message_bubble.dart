@@ -35,6 +35,39 @@ class PlanChatPresentationMessage {
   });
 }
 
+/// Результат парсинга сообщения с возможной цитатой.
+class _ParsedMessage {
+  final String? quotedNickname; // '@Blablasha'
+  final String? quotedText;
+  final String body;
+
+  const _ParsedMessage({
+    this.quotedNickname,
+    this.quotedText,
+    required this.body,
+  });
+
+  bool get hasQuote => quotedNickname != null;
+}
+
+_ParsedMessage _parseMessage(String raw) {
+  const start = '« @';
+  const end = ' »\n';
+  if (!raw.startsWith(start)) return _ParsedMessage(body: raw);
+  final endIdx = raw.indexOf(end);
+  if (endIdx == -1) return _ParsedMessage(body: raw);
+
+  final quoteContent = raw.substring(start.length, endIdx); // 'Nickname: text'
+  final body = raw.substring(endIdx + end.length);
+
+  final colonIdx = quoteContent.indexOf(': ');
+  if (colonIdx == -1) return _ParsedMessage(body: raw);
+
+  final nick = '@${quoteContent.substring(0, colonIdx)}';
+  final quoted = quoteContent.substring(colonIdx + 2);
+  return _ParsedMessage(quotedNickname: nick, quotedText: quoted, body: body);
+}
+
 class PlanChatMessageBubble extends StatelessWidget {
   final PlanChatPresentationMessage message;
   final VoidCallback? onLongPress;
@@ -55,6 +88,7 @@ class PlanChatMessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final isTombstone = message.isTombstone;
     final isEdited = !isTombstone && message.editedAt != null;
+    final parsed = isTombstone ? null : _parseMessage(message.text);
 
     final bubbleColor = isTombstone
         ? theme.colorScheme.surface.withValues(alpha: 0.40)
@@ -76,108 +110,181 @@ class PlanChatMessageBubble extends StatelessWidget {
         alignment:
             message.isMine ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.82,
-        ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-          decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: borderColor),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.82,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Opacity(
-                    opacity: isTombstone ? 0.35 : 1.0,
-                    child: PlanChatAvatar(
-                      userId: message.authorUserId,
-                      nickname: message.authorNickname,
-                      avatarUrl: message.avatarUrl,
-                      avatarHidden: message.avatarHidden,
-                      size: 34,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          message.nicknameHidden ? 'Скрыто' : message.authorNickname,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: isTombstone
-                                ? Colors.white.withValues(alpha: 0.35)
-                                : (message.nicknameHidden
-                                    ? theme.colorScheme.outline
-                                    : nicknameColor),
-                            fontStyle: message.nicknameHidden
-                                ? FontStyle.italic
-                                : FontStyle.normal,
-                            height: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatMessageDateTime(message.createdAt),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withValues(alpha: 
-                              isTombstone ? 0.35 : 0.68,
-                            ),
-                            fontWeight: FontWeight.w500,
-                            height: 1.0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              if (isTombstone)
-                Text(
-                  'Сообщение удалено',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.35,
-                    fontSize: 15.5,
-                    color: Colors.white.withValues(alpha: 0.38),
-                    fontStyle: FontStyle.italic,
-                  ),
-                )
-              else ...[
-                Text(
-                  message.text,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    height: 1.35,
-                    fontSize: 15.5,
-                  ),
-                ),
-                if (isEdited)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Изменено',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontWeight: FontWeight.w500,
-                        height: 1.0,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            decoration: BoxDecoration(
+              color: bubbleColor,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Opacity(
+                      opacity: isTombstone ? 0.35 : 1.0,
+                      child: PlanChatAvatar(
+                        userId: message.authorUserId,
+                        nickname: message.authorNickname,
+                        avatarUrl: message.avatarUrl,
+                        avatarHidden: message.avatarHidden,
+                        size: 34,
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            message.nicknameHidden
+                                ? 'Скрыто'
+                                : message.authorNickname,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: isTombstone
+                                  ? Colors.white.withValues(alpha: 0.35)
+                                  : (message.nicknameHidden
+                                      ? theme.colorScheme.outline
+                                      : nicknameColor),
+                              fontStyle: message.nicknameHidden
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatMessageDateTime(message.createdAt),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withValues(
+                                alpha: isTombstone ? 0.35 : 0.68,
+                              ),
+                              fontWeight: FontWeight.w500,
+                              height: 1.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (isTombstone)
+                  Text(
+                    'Сообщение удалено',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      height: 1.35,
+                      fontSize: 15.5,
+                      color: Colors.white.withValues(alpha: 0.38),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  )
+                else ...[
+                  if (parsed != null && parsed.hasQuote) ...[
+                    _QuoteBlock(
+                      nickname: parsed.quotedNickname!,
+                      text: parsed.quotedText ?? '',
+                      isMine: message.isMine,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      parsed.body,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        height: 1.35,
+                        fontSize: 15.5,
+                      ),
+                    ),
+                  ] else
+                    Text(
+                      message.text,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        height: 1.35,
+                        fontSize: 15.5,
+                      ),
+                    ),
+                  if (isEdited)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Изменено',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontWeight: FontWeight.w500,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _QuoteBlock extends StatelessWidget {
+  final String nickname;
+  final String text;
+  final bool isMine;
+
+  const _QuoteBlock({
+    required this.nickname,
+    required this.text,
+    required this.isMine,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: isMine ? 0.25 : 0.15),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(8),
+          bottomRight: Radius.circular(8),
+        ),
+        border: const Border(
+          left: BorderSide(color: Color(0xFF3B82F6), width: 3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            nickname,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontStyle: FontStyle.italic,
+              color: Colors.white.withValues(alpha: 0.50),
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.55),
+              height: 1.3,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'delete_account_modal.dart';
+
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
 
@@ -69,12 +71,17 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Настройки приватности')),
+      appBar: AppBar(title: const Text('Настройки')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text('Ошибка: $_error'))
-              : _buildTable(context),
+              : Column(
+                  children: [
+                    Expanded(child: _buildTable(context)),
+                    _DeleteAccountFooter(),
+                  ],
+                ),
     );
   }
 
@@ -220,6 +227,44 @@ class _TableCell extends StatelessWidget {
           thumbColor: disabled
               ? WidgetStateProperty.all(colors.outline)
               : null,
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Delete account footer
+// =======================
+
+class _DeleteAccountFooter extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => DeleteAccountModal(onAccountDeleted: () {}),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Center(
+              child: Text(
+                'Удалить аккаунт',
+                style: text.bodySmall?.copyWith(
+                  color: colors.error.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

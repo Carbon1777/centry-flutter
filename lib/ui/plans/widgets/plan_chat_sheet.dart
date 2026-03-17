@@ -102,6 +102,9 @@ class _PlanChatSheetState extends State<PlanChatSheet>
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
 
   PlanChatPresentationMessage? _editingMessage;
+  PlanChatPresentationMessage? _replyingTo;
+  bool _showEmojiPicker = false;
+  bool _openingInProgress = false;
 
   bool _selectionMode = false;
   final Set<String> _selectedIds = {};
@@ -142,8 +145,13 @@ class _PlanChatSheetState extends State<PlanChatSheet>
 
     _lastKeyboardInsetBottom = nextKeyboardInsetBottom;
 
-    if (keyboardOpened && shouldKeepBottomAnchored) {
-      _scheduleKeyboardInsetAdjustment();
+    if (keyboardOpened) {
+      if (_showEmojiPicker) {
+        setState(() => _showEmojiPicker = false);
+      }
+      if (shouldKeepBottomAnchored) {
+        _scheduleKeyboardInsetAdjustment();
+      }
     }
   }
 
@@ -466,7 +474,7 @@ class _PlanChatSheetState extends State<PlanChatSheet>
   void _handleExpandedOpened() {
     _prepareOpenAnchorState();
     final requestId = ++_openPositionRequestId;
-    setState(() {});
+    setState(() => _openingInProgress = true);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_positionChatOnOpen(requestId: requestId));
@@ -479,13 +487,19 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     _unreadDividerTimer?.cancel();
     final needsUpdate = _showTemporaryUnreadDivider ||
         _temporaryUnreadStartIndex != null ||
-        _selectionMode;
+        _selectionMode ||
+        _replyingTo != null ||
+        _showEmojiPicker ||
+        _openingInProgress;
     if (needsUpdate) {
       setState(() {
         _showTemporaryUnreadDivider = false;
         _temporaryUnreadStartIndex = null;
         _selectionMode = false;
         _selectedIds.clear();
+        _replyingTo = null;
+        _showEmojiPicker = false;
+        _openingInProgress = false;
       });
     }
   }
@@ -554,27 +568,42 @@ class _PlanChatSheetState extends State<PlanChatSheet>
   }
 
   Future<void> _positionChatOnOpen({required int requestId}) async {
-    if (_messages.isEmpty) return;
+    // Ждём окончания анимации контейнера — в этот момент контент ещё скрыт
+    // (AnimatedOpacity = 0), поэтому пользователь не видит промежуточных позиций.
+    await Future<void>.delayed(_kAnimationDuration);
 
-    final unreadIndex =
-        _showTemporaryUnreadDivider ? _temporaryUnreadStartIndex : null;
+    if (!mounted || !_expanded || requestId != _openPositionRequestId) return;
 
-    if (unreadIndex != null &&
-        unreadIndex >= 0 &&
-        unreadIndex < _messages.length) {
-      await Future<void>.delayed(_kAnimationDuration);
-      if (!mounted || !_expanded || requestId != _openPositionRequestId) {
-        return;
+    // Ждём следующего кадра после задержки анимации — это гарантирует, что
+    // AnimatedContainer завершил последний rebuild и layout стабилен.
+    // Без этого maxScrollExtent может быть вычислен на одну высоту раньше.
+    final frameCompleter = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) => frameCompleter.complete());
+    await frameCompleter.future;
+
+    if (!mounted || !_expanded || requestId != _openPositionRequestId) return;
+
+    if (_messages.isNotEmpty && _scrollController.hasClients) {
+      final unreadIndex =
+          _showTemporaryUnreadDivider ? _temporaryUnreadStartIndex : null;
+
+      if (unreadIndex != null &&
+          unreadIndex >= 0 &&
+          unreadIndex < _messages.length) {
+        await _scrollToMessageIndex(unreadIndex);
+      } else {
+        await _scrollToBottom();
       }
-      await _scrollToMessageIndex(unreadIndex);
-      return;
     }
 
-    await _scrollToBottom();
+    // Показываем контент — он уже в правильной позиции.
+    if (mounted) setState(() => _openingInProgress = false);
   }
 
+  /// Мгновенное (без анимации) центрирование на сообщении по индексу.
+  /// Используется при открытии чата — контент в этот момент скрыт opacity=0,
+  /// поэтому прыжки незаметны пользователю.
   Future<void> _scrollToMessageIndex(int index) async {
-    await Future<void>.delayed(const Duration(milliseconds: 16));
     if (!mounted || !_scrollController.hasClients || _messages.isEmpty) return;
 
     final clampedIndex = index.clamp(0, _messages.length - 1);
@@ -583,13 +612,16 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     final approximateOffset =
         position.maxScrollExtent * (clampedIndex / denominator);
 
+    // Прыжок к приблизительной позиции → виджет оказывается в viewport.
     _scrollController.jumpTo(
       approximateOffset.clamp(0.0, position.maxScrollExtent),
     );
 
+    // Один кадр для пересчёта layout.
     await Future<void>.delayed(const Duration(milliseconds: 16));
     if (!mounted || !_scrollController.hasClients) return;
 
+    // Точное позиционирование через render-контекст (мгновенно, duration=0).
     final BuildContext? targetContext =
         _unreadDividerKey.currentContext ??
         _keyForMessage(_messages[clampedIndex].id).currentContext;
@@ -597,28 +629,21 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     if (targetContext != null && targetContext.mounted) {
       await Scrollable.ensureVisible(
         targetContext,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
         alignment: 0.5,
+        // duration = 0 по умолчанию → jumpTo внутри
       );
       return;
     }
 
-    await _scrollController.animateTo(
+    // Fallback: остаёмся на приблизительной позиции.
+    _scrollController.jumpTo(
       approximateOffset.clamp(0.0, position.maxScrollExtent),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
     );
   }
 
   Future<void> _scrollToBottom() async {
-    await Future<void>.delayed(const Duration(milliseconds: 40));
     if (!mounted || !_scrollController.hasClients) return;
-    await _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-    );
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
   }
 
   void _markUnreadAsRead() {
@@ -712,6 +737,30 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     });
   }
 
+  void _enterReplyMode(PlanChatPresentationMessage message) {
+    setState(() {
+      _replyingTo = message;
+      _showEmojiPicker = false;
+    });
+    _restoreComposerFocus();
+  }
+
+  void _exitReplyMode() {
+    setState(() => _replyingTo = null);
+  }
+
+  void _toggleEmojiPicker() {
+    setState(() {
+      _showEmojiPicker = !_showEmojiPicker;
+    });
+    if (_showEmojiPicker) {
+      _composerFocusNode.unfocus();
+      FocusScope.of(context).unfocus();
+    } else {
+      _restoreComposerFocus();
+    }
+  }
+
   void _toggleMessageSelection(String messageId) {
     setState(() {
       if (_selectedIds.contains(messageId)) {
@@ -755,6 +804,9 @@ class _PlanChatSheetState extends State<PlanChatSheet>
     final deleteForMe = widget.onDeleteMessageForMe;
     if (deleteForMe == null) return;
 
+    final canReply =
+        widget.onSendMessage != null && !message.isTombstone;
+
     final canEdit = widget.onEditMessage != null &&
         message.isMine &&
         !message.isTombstone;
@@ -768,6 +820,12 @@ class _PlanChatSheetState extends State<PlanChatSheet>
       backgroundColor: Colors.transparent,
       builder: (_) {
         return _MessageActionSheet(
+          onReply: canReply
+              ? () {
+                  Navigator.of(context).pop();
+                  _enterReplyMode(message);
+                }
+              : null,
           onEdit: canEdit
               ? () {
                   Navigator.of(context).pop();
@@ -814,19 +872,42 @@ class _PlanChatSheetState extends State<PlanChatSheet>
       return;
     }
 
+    // Формируем текст с цитатой, если идёт ответ
+    final replyingTo = _replyingTo;
+    final String finalText;
+    if (replyingTo != null) {
+      final author = replyingTo.authorNickname;
+      // Стрипаем вложенную цитату — берём только тело сообщения
+      var raw = replyingTo.text;
+      const quoteEnd = ' »\n';
+      final qIdx = raw.indexOf(quoteEnd);
+      if (raw.startsWith('« @') && qIdx != -1) {
+        raw = raw.substring(qIdx + quoteEnd.length);
+      }
+      final quoted = raw.length > 80 ? '${raw.substring(0, 80)}…' : raw;
+      finalText = '« @$author: $quoted »\n$text';
+    } else {
+      finalText = text;
+    }
+
     final sendMessage = widget.onSendMessage;
     if (sendMessage == null) {
+      if (replyingTo != null) {
+        setState(() => _replyingTo = null);
+        _composerController.text = finalText;
+      }
       await _sendPreviewMessage();
       return;
     }
 
+    setState(() => _replyingTo = null);
     _pendingOwnMessageAutoScroll = true;
     _composerController.clear();
     setState(() {});
     _restoreComposerFocus();
 
     try {
-      await sendMessage(text);
+      await sendMessage(finalText);
     } catch (_) {
       if (!mounted) return;
       _pendingOwnMessageAutoScroll = false;
@@ -899,7 +980,10 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                             return const SizedBox.expand();
                           }
 
-                          return Column(
+                          return AnimatedOpacity(
+                            opacity: _openingInProgress ? 0.0 : 1.0,
+                            duration: const Duration(milliseconds: 100),
+                            child: Column(
                             children: [
                               Expanded(
                                 child: GestureDetector(
@@ -1073,17 +1157,30 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                                   _PlanChatEditBanner(
                                     onCancel: _exitEditMode,
                                   ),
+                                if (_replyingTo != null)
+                                  _PlanChatReplyBanner(
+                                    message: _replyingTo!,
+                                    onCancel: _exitReplyMode,
+                                  ),
                                 _PlanChatComposer(
                                   controller: _composerController,
                                   focusNode: _composerFocusNode,
                                   sending: widget.sending,
+                                  showEmojiPicker: _showEmojiPicker,
                                   onChanged: () => setState(() {}),
                                   onSend: _handleSendPressed,
                                   onTapInside: _markUnreadAsRead,
+                                  onEmojiToggle: _toggleEmojiPicker,
                                 ),
+                                if (_showEmojiPicker)
+                                  _ChatEmojiPicker(
+                                    controller: _composerController,
+                                    onChanged: () => setState(() {}),
+                                  ),
                               ],
                             ],
-                          );
+                          ),
+                          ); // AnimatedOpacity
                         },
                       ),
                     ),
@@ -1253,17 +1350,21 @@ class _PlanChatComposer extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool sending;
+  final bool showEmojiPicker;
   final VoidCallback onChanged;
   final VoidCallback onSend;
   final VoidCallback onTapInside;
+  final VoidCallback onEmojiToggle;
 
   const _PlanChatComposer({
     required this.controller,
     required this.focusNode,
     required this.sending,
+    required this.showEmojiPicker,
     required this.onChanged,
     required this.onSend,
     required this.onTapInside,
+    required this.onEmojiToggle,
   });
 
   @override
@@ -1274,7 +1375,7 @@ class _PlanChatComposer extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        padding: const EdgeInsets.fromLTRB(8, 10, 14, 14),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.08),
           border: Border(
@@ -1285,6 +1386,25 @@ class _PlanChatComposer extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              Focus(
+                canRequestFocus: false,
+                descendantsAreFocusable: false,
+                child: IconButton(
+                  onPressed: onEmojiToggle,
+                  padding: const EdgeInsets.only(bottom: 4),
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 48),
+                  icon: Icon(
+                    showEmojiPicker
+                        ? Icons.keyboard_alt_outlined
+                        : Icons.emoji_emotions_outlined,
+                    color: showEmojiPicker
+                        ? const Color(0xFF3B82F6)
+                        : Colors.white.withValues(alpha: 0.55),
+                    size: 22,
+                  ),
+                ),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -1348,6 +1468,7 @@ class _PlanChatComposer extends StatelessWidget {
 }
 
 class _MessageActionSheet extends StatelessWidget {
+  final VoidCallback? onReply;
   final VoidCallback? onEdit;
   final Future<void> Function() onDeleteForMe;
   final Future<void> Function()? onDeleteForAll;
@@ -1355,6 +1476,7 @@ class _MessageActionSheet extends StatelessWidget {
 
   const _MessageActionSheet({
     required this.onDeleteForMe,
+    this.onReply,
     this.onEdit,
     this.onDeleteForAll,
     this.onSelectMultiple,
@@ -1362,6 +1484,7 @@ class _MessageActionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasReply = onReply != null;
     final hasEdit = onEdit != null;
     final hasDeleteForAll = onDeleteForAll != null;
     final hasSelectMultiple = onSelectMultiple != null;
@@ -1407,6 +1530,16 @@ class _MessageActionSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 6),
+            if (hasReply) ...[
+              _ActionTile(
+                icon: Icons.reply_outlined,
+                iconColor: const Color(0xFF7FB0FF),
+                label: 'Ответить',
+                labelColor: Colors.white,
+                onTap: onReply!,
+              ),
+              divider(),
+            ],
             if (hasEdit) ...[
               _ActionTile(
                 icon: Icons.edit_outlined,
@@ -1613,6 +1746,295 @@ class _PlanChatEditBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Reply banner
+// ══════════════════════════════════════════════════════════
+
+class _PlanChatReplyBanner extends StatelessWidget {
+  final PlanChatPresentationMessage message;
+  final VoidCallback onCancel;
+
+  const _PlanChatReplyBanner({
+    required this.message,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final quoted = message.text.length > 80
+        ? '${message.text.substring(0, 80)}…'
+        : message.text;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.12),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF3B82F6),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  message.authorNickname,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: const Color(0xFF7FB0FF),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  quoted,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.60),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onCancel,
+            child: const Icon(Icons.close, size: 18, color: Colors.white54),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Emoji picker
+// ══════════════════════════════════════════════════════════
+
+class _ChatEmojiPicker extends StatefulWidget {
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+
+  const _ChatEmojiPicker({
+    required this.controller,
+    required this.onChanged,
+  });
+
+  @override
+  State<_ChatEmojiPicker> createState() => _ChatEmojiPickerState();
+}
+
+class _ChatEmojiPickerState extends State<_ChatEmojiPicker>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  static const _tabs = ['😀', '👍', '🐶', '🍎', '⚽', '🚗', '💡', '❤️'];
+  static const _tabNames = [
+    'Смайлики',
+    'Жесты',
+    'Животные',
+    'Еда',
+    'Спорт',
+    'Транспорт',
+    'Предметы',
+    'Символы',
+  ];
+
+  static const _emojis = [
+    // Смайлики
+    [
+      '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇',
+      '🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝',
+      '🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄',
+      '😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧',
+      '🥵','🥶','🥴','😵','🤯','🤠','🥸','😎','🤓','🧐','😕','😟','🙁',
+      '☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭',
+      '😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈',
+      '👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖',
+    ],
+    // Жесты
+    [
+      '👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙',
+      '👈','👉','👆','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌',
+      '👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦶','👂','👃',
+      '👀','👁️','👅','👄','💋','🫀','🫁',
+    ],
+    // Животные
+    [
+      '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷',
+      '🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🦆','🦅','🦉',
+      '🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🦟','🦗',
+      '🕷️','🦂','🐢','🐍','🦎','🐙','🦑','🦐','🦞','🦀','🐡','🐟','🐠',
+      '🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🐘','🦏','🦛','🦒',
+      '🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩',
+      '🐈','🐓','🦃','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦦',
+      '🦥','🐁','🐀','🐿️','🦔',
+    ],
+    // Еда
+    [
+      '🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭',
+      '🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🧄','🧅',
+      '🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇',
+      '🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🥪','🥙','🧆','🌮','🌯',
+      '🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪',
+      '🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬',
+      '🍫','🍿','🍩','🍪','🌰','🥜','🫘','🍯','🧃','🥤','🧋','☕','🫖',
+      '🍵','🧉','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🍾','🧊',
+    ],
+    // Спорт
+    [
+      '⚽','🏀','🏈','⚾','🥎','🏐','🏉','🥏','🎾','🏸','🏒','🏑','🥍',
+      '🏏','🪃','🥊','🥋','🥅','⛳','🏹','🎣','🤿','🥌','🎿','⛷️','🏂',
+      '🪂','🏋️','🤼','🤸','⛹️','🤺','🏇','🧘','🏄','🏊','🤽','🚣','🧗',
+      '🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🎗️','🎟️','🎫','🎪',
+    ],
+    // Транспорт
+    [
+      '🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛',
+      '🚜','🛴','🚲','🛵','🏍️','🚨','🚔','🚍','🚘','🚖','🚡','🚠','🚟',
+      '🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇','🚊','🚉','✈️',
+      '🛫','🛬','🛩️','💺','🛰️','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️',
+      '⛴️','🚢','⚓','⛽','🚧','🚦','🚥','🗺️','🗿','🗽','🗼','🏰','🏯',
+      '🏟️','🎡','🎢','🎠','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇',
+      '🌉','🌌','🌠','🎇','🎆','🌋','🏔️','⛰️','🗻','🏕️','🏖️','🏜️','🏝️',
+      '🏞️',
+    ],
+    // Предметы
+    [
+      '💡','🔦','🕯️','🧱','🛏️','🛋️','🪑','🚽','🚿','🛁','🪤','🧴','🧷',
+      '🧹','🧺','🧻','🪣','🧼','🧽','🪒','💈','🛒','🚪','🧲','🖼️','🪆',
+      '🎎','🎏','🎐','🧧','🎀','🎁','🎈','🎉','🎊','🎋','🎍','🎑','🎃',
+      '🎆','🎇','🧨','✨','🎼','🎵','🎶','🎙️','🎤','🎧','📻','🎷','🪗',
+      '🎸','🎹','🎺','🎻','🥁','🪘','📱','💻','⌨️','🖥️','🖨️','🖱️','💽',
+      '💾','💿','📀','📷','📸','📹','🎥','📽️','📞','☎️','📺','📡','🔋',
+      '🪫','🔌','💸','💵','💴','💶','💷','💰','💳','💎','⚖️','🔧','🪛',
+      '🔨','⚒️','🛠️','⛏️','🪚','🔩','🧰','🪜','🔮','🪄','🎱','🧿',
+    ],
+    // Символы
+    [
+      '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞',
+      '💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯',
+      '🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐',
+      '♑','♒','♓','🆔','⚛️','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺',
+      '🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️',
+      '🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️',
+      '🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️',
+      '🔅','🔆','〽️','⚠️','🔱','⚜️','🔰','♻️','✅','❇️','✳️','❎','🌐',
+      '💠','🌀','💤','🏧','🚾','♿','🅿️','🛗','🛂','🛃','🛄','🛅',
+      '🚹','🚺','🚼','🚻','🚮','🎦','📶','🈁','🔣','🔤','🔡','🔠',
+      '🆙','🆒','🆕','🆓','🔟','#️⃣','*️⃣','0️⃣','1️⃣','2️⃣','3️⃣',
+      '4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣',
+    ],
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _tabs.length, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _insertEmoji(String emoji) {
+    final ctrl = widget.controller;
+    final text = ctrl.text;
+    final sel = ctrl.selection;
+    final start = sel.baseOffset < 0 ? text.length : sel.baseOffset;
+    final end = sel.extentOffset < 0 ? text.length : sel.extentOffset;
+    final newText = text.substring(0, start) + emoji + text.substring(end);
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 260,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF181E2B),
+          border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+        ),
+        child: Column(
+          children: [
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white38,
+              indicatorColor: const Color(0xFF3B82F6),
+              indicatorSize: TabBarIndicatorSize.label,
+              dividerColor: Colors.transparent,
+              tabs: List.generate(
+                _tabs.length,
+                (i) => Tooltip(
+                  message: _tabNames[i],
+                  child: Tab(
+                    height: 40,
+                    child: Text(_tabs[i], style: const TextStyle(fontSize: 20)),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: List.generate(_emojis.length, (catIndex) {
+                  final list = _emojis[catIndex];
+                  return GridView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 9,
+                      childAspectRatio: 1,
+                    ),
+                    itemCount: list.length,
+                    itemBuilder: (_, i) => GestureDetector(
+                      onTap: () => _insertEmoji(list[i]),
+                      child: Center(
+                        child: Text(
+                          list[i],
+                          style: const TextStyle(fontSize: 22),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
