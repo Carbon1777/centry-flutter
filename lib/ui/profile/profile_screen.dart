@@ -11,6 +11,8 @@ import 'centry_market_screen.dart';
 import '../../features/places/my_places_screen.dart';
 import '../../data/places/places_repository_impl.dart';
 import '../../data/bonus/bonus_repository_impl.dart';
+import '../../data/leaderboard/leaderboard_repository_impl.dart';
+import '../leaderboard/leaderboard_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -360,6 +362,8 @@ class _ProfileContent extends StatelessWidget {
                         _PrivacySettingsTextLink(),
                         const SizedBox(height: 2),
                         _MyPlacesTextLink(),
+                        const SizedBox(height: 2),
+                        _RatingTextLink(userId: userId),
                       ],
                     ),
                   ],
@@ -725,6 +729,51 @@ class _MyPlacesTextLink extends StatelessWidget {
             Icon(Icons.bookmark_outline, size: 14, color: colors.primary),
             const SizedBox(width: 5),
             Text('Мои места',
+                style: text.bodySmall?.copyWith(color: colors.primary)),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right, size: 14, color: colors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Рейтинг — текстовая ссылка
+// =======================
+
+class _RatingTextLink extends StatelessWidget {
+  final String userId;
+
+  const _RatingTextLink({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        final repo = LeaderboardRepositoryImpl(Supabase.instance.client);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => LeaderboardScreen(
+              repository: repo,
+              appUserId: userId,
+            ),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.leaderboard_outlined, size: 14, color: colors.primary),
+            const SizedBox(width: 5),
+            Text('Рейтинг',
                 style: text.bodySmall?.copyWith(color: colors.primary)),
             const SizedBox(width: 2),
             Icon(Icons.chevron_right, size: 14, color: colors.primary),
