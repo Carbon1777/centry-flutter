@@ -334,6 +334,24 @@ class _CardContent extends StatelessWidget {
                 : (card.age != null ? '${card.age}' : null),
             hidden: card.ageHidden,
           ),
+
+          const SizedBox(height: 16),
+
+          // Полный профиль — правый нижний угол
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: () => _FullProfileStub.show(context),
+              child: Text(
+                'Полный профиль',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: colors.primary,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -392,6 +410,116 @@ class _CardRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// =======================
+// Заглушка полного профиля
+// =======================
+
+class _FullProfileStub {
+  static void show(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _FullProfileStubSheet(),
+    );
+  }
+}
+
+class _FullProfileStubSheet extends StatelessWidget {
+  const _FullProfileStubSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            border: Border.all(
+              color: theme.dividerColor.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: theme.dividerColor.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Шапка
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Полный профиль',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+
+              // Контент
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.manage_accounts_outlined,
+                      size: 96,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.22),
+                    ),
+                    const SizedBox(height: 28),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Text(
+                        'Упссс, и мы хотели бы посмотреть, но будет доступно с релизом проекта. 😅',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
