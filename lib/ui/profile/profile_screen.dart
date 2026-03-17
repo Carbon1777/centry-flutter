@@ -96,6 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       age: res['age'] as int?,
       avatarKind: (res['avatar_kind'] as String?) ?? 'none',
       avatarUrl: res['avatar_url'] as String?,
+      city: res['city'] as String?,
     );
   }
 
@@ -189,6 +190,7 @@ class _ProfileData {
   final String? name;
   final String? gender;
   final int? age;
+  final String? city;
   final String avatarKind;
   final String? avatarUrl;
 
@@ -200,6 +202,7 @@ class _ProfileData {
     this.name,
     this.gender,
     this.age,
+    this.city,
     this.avatarKind = 'none',
     this.avatarUrl,
   });
@@ -318,87 +321,102 @@ class _ProfileContent extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // TOP ROW: аватар+ник | CentryMarket+Приватность
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Stack: левый контент на всю высоту + правая колонка Positioned
+                // Stack сам становится высотой левого контента → Positioned внутри bounds → нет конфликтов тапов
+                Stack(
                   children: [
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    // Левый контент: полная ширина.
+                    // Только строка аватара/ника имеет отступ справа под правую колонку.
+                    // Поля и email — без ограничений по ширине.
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Аватар + ник: с отступом справа чтобы не залезать под правую колонку
+                        Padding(
+                          padding: const EdgeInsets.only(right: 150),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _AvatarWidget(
+                                avatarKind: profile.avatarKind,
+                                avatarUrl: profile.avatarUrl,
+                                onReload: onReload,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _TitleValue(
+                                      title: 'Никнейм:',
+                                      value: profile.nickname,
+                                      isPrimary: true,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    _CopyableValue(
+                                      title: 'Public ID',
+                                      value: profile.publicId,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // ПОЛЯ — на полную ширину, контент не достаёт до правой колонки
+                        _EditableCityField(value: profile.city, onReload: onReload),
+                        _EditableNameField(value: profile.name, onReload: onReload),
+                        _EditableGenderField(value: profile.gender, onReload: onReload),
+                        _EditableAgeField(value: profile.age, onReload: onReload),
+
+                        // Email — Expanded, полная ширина, не обрезается
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 72,
+                                child: Text('Email',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: colors.outline)),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  profile.email ?? '',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Правая колонка: Positioned внутри Stack bounds — тапы без конфликтов
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          _AvatarWidget(
-                            avatarKind: profile.avatarKind,
-                            avatarUrl: profile.avatarUrl,
-                            onReload: onReload,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _TitleValue(
-                                  title: 'Никнейм:',
-                                  value: profile.nickname,
-                                  isPrimary: true,
-                                ),
-                                const SizedBox(height: 6),
-                                _CopyableValue(
-                                  title: 'Public ID',
-                                  value: profile.publicId,
-                                ),
-                              ],
-                            ),
-                          ),
+                          _CentryMarketCard(userId: userId),
+                          const SizedBox(height: 6),
+                          _PrivacySettingsTextLink(),
+                          const SizedBox(height: 2),
+                          _MyPlacesTextLink(),
+                          const SizedBox(height: 2),
+                          _RatingTextLink(userId: userId),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _CentryMarketCard(userId: userId),
-                        const SizedBox(height: 6),
-                        _PrivacySettingsTextLink(),
-                        const SizedBox(height: 2),
-                        _MyPlacesTextLink(),
-                        const SizedBox(height: 2),
-                        _RatingTextLink(userId: userId),
-                      ],
-                    ),
                   ],
                 ),
-
-                const SizedBox(height: 14),
-
-                // ПОЛЯ
-                _EditableNameField(value: profile.name, onReload: onReload),
-                const SizedBox(height: 4),
-                _EditableGenderField(value: profile.gender, onReload: onReload),
-                const SizedBox(height: 4),
-                _EditableAgeField(value: profile.age, onReload: onReload),
-
-                const SizedBox(height: 14),
-
-                // Email — под полями, мелко
-                Text('Email',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: colors.outline)),
-                const SizedBox(height: 2),
-                Text(profile.email ?? '',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: colors.outline)),
-
-                Divider(height: 32, color: colors.outlineVariant.withValues(alpha: 0.5)),
-
-                // Заглушки — компактные строки
-                const _StubRow(title: 'Описание'),
-                const _StubRow(title: 'Мои фото'),
-                const _StubRow(title: 'Мои видео'),
               ],
             ),
           ),
@@ -555,6 +573,81 @@ class _AvatarWidget extends StatelessWidget {
 // =======================
 // Editable fields
 // =======================
+
+class _EditableCityField extends StatelessWidget {
+  final String? value;
+  final VoidCallback onReload;
+
+  const _EditableCityField({this.value, required this.onReload});
+
+  Future<void> _edit(BuildContext context) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => _CityPickerSheet(current: value),
+    );
+    if (result == null) return;
+
+    await Supabase.instance.client.rpc(
+      'set_profile_city',
+      params: {'p_city': result.isEmpty ? null : result},
+    );
+    onReload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _EditableRow(
+      title: 'Город',
+      displayValue: value?.isNotEmpty == true ? value! : '—',
+      onTap: () => _edit(context),
+    );
+  }
+}
+
+class _CityPickerSheet extends StatelessWidget {
+  final String? current;
+
+  const _CityPickerSheet({this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+
+    const options = [
+      'Москва',
+      'Санкт-Петербург',
+    ];
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Text('Город', style: text.titleMedium),
+            ),
+            const Divider(height: 1),
+            ...options.map((city) {
+              final isSelected = current == city;
+              return ListTile(
+                title: Text(city),
+                trailing: isSelected ? const Icon(Icons.check, size: 18) : null,
+                onTap: () => Navigator.of(context).pop(city),
+              );
+            }),
+            ListTile(
+              title: const Text('Очистить'),
+              textColor: Colors.red,
+              onTap: () => Navigator.of(context).pop(''),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _EditableNameField extends StatelessWidget {
   final String? value;
@@ -785,34 +878,6 @@ class _RatingTextLink extends StatelessWidget {
 }
 
 // =======================
-// Stub row (компактная строка-заглушка)
-// =======================
-
-class _StubRow extends StatelessWidget {
-  final String title;
-
-  const _StubRow({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final colors = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        children: [
-          Text(title, style: text.bodyMedium),
-          const Spacer(),
-          Text('В разработке',
-              style: text.bodySmall?.copyWith(color: colors.outline)),
-        ],
-      ),
-    );
-  }
-}
-
-// =======================
 // Helpers: editable row
 // =======================
 
@@ -831,31 +896,25 @@ class _EditableRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
-    // Текст ограничен половиной ширины — карандаш выровнен по одной линии.
-    // Правая половина остаётся свободной зоной.
-    final textWidth = MediaQuery.of(context).size.width / 2 - 24;
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         child: Row(
           children: [
             SizedBox(
-              width: textWidth,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: text.bodySmall),
-                  const SizedBox(height: 2),
-                  Text(displayValue,
-                      style: text.bodyMedium,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
+              width: 72,
+              child: Text(title,
+                  style: text.bodySmall?.copyWith(color: colors.outline)),
             ),
-            const SizedBox(width: 8),
+            SizedBox(
+              width: 110,
+              child: Text(displayValue,
+                  style: text.bodyMedium,
+                  overflow: TextOverflow.ellipsis),
+            ),
             Icon(Icons.edit_outlined, size: 16, color: colors.outline),
           ],
         ),
