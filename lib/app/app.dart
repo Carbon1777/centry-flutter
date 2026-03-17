@@ -19,7 +19,9 @@ import '../ui/plans/plan_details_screen.dart';
 import '../app_theme.dart';
 import '../core/geo/geo_service.dart';
 import '../data/local/user_snapshot_storage.dart';
+import '../data/legal/legal_repository_impl.dart';
 import '../features/home/home_screen.dart';
+import '../features/legal/legal_agreement_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
@@ -140,6 +142,10 @@ class _BootstrapGateState extends State<BootstrapGate>
   // Post-identity pipeline guards (avoid reentry/loops).
   bool _postIdentityFlowsRunning = false;
   bool _postIdentityFlowsRerunRequested = false;
+
+  // Legal acceptance check for returning users.
+  bool _legalNeedsAcceptance = false;
+  bool _legalCheckInProgress = false;
 
   // ✅ Push token registration guards (UI-only, no business logic)
   bool _registeringDeviceToken = false;
@@ -3682,6 +3688,35 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
   }
 
+  Future<void> _checkLegalAcceptanceIfNeeded() async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    setState(() => _legalCheckInProgress = true);
+
+    try {
+      final repo = LegalRepositoryImpl(_supabase);
+      final status = await repo.checkAcceptance(appUserId: userId);
+
+      if (!mounted) return;
+
+      if (status.needsAcceptance) {
+        setState(() {
+          _legalNeedsAcceptance = true;
+          _legalCheckInProgress = false;
+        });
+      } else {
+        setState(() => _legalCheckInProgress = false);
+        _runPostIdentityFlows();
+      }
+    } catch (_) {
+      // fail-open: ошибка проверки не блокирует пользователя
+      if (!mounted) return;
+      setState(() => _legalCheckInProgress = false);
+      _runPostIdentityFlows();
+    }
+  }
+
   void _runPostIdentityFlows() {
     if (_postIdentityFlowsRunning) {
       _postIdentityFlowsRerunRequested = true;
@@ -3813,7 +3848,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
         PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
-        _runPostIdentityFlows();
+        unawaited(_checkLegalAcceptanceIfNeeded());
         return;
       }
 
@@ -3842,7 +3877,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
       PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
-      _runPostIdentityFlows();
+      unawaited(_checkLegalAcceptanceIfNeeded());
       return;
     }
 
@@ -3964,6 +3999,28 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     if (_userId != null && _publicId != null) {
+      if (_legalCheckInProgress) {
+        return const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      if (_legalNeedsAcceptance) {
+        return LegalAgreementScreen(
+          appUserId: _userId!,
+          bootstrapResult: {
+            'id': _userId!,
+            'public_id': _publicId!,
+            'nickname': _nickname ?? '',
+            'state': 'USER',
+          },
+          onAccepted: (_) {
+            setState(() => _legalNeedsAcceptance = false);
+            _runPostIdentityFlows();
+          },
+        );
+      }
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _schedulePendingPlanOpenIfReady();
