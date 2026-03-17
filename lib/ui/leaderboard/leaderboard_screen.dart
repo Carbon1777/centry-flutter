@@ -83,6 +83,7 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Токены',
+                    subtitle: 'Рейтинг пользователей по количеству заработанных бонусных токенов.',
                     icon: Icons.monetization_on_outlined,
                     accentColor: const Color(0xFFFFD700),
                     column: snapshot.tokens,
@@ -93,6 +94,7 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Активность',
+                    subtitle: 'Рейтинг пользователей по количеству созданных планов и планов с их участием.',
                     icon: Icons.local_fire_department_outlined,
                     accentColor: const Color(0xFFFF7043),
                     column: snapshot.activity,
@@ -119,6 +121,7 @@ class _LeaderboardBody extends StatelessWidget {
 
 class _ColumnCard extends StatelessWidget {
   final String title;
+  final String subtitle;
   final IconData icon;
   final Color accentColor;
   final LeaderboardColumnDto column;
@@ -126,6 +129,7 @@ class _ColumnCard extends StatelessWidget {
 
   const _ColumnCard({
     required this.title,
+    required this.subtitle,
     required this.icon,
     required this.accentColor,
     required this.column,
@@ -161,24 +165,41 @@ class _ColumnCard extends StatelessWidget {
         children: [
           // ── Шапка ──
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
             decoration: BoxDecoration(
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(14)),
               color: accentColor.withValues(alpha: 0.08),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Column(
               children: [
-                Icon(icon, size: 15, color: accentColor),
-                const SizedBox(width: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 4),
+                    Icon(icon, size: 17, color: accentColor),
+                    const SizedBox(width: 6),
+                    Text(
+                      title,
+                      style: text.bodySmall?.copyWith(
+                        color: accentColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(width: 17),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  title,
+                  subtitle,
+                  textAlign: TextAlign.center,
                   style: text.bodySmall?.copyWith(
-                    color: accentColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    letterSpacing: 0.4,
+                    color: accentColor.withValues(alpha: 0.65),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                    height: 1.35,
                   ),
                 ),
               ],
