@@ -199,7 +199,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         .attachNavigatorKey(App.navigatorKey);
     PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
-    unawaited(GeoService.instance.refresh());
+    unawaited(_refreshGeoAndSync());
 
     _initAuthListener();
     _initDeepLinks();
@@ -3562,7 +3562,7 @@ class _BootstrapGateState extends State<BootstrapGate>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(GeoService.instance.refresh());
+      unawaited(_refreshGeoAndSync());
       unawaited(_ensureDeviceTokenRegistered());
 
       // If user restored while app was backgrounded, flush pending invite UI/actions.
@@ -3739,6 +3739,22 @@ class _BootstrapGateState extends State<BootstrapGate>
         _postIdentityFlowsRerunRequested = false;
         _runPostIdentityFlows();
       }
+    }
+  }
+
+  Future<void> _refreshGeoAndSync() async {
+    await GeoService.instance.refresh();
+    final pos = GeoService.instance.current.value;
+    final userId = _userId;
+    if (pos == null || userId == null || userId.isEmpty) return;
+    try {
+      await _supabase.rpc('upsert_user_area_v1', params: {
+        'p_app_user_id': userId,
+        'p_lat': pos.lat,
+        'p_lng': pos.lng,
+      });
+    } catch (_) {
+      // Не критично — рейтинг работает без города
     }
   }
 
