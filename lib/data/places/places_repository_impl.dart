@@ -149,6 +149,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
     List<String>? types,
+    double? minRating,
     String? searchTitle,
     required int limit,
     required int offset,
@@ -159,6 +160,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
       if (cityIds != null && cityIds.isNotEmpty) 'p_city_ids': cityIds,
       if (areaIds != null && areaIds.isNotEmpty) 'p_area_ids': areaIds,
       if (types != null && types.isNotEmpty) 'p_types': types,
+      if (minRating != null) 'p_min_rating': minRating,
       if (searchTitle != null && searchTitle.isNotEmpty)
         'p_search_title': searchTitle,
       if (lat != null) 'p_lat': lat,
@@ -166,7 +168,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
     };
 
     final raw = await _client.rpc(
-      'get_places_feed_v4',
+      'get_places_feed_v5',
       params: params,
     );
 
@@ -203,6 +205,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
     List<String>? types,
+    double? minRating,
     String? searchTitle,
     required int limit,
     required int offset,
@@ -215,6 +218,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
       cityIds: cityIds,
       areaIds: areaIds,
       types: types,
+      minRating: minRating,
       searchTitle: searchTitle,
       limit: limit,
       offset: offset,
@@ -307,20 +311,25 @@ class PlacesRepositoryImpl implements PlacesRepository {
     List<String>? selectedCityIds,
     List<String>? selectedAreaIds,
     List<String>? selectedTypes,
+    double? minRating,
   }) async {
     final params = {
       if (lat != null) 'p_lat': lat,
       if (lng != null) 'p_lng': lng,
-      if (selectedCityIds != null && selectedCityIds.isNotEmpty)
+      // Отправляем всегда когда не null:
+      // [] = явно «никакой» (все районы, без автогео)
+      // [id] = конкретные города
+      if (selectedCityIds != null)
         'p_selected_city_ids': selectedCityIds,
       if (selectedAreaIds != null && selectedAreaIds.isNotEmpty)
         'p_selected_area_ids': selectedAreaIds,
       if (selectedTypes != null && selectedTypes.isNotEmpty)
         'p_selected_types': selectedTypes,
+      if (minRating != null) 'p_min_rating': minRating,
     };
 
     final response = await _client.rpc(
-      'get_places_filters_state_v1',
+      'get_places_filters_v2',
       params: params,
     );
 

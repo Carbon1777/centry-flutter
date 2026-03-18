@@ -26,6 +26,7 @@ abstract class PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
     List<String>? types,
+    double? minRating,
     String? searchTitle,
     required int limit,
     required int offset,
@@ -75,6 +76,7 @@ abstract class PlacesRepository {
     List<String>? selectedCityIds,
     List<String>? selectedAreaIds,
     List<String>? selectedTypes,
+    double? minRating,
   });
 
   /// Meta/content snapshot for place (without social part).

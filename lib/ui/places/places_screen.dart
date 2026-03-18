@@ -18,7 +18,8 @@ import 'package:centry/features/places/geo_info/places_geo_info_dialog.dart';
 
 // ФИЛЬТРЫ
 import 'package:centry/features/places/filters/places_filters_controller.dart';
-import 'package:centry/features/places/filters/places_filters_dialog.dart';
+import 'package:centry/features/places/filters/places_filters_dialog.dart'
+    show showPlacesFiltersSheet;
 
 // КАРТА
 import 'package:centry/features/places/map/places_map.dart';
@@ -93,6 +94,13 @@ class _PlacesScreenState extends State<PlacesScreen> {
       _reloadSignal.value++;
     });
 
+    // Восстанавливаем сохранённые фильтры; если были активны — перезагружаем список
+    _filtersController.init().then((_) {
+      if (mounted && _filtersController.state.hasActiveFilters) {
+        _reloadSignal.value++;
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeShowGeoInfo();
     });
@@ -140,64 +148,28 @@ class _PlacesScreenState extends State<PlacesScreen> {
   Future<void> _openFilters() async {
     final geo = GeoService.instance.current.value;
 
-    Future<Map<String, dynamic>> loadServerState() {
-      return _repository.loadPlacesFiltersState(
-        lat: geo?.lat,
-        lng: geo?.lng,
-        selectedCityIds: _filtersController.state.cityIds,
-        selectedAreaIds: _filtersController.state.areaIds,
-        selectedTypes: _filtersController.state.types,
-      );
-    }
-
-    final serverState = await loadServerState();
-    _filtersController.applyServerState(serverState);
-
-    final available = serverState['available'] as Map<String, dynamic>? ?? {};
-    final citiesJson = available['cities'] as List? ?? const [];
-    final typesJson = available['types'] as List? ?? const [];
-    final areasJson = available['areas'] as List? ?? const [];
-
-    final initialCities = citiesJson
-        .whereType<Map>()
-        .map((e) => PlacesFilterItem(
-              id: e['id'].toString(),
-              title: e['title'].toString(),
-            ))
-        .toList();
-
-    final initialTypes = typesJson
-        .whereType<Map>()
-        .map((e) => PlacesFilterItem(
-              id: e['type'].toString(),
-              title: e['type'].toString(),
-            ))
-        .toList();
-
-    final initialAreas = areasJson
-        .whereType<Map>()
-        .map((e) => PlacesFilterItem(
-              id: e['id'].toString(),
-              title: e['title'].toString(),
-            ))
-        .toList();
-
     if (!mounted) return;
 
-    await showDialog<void>(
+    await showPlacesFiltersSheet(
       context: context,
-      barrierDismissible: true,
-      builder: (_) => PlacesFiltersDialog(
-        controller: _filtersController,
-        initialCities: initialCities,
-        initialTypes: initialTypes,
-        initialAreas: initialAreas,
-        loadServerState: loadServerState,
+      controller: _filtersController,
+      loadServerState: ({List<String>? cityIds}) => _repository.loadPlacesFiltersState(
+        lat: geo?.lat,
+        lng: geo?.lng,
+        // null = начальная загрузка:
+        //   controller пустой → null на сервер → автогео
+        //   controller непустой → передаём его города
+        // [] = черновик без городов → передаём [] → сервер отдаёт все районы без автогео
+        // [...] = конкретный черновой выбор → передаём как есть
+        selectedCityIds: cityIds ??
+            (_filtersController.state.cityIds.isEmpty
+                ? null
+                : _filtersController.state.cityIds),
+        selectedAreaIds: _filtersController.state.areaIds,
+        selectedTypes: _filtersController.state.types,
+        minRating: _filtersController.state.minRating,
       ),
     );
-
-    final normalized = await loadServerState();
-    _filtersController.applyServerState(normalized);
 
     _reloadSignal.value++;
   }
@@ -541,6 +513,7 @@ class _PlacesListState extends State<_PlacesList> {
         cityIds: payload.cityIds,
         areaIds: payload.areaIds,
         types: payload.types,
+        minRating: payload.minRating,
         searchTitle: _appliedSearchTitle,
         limit: _pageSize,
         offset: _offset,
@@ -877,7 +850,13 @@ class _PlacesListState extends State<_PlacesList> {
               ),
               const SizedBox(height: 12),
               _buildSearchBlock(context),
-              const SizedBox(height: 12),
+              _ActiveFilterChips(
+                controller: widget.filtersController,
+                onRemove: (filterId) {
+                  widget.filtersController.removeFilter(filterId);
+                  _loadInitial();
+                },
+              ),
               Expanded(
                 child: ListView.separated(
                   controller: _scrollController,
@@ -1172,6 +1151,161 @@ class _ViewModeToggle extends StatelessWidget {
 }
 
 /* =======================
+   ACTIVE FILTER CHIPS
+   ======================= */
+
+class _ActiveFilterChips extends StatefulWidget {
+  final PlacesFiltersController controller;
+  final void Function(String filterId) onRemove;
+
+  const _ActiveFilterChips({
+    required this.controller,
+    required this.onRemove,
+  });
+
+  @override
+  State<_ActiveFilterChips> createState() => _ActiveFilterChipsState();
+}
+
+class _ActiveFilterChipsState extends State<_ActiveFilterChips> {
+  final _scrollController = ScrollController();
+  bool _canScrollLeft = false;
+  bool _canScrollRight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final pos = _scrollController.position;
+    final left = pos.pixels > 0;
+    final right = pos.pixels < pos.maxScrollExtent;
+    if (left != _canScrollLeft || right != _canScrollRight) {
+      setState(() {
+        _canScrollLeft = left;
+        _canScrollRight = right;
+      });
+    }
+  }
+
+  // После рендера проверяем нужны ли стрелки вообще
+  void _checkAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final pos = _scrollController.position;
+      final right = pos.maxScrollExtent > 0;
+      if (right != _canScrollRight) {
+        setState(() => _canScrollRight = right);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final filters = widget.controller.activeFilters;
+        if (filters.isEmpty) return const SizedBox.shrink();
+
+        _checkAfterBuild();
+
+        final colors = Theme.of(context).colorScheme;
+        final arrowColor = colors.primary;
+        const arrowSize = 24.0;
+        const fadeWidth = 32.0;
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: SizedBox(
+            height: 36,
+            child: Stack(
+              children: [
+                ListView.separated(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  itemCount: filters.length,
+                  padding: EdgeInsets.only(
+                    left: _canScrollLeft ? fadeWidth : 0,
+                    right: _canScrollRight ? fadeWidth : 0,
+                  ),
+                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  itemBuilder: (context, i) {
+                    final f = filters[i];
+                    return InputChip(
+                      label: Text(f.title),
+                      onDeleted: () => widget.onRemove(f.id),
+                      visualDensity: VisualDensity.compact,
+                    );
+                  },
+                ),
+
+                // Левая стрелка + фейд
+                if (_canScrollLeft)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: fadeWidth,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              colors.surface,
+                              colors.surface.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                        alignment: Alignment.centerLeft,
+                        child: Icon(Icons.chevron_left,
+                            size: arrowSize, color: arrowColor),
+                      ),
+                    ),
+                  ),
+
+                // Правая стрелка + фейд
+                if (_canScrollRight)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: fadeWidth,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              colors.surface.withValues(alpha: 0),
+                              colors.surface,
+                            ],
+                          ),
+                        ),
+                        alignment: Alignment.centerRight,
+                        child: Icon(Icons.chevron_right,
+                            size: arrowSize, color: arrowColor),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/* =======================
    UI MODEL
    ======================= */
 
@@ -1199,6 +1333,9 @@ class PlaceUiModel {
   });
 
   String get typeLabel {
+    if (dto.typeDisplay != null && dto.typeDisplay!.isNotEmpty) {
+      return dto.typeDisplay!;
+    }
     switch (type) {
       case 'restaurant':
         return 'Ресторан';

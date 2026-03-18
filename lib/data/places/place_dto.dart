@@ -38,6 +38,9 @@ class PlaceDto {
   /// Расстояние до метро в метрах (опционально)
   final int? metroDistanceM;
 
+  /// Человекочитаемый тип места (из app_place_categories, v5+)
+  final String? typeDisplay;
+
   /// Рейтинг (пока nullable / placeholder)
   final double? rating;
 
@@ -65,6 +68,7 @@ class PlaceDto {
     required this.previewIsPlaceholder,
     required this.metroName,
     required this.metroDistanceM,
+    required this.typeDisplay,
     required this.rating,
     required this.likesCount,
     required this.dislikesCount,
@@ -120,6 +124,8 @@ class PlaceDto {
       previewIsPlaceholder: (json['preview_is_placeholder'] as bool?) ?? false,
       metroName: json['metro_name']?.toString(),
       metroDistanceM: _asIntNullable(json['metro_distance_m']),
+
+      typeDisplay: json['type_display']?.toString(),
 
       /// numeric часто приходит строкой
       rating: _asDouble(json['rating']),
