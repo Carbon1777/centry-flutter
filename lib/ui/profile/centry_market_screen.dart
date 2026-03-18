@@ -100,7 +100,7 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
       barrierDismissible: true,
       builder: (_) => Dialog(
         backgroundColor: colors.surface,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: rules == null
             ? _buildFallbackDialog(text, colors)
@@ -140,7 +140,7 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
       _TokenRules rules, TextTheme text, ColorScheme colors) {
     return ConstrainedBox(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.78,
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -333,7 +333,8 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
           ),
           Divider(height: 1, color: colors.outline.withValues(alpha: 0.2)),
           Expanded(
-            child: Center(
+            child: Align(
+              alignment: const Alignment(0, -0.35),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: ConstrainedBox(
@@ -341,6 +342,23 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: colors.onSurface.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(32),
+                          border: Border.all(
+                            color: colors.outline.withValues(alpha: 0.15),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.shopping_bag_outlined,
+                          size: 56,
+                          color: colors.onSurface.withValues(alpha: 0.25),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
                       Text(
                         'CentryMarket',
                         style: text.titleLarge
@@ -365,6 +383,23 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
                           color: colors.onSurface.withValues(alpha: 0.5),
                           height: 1.5,
                         ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.directions_run,
+                              size: 22,
+                              color: colors.onSurface.withValues(alpha: 0.2)),
+                          const SizedBox(width: 8),
+                          Icon(Icons.directions_run,
+                              size: 22,
+                              color: colors.onSurface.withValues(alpha: 0.2)),
+                          const SizedBox(width: 8),
+                          Icon(Icons.directions_run,
+                              size: 22,
+                              color: colors.onSurface.withValues(alpha: 0.2)),
+                        ],
                       ),
                     ],
                   ),

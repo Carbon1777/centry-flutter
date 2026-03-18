@@ -6,6 +6,23 @@ import '../../../data/feed/feed_repository.dart';
 import '../../../data/places/places_repository.dart';
 import '../../../features/places/details/place_details_dialog.dart';
 
+String _categoryLabel(String category) {
+  switch (category) {
+    case 'restaurant':
+      return 'Ресторан';
+    case 'bar':
+      return 'Бар';
+    case 'nightclub':
+      return 'Ночной клуб';
+    case 'cinema':
+      return 'Кинотеатр';
+    case 'theatre':
+      return 'Театр';
+    default:
+      return 'Место';
+  }
+}
+
 /// Открывает детали места из ленты.
 /// Копирует все механики PlaceDetailsDialog + добавляет feed-блоки.
 Future<void> showFeedPlaceDetailSheet({
@@ -27,7 +44,7 @@ Future<void> showFeedPlaceDetailSheet({
       repository: placesRepository,
       placeId: place.placeId,
       title: place.name,
-      typeLabel: place.category,
+      typeLabel: _categoryLabel(place.category),
       address: '',
       lat: 0,
       lng: 0,

@@ -1,0 +1,124 @@
+ТЗ для новой сессии: Подготовка CSV мест для импорта в Centry
+Первым делом — инспекция проекта
+Прочитай следующие файлы и структуры БД чтобы понять как устроен импорт мест:
+
+Файлы клиента:
+
+lib/data/places/place_dto.dart — модель места
+lib/data/places/places_repository_impl.dart — как данные отправляются на сервер
+БД через MCP Supabase (project_id: lqgzvolirohuettizkhx):
+
+
+-- Структура таблицы мест
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'core_places'
+ORDER BY ordinal_position;
+
+-- Структура junction table категорий
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_name = 'core_place_category_links';
+
+-- Все доступные категории
+SELECT code, display_name, sort_order FROM app_place_categories ORDER BY sort_order;
+
+-- Пример существующего места — понять формат данных
+SELECT p.id, p.title, p.category, p.address, p.lat, p.lng, a.name as area, c.name as city
+FROM core_places p
+JOIN core_areas a ON a.id = p.area_id
+JOIN core_cities c ON c.id = a.city_id
+WHERE c.name ILIKE '%москва%'
+LIMIT 5;
+
+-- Посмотреть area_id для Москвы (нужен при импорте)
+SELECT a.id, a.name, c.name as city
+FROM core_areas a
+JOIN core_cities c ON c.id = a.city_id
+WHERE c.name ILIKE '%москва%'
+ORDER BY a.name;
+После инспекции — приступай к основной задаче.
+
+Основная задача: подготовка CSV к импорту
+Исходные данные
+6 CSV-файлов по Москве. Имя файла определяет тип места. Пользователь предоставит файлы в начале работы.
+
+Существующие категории в БД: bar, nightclub, restaurant, cinema, theatre, karaoke, hookah, bathhouse
+
+Шаг 1 — Посмотреть структуру каждого CSV
+Прочитай первые 3–5 строк каждого файла. Определи:
+
+Какие колонки уже есть
+Как записан адрес (полный / только улица / с городом или без)
+Есть ли уже координаты
+Шаг 2 — Добавить 3 новые колонки
+Колонка type
+Берётся из имени файла. Маппинг:
+
+bars.csv → bar
+restaurants.csv → restaurant
+nightclubs.csv → nightclub
+karaoke.csv → karaoke
+hookah.csv → hookah
+bathhouse.csv / banya.csv → bathhouse
+(уточнить у пользователя если имена файлов другие)
+Колонки lat, lng
+Геокодинг через Nominatim (OpenStreetMap) — бесплатно, без API-ключа.
+
+Написать Python-скрипт:
+
+
+endpoint: https://nominatim.openstreetmap.org/search
+params: q="{address}, Москва, Россия", format=json, limit=1
+задержка: 1.1 секунды между запросами (лимит Nominatim)
+User-Agent: centry-geocoder/1.0
+Если адрес не найден — оставить lat/lng пустыми, добавить флаг geocode_status:
+
+ok — координаты найдены
+failed — не найдено, нужна ручная проверка
+skipped — адрес уже был в другом файле (дубль, обработан позже)
+Колонка tag
+Уникальный идентификатор места — используется как имя фото и для матчинга в БД.
+
+Формат: {транслит_названия}-{тип}-{порядковый_номер}
+Примеры: sultan-bar-001, propaganda-nightclub-002, electro-theatre-003
+
+Правила генерации:
+
+Название: транслитерация → lowercase → только a-z0-9 → дефисы вместо пробелов → максимум 30 символов
+Номер: сквозной по всем файлам (001, 002 ... 999, 1000)
+Тег должен быть уникальным в рамках итогового файла
+Шаг 3 — Объединить все файлы в один
+Итоговые колонки (минимум):
+title, address, lat, lng, type, tag, geocode_status
+
+Плюс любые дополнительные колонки из исходников (телефон, сайт, описание и т.д.) — сохранить все.
+
+Шаг 4 — Дедупликация
+Критерий совпадения: title + address после нормализации (lowercase, trim, убрать двойные пробелы).
+
+Случай	Действие
+Одинаковый тип	Оставить одну строку, удалить дубль
+Разные типы	Объединить в одну строку, type = bar,karaoke через запятую
+Разный адрес, похожее название	Не трогать — это разные места
+После дедупликации — пересчитать tag для объединённых строк (использовать первый тип из списка).
+
+Шаг 5 — Финальная проверка
+Вывести статистику:
+
+
+Всего мест: N
+По типам: bar=X, restaurant=Y, ...
+Мест с двойным типом: N
+Геокодинг успешно: N
+Геокодинг failed (нужна проверка): N
+Дублей удалено: N
+Дублей объединено (разные типы): N
+Показать пользователю все строки с geocode_status = failed — возможно часть можно исправить вручную до импорта.
+
+Финальный файл
+Сохранить как moscow_places_ready.csv в UTF-8.
+Это файл для финального импорта в БД — он будет использован в отдельной задаче.
+
+Что НЕ делать в этой сессии
+Не импортировать данные в БД (это отдельная задача)
+Не трогать существующие места в core_places

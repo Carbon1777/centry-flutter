@@ -252,83 +252,80 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             title: const Text('Лента'),
             automaticallyImplyLeading: false,
             actions: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (user.nickname.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 140),
-                        child: Text(
-                          'Ник: ${user.nickname}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.labelLarge?.copyWith(
-                            color: const Color.fromARGB(221, 232, 232, 232),
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      overlayColor: WidgetStateProperty.resolveWith<Color?>(
-                        (states) {
-                          if (states.contains(WidgetState.pressed)) {
-                            return accentBlue.withValues(alpha: 0.18);
-                          }
-                          if (states.contains(WidgetState.hovered) ||
-                              states.contains(WidgetState.focused)) {
-                            return accentBlue.withValues(alpha: 0.10);
-                          }
-                          return null;
-                        },
-                      ),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => ProfileScreen(
-                              userId: widget.userId,
-                              nickname: user.nickname,
-                              publicId: user.publicId,
-                              email: user.email,
-                            ),
-                          ),
-                        );
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width / 2,
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    overlayColor: WidgetStateProperty.resolveWith<Color?>(
+                      (states) {
+                        if (states.contains(WidgetState.pressed)) {
+                          return accentBlue.withValues(alpha: 0.18);
+                        }
+                        if (states.contains(WidgetState.hovered) ||
+                            states.contains(WidgetState.focused)) {
+                          return accentBlue.withValues(alpha: 0.10);
+                        }
+                        return null;
                       },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ProfileScreen(
+                            userId: widget.userId,
+                            nickname: user.nickname,
+                            publicId: user.publicId,
+                            email: user.email,
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: outlineWhite),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.person_outline,
-                              size: 20,
-                              color: accentBlue,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Профиль',
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: outlineWhite),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.person_outline,
+                            size: 22,
+                            color: accentBlue,
+                          ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              user.nickname.isNotEmpty
+                                  ? user.nickname
+                                  : 'Профиль',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: textTheme.labelLarge?.copyWith(
                                 color: accentBlue,
+                                fontSize: 16,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 18,
+                            color: accentBlue,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ],
           ),
