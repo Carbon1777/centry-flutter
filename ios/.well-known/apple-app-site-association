@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["KFPHDC2R77.com.centry.mobile.app"],
+        "components": [
+          {
+            "/": "/plan-invite*",
+            "comment": "Инвайты в планы"
+          }
+        ]
+      }
+    ]
+  }
+}
