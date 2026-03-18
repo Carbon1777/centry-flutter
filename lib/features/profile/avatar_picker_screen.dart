@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -200,11 +201,19 @@ class _AvatarCropScreenState extends State<_AvatarCropScreen> {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw StateError('no auth user');
 
+      final webpBytes = await FlutterImageCompress.compressWithList(
+        croppedBytes,
+        minWidth: 512,
+        minHeight: 512,
+        quality: 85,
+        format: CompressFormat.webp,
+      );
+
       final path = 'custom/$userId/avatar.webp';
 
       await client.storage.from('avatars').uploadBinary(
             path,
-            croppedBytes,
+            webpBytes,
             fileOptions: const FileOptions(
               contentType: 'image/webp',
               upsert: true,

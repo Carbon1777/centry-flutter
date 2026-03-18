@@ -1890,6 +1890,11 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
         decoration: BoxDecoration(
           color: colors.surfaceContainerHigh,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: colors.outline.withValues(alpha: 0.2)),
+            left: BorderSide(color: colors.outline.withValues(alpha: 0.2)),
+            right: BorderSide(color: colors.outline.withValues(alpha: 0.2)),
+          ),
         ),
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1902,8 +1907,9 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
                 onTap: _toggle,
                 onVerticalDragUpdate: _onDragUpdate,
                 onVerticalDragEnd: _onDragEnd,
-                child: SizedBox(
-                  height: _kCollapsedHeight,
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxHeight: _kCollapsedHeight - 1),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
@@ -1936,36 +1942,58 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
                 ),
               ),
               if (_expanded)
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: colors.onSurface.withValues(alpha: 0.08),
-                ),
-              if (_expanded)
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 40),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                Flexible(
+                  fit: FlexFit.tight,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxHeight < 20) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        mainAxisSize: MainAxisSize.max,
                         children: [
-                          Icon(
-                            Icons.camera_alt_outlined,
-                            size: 72,
-                            color: colors.onSurface.withValues(alpha: 0.25),
+                          Divider(
+                            height: 1,
+                            thickness: 1,
+                            color: colors.outline.withValues(alpha: 0.2),
                           ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Нужно чуть-чуть потерпеть, ждём релиза! 😊',
-                            textAlign: TextAlign.center,
-                            style: textTheme.titleMedium?.copyWith(
-                              color: colors.onSurface.withValues(alpha: 0.55),
-                              height: 1.4,
+                          Expanded(
+                            child: SingleChildScrollView(
+                              physics:
+                                  const NeverScrollableScrollPhysics(),
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 40, vertical: 24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.camera_alt_outlined,
+                                        size: 72,
+                                        color: colors.onSurface
+                                            .withValues(alpha: 0.25),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'Нужно чуть-чуть потерпеть, ждём релиза! 😊',
+                                        textAlign: TextAlign.center,
+                                        style:
+                                            textTheme.titleMedium?.copyWith(
+                                          color: colors.onSurface
+                                              .withValues(alpha: 0.55),
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
             ],
