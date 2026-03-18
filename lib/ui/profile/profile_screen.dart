@@ -1976,7 +1976,7 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
                                       ),
                                       const SizedBox(height: 20),
                                       Text(
-                                        'Нужно чуть-чуть потерпеть, ждём релиза! 😊',
+                                        'Упссс, и мы хотели бы посмотреть, но будет доступно с релизом проекта. 😅',
                                         textAlign: TextAlign.center,
                                         style:
                                             textTheme.titleMedium?.copyWith(
