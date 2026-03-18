@@ -236,18 +236,15 @@ class _PlacesMapState extends State<PlacesMap> {
 
   String _emojiForType(String type) {
     switch (type) {
-      case 'restaurant':
-        return '🍷';
-      case 'bar':
-        return '🍺';
-      case 'nightclub':
-        return '💃';
-      case 'cinema':
-        return '🎬';
-      case 'theatre':
-        return '🎭';
-      default:
-        return '📍';
+      case 'restaurant': return '🍷';
+      case 'bar':        return '🍺';
+      case 'nightclub':  return '💃';
+      case 'cinema':     return '🎬';
+      case 'theatre':    return '🎭';
+      case 'karaoke':    return '🎤';
+      case 'hookah':     return '💨';
+      case 'bathhouse':  return '🧖';
+      default:           return '📍';
     }
   }
 
@@ -261,6 +258,7 @@ class _PlacesMapState extends State<PlacesMap> {
 
     return Transform.scale(
       scale: scale,
+      alignment: Alignment.bottomCenter,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -287,15 +285,20 @@ class _PlacesMapState extends State<PlacesMap> {
       height: _markerHeight,
       alignment: Alignment.bottomCenter,
       point: LatLng(place.lat, place.lng),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showLabel) _label(context, place),
-          const SizedBox(height: 4),
-          IgnorePointer(
-            child: _markerIcon(_emojiForType(place.type)),
-          ),
-        ],
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showLabel) _label(context, place),
+            const SizedBox(height: 4),
+            IgnorePointer(
+              child: _markerIcon(_emojiForType(
+                place.categories.isNotEmpty ? place.categories.first : place.type,
+              )),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -324,7 +327,7 @@ class _PlacesMapState extends State<PlacesMap> {
             repository: widget.repository,
             placeId: place.id,
             title: place.title,
-            typeLabel: _typeLabel(place.type),
+            typeLabel: place.categoriesDisplay?.join(' · ') ?? _typeLabel(place.type),
             address:
                 place.address.isNotEmpty ? place.address : 'Адрес не указан',
             lat: place.lat,
@@ -361,7 +364,13 @@ class _PlacesMapState extends State<PlacesMap> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_typeLabel(place.type), style: secondaryStyle),
+            Text(
+              place.categoriesDisplay?.join(' · ') ?? _typeLabel(place.type),
+              style: secondaryStyle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 1),
             Text(
               place.title,
@@ -390,18 +399,15 @@ class _PlacesMapState extends State<PlacesMap> {
 
   String _typeLabel(String type) {
     switch (type) {
-      case 'restaurant':
-        return 'Ресторан';
-      case 'bar':
-        return 'Бар';
-      case 'nightclub':
-        return 'Ночной клуб';
-      case 'cinema':
-        return 'Кинотеатр';
-      case 'theatre':
-        return 'Театр';
-      default:
-        return 'Место';
+      case 'restaurant': return 'Ресторан';
+      case 'bar':        return 'Бар';
+      case 'nightclub':  return 'Ночной клуб';
+      case 'cinema':     return 'Кинотеатр';
+      case 'theatre':    return 'Театр';
+      case 'karaoke':    return 'Карaоке';
+      case 'hookah':     return 'Кальянная';
+      case 'bathhouse':  return 'Баня / Сауна';
+      default:           return 'Место';
     }
   }
 
@@ -459,6 +465,8 @@ class _PlacesMapState extends State<PlacesMap> {
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.centry.app',
+              maxNativeZoom: 19,
+              maxZoom: 19,
             ),
             if (userPos != null)
               MarkerLayer(
@@ -470,6 +478,7 @@ class _PlacesMapState extends State<PlacesMap> {
               options: MarkerClusterLayerOptions(
                 markers: placeMarkers,
                 maxClusterRadius: 45,
+                disableClusteringAtZoom: 16,
                 size: const Size(40, 40),
                 builder: (context, markers) {
                   return Container(

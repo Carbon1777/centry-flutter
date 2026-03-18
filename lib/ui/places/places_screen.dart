@@ -579,6 +579,15 @@ class _PlacesListState extends State<_PlacesList> {
         return 'cinema';
       case 'Театр':
         return 'theatre';
+      case 'Карaоке':
+      case 'Karaoke':
+        return 'karaoke';
+      case 'Кальянная':
+        return 'hookah';
+      case 'Баня / Сауна':
+      case 'Баня':
+      case 'Сауна':
+        return 'bathhouse';
       default:
         throw Exception('Неизвестный тип места');
     }
@@ -1333,22 +1342,23 @@ class PlaceUiModel {
   });
 
   String get typeLabel {
+    final displays = dto.categoriesDisplay;
+    if (displays != null && displays.isNotEmpty) {
+      return displays.join(' · ');
+    }
     if (dto.typeDisplay != null && dto.typeDisplay!.isNotEmpty) {
       return dto.typeDisplay!;
     }
     switch (type) {
-      case 'restaurant':
-        return 'Ресторан';
-      case 'bar':
-        return 'Бар';
-      case 'nightclub':
-        return 'Ночной клуб';
-      case 'cinema':
-        return 'Кинотеатр';
-      case 'theatre':
-        return 'Театр';
-      default:
-        return 'Место';
+      case 'restaurant':  return 'Ресторан';
+      case 'bar':         return 'Бар';
+      case 'nightclub':   return 'Ночной клуб';
+      case 'cinema':      return 'Кинотеатр';
+      case 'theatre':     return 'Театр';
+      case 'karaoke':     return 'Карaоке';
+      case 'hookah':      return 'Кальянная';
+      case 'bathhouse':   return 'Баня / Сауна';
+      default:            return 'Место';
     }
   }
 

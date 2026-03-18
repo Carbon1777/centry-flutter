@@ -482,6 +482,8 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       previewIsPlaceholder: _effectivePreviewIsPlaceholder,
       metroName: _effectiveMetroName,
       metroDistanceM: _effectiveMetroDistanceM,
+      typeDisplay: null,
+      categories: [_canonicalTypeFromLabel(widget.typeLabel)],
       rating: _rating,
       likesCount: _likes,
       dislikesCount: _dislikes,
