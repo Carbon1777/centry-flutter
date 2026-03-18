@@ -697,6 +697,8 @@ class PlaceCandidateDto {
       previewIsPlaceholder: previewIsPlaceholder,
       metroName: metroName,
       metroDistanceM: metroDistanceM,
+      typeDisplay: null,
+      categories: [type],
       rating: rating,
       likesCount: likesCount,
       dislikesCount: dislikesCount,

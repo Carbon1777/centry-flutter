@@ -41,6 +41,12 @@ class PlaceDto {
   /// Человекочитаемый тип места (из app_place_categories, v5+)
   final String? typeDisplay;
 
+  /// Все коды категорий места (multi-type, из junction table)
+  final List<String> categories;
+
+  /// Все читаемые названия категорий (соответствуют categories)
+  final List<String>? categoriesDisplay;
+
   /// Рейтинг (пока nullable / placeholder)
   final double? rating;
 
@@ -69,6 +75,8 @@ class PlaceDto {
     required this.metroName,
     required this.metroDistanceM,
     required this.typeDisplay,
+    required this.categories,
+    this.categoriesDisplay,
     required this.rating,
     required this.likesCount,
     required this.dislikesCount,
@@ -126,6 +134,14 @@ class PlaceDto {
       metroDistanceM: _asIntNullable(json['metro_distance_m']),
 
       typeDisplay: json['type_display']?.toString(),
+
+      categories: (json['categories'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [json['type']?.toString() ?? ''],
+      categoriesDisplay: (json['categories_display'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
 
       /// numeric часто приходит строкой
       rating: _asDouble(json['rating']),
