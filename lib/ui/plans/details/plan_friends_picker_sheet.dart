@@ -280,46 +280,23 @@ class _FriendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // Никнейм: из профиля с учётом приватности, fallback — displayName, затем '—'
+    // Никнейм: из профиля, fallback — displayName
     final String nickDisplay;
-    if (profile?.nicknameHidden == true) {
-      nickDisplay = 'Скрыто';
-    } else {
-      final n = profile?.nickname?.trim() ?? friend.displayName.trim();
-      nickDisplay = n.isEmpty ? '—' : n;
-    }
+    final n = profile?.nickname?.trim() ?? friend.displayName.trim();
+    nickDisplay = n.isEmpty ? '—' : n;
 
-    // Имя: из профиля с учётом приватности
+    // Имя: из профиля
     final String nameDisplay;
-    if (profile?.nameHidden == true) {
-      nameDisplay = 'Скрыто';
-    } else {
-      final n = profile?.name?.trim() ?? '';
-      nameDisplay = n.isEmpty ? '—' : n;
-    }
+    final nm = profile?.name?.trim() ?? '';
+    nameDisplay = nm.isEmpty ? '—' : nm;
 
     final note = friend.note.trim();
     final borderColor = theme.dividerColor.withValues(alpha: 0.25);
     final noteBg = theme.dividerColor.withValues(alpha: 0.10);
 
-    final nickStyle = profile?.nicknameHidden == true
-        ? theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: theme.colorScheme.outline,
-            fontStyle: FontStyle.italic,
-          )
-        : theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800);
+    final nickStyle = theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800);
 
-    final nameStyle = profile?.nameHidden == true
-        ? theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
-            fontStyle: FontStyle.italic,
-            fontWeight: FontWeight.w700,
-          )
-        : theme.textTheme.bodySmall?.copyWith(
-            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.85),
-            fontWeight: FontWeight.w700,
-          );
+    final nameStyle = theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700);
 
     final base = InkWell(
       onTap: enabled ? onTap : null,

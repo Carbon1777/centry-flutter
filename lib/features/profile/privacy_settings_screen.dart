@@ -15,11 +15,15 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool _loading = true;
   String? _error;
 
-  static const _contexts = ['all', 'friends', 'in_plans', 'in_feed'];
-  static const _contextLabels = ['Все', 'Друзья', 'В планах', 'В ленте'];
+  // контексты и поля новой модели
+  static const _contexts = ['in_plans', 'in_feed'];
+  static const _contextLabels = ['В планах', 'В ленте'];
 
-  static const _fields = ['nickname', 'avatar', 'name', 'gender', 'age'];
-  static const _fieldLabels = ['Никнейм', 'Аватар', 'Имя', 'Пол', 'Возраст'];
+  static const _miniFields = ['mini_profile'];
+  static const _miniFieldLabels = ['Видят'];
+
+  static const _fullFields = ['full_profile'];
+  static const _fullFieldLabels = ['Видят'];
 
   @override
   void initState() {
@@ -29,8 +33,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
 
   Future<void> _load() async {
     try {
-      final res =
-          await Supabase.instance.client.rpc('get_privacy_settings');
+      final res = await Supabase.instance.client.rpc('get_privacy_settings');
       final map = (res as Map<String, dynamic>).map(
         (k, v) => MapEntry(k, v as bool),
       );
@@ -46,8 +49,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     }
   }
 
-  bool _get(String ctx, String field) =>
-      _settings?['$ctx.$field'] ?? true;
+  bool _get(String ctx, String field) => _settings?['$ctx.$field'] ?? true;
 
   Future<void> _toggle(String ctx, String field, bool value) async {
     final key = '$ctx.$field';
@@ -78,155 +80,247 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               ? Center(child: Text('Ошибка: $_error'))
               : Column(
                   children: [
-                    Expanded(child: _buildTable(context)),
+                    Expanded(child: _buildContent(context)),
                     _DeleteAccountFooter(),
                   ],
                 ),
     );
   }
 
-  Widget _buildTable(BuildContext context) {
+  Widget _buildContent(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
 
-    // Ширина колонок — динамически под экран
-    const hPadding = 10.0;
-    const fieldColW = 80.0;
+    const hPadding = 16.0;
+    const fieldColW = 90.0;
     final screenW = MediaQuery.of(context).size.width;
-    final ctxColW = (screenW - hPadding * 2 - fieldColW) / 4;
+    final ctxColW = (screenW - hPadding * 2 - fieldColW) / 2;
+
+    final columnWidths = <int, TableColumnWidth>{
+      0: const FixedColumnWidth(fieldColW),
+      1: FixedColumnWidth(ctxColW),
+      2: FixedColumnWidth(ctxColW),
+    };
+
+    final headerRow = TableRow(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+      ),
+      children: [
+        const SizedBox(height: 36),
+        ..._contextLabels.map(
+          (label) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(10, 16, 10, 16),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Кто видит мои данные', style: text.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'Если поле открыто для всех — отдельные настройки по друзьям, планам и ленте не нужны',
-            style: text.bodySmall?.copyWith(color: colors.outline),
-          ),
+          Text('Где видны мои профили', style: text.titleMedium),
           const SizedBox(height: 20),
 
-          // Таблица
+          // ── Мини профиль ──
+          Text(
+            'Мини профиль',
+            style: text.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colors.outline,
+            ),
+          ),
+          const SizedBox(height: 8),
           Table(
-            columnWidths: {
-              0: const FixedColumnWidth(fieldColW),
-              1: FixedColumnWidth(ctxColW),
-              2: FixedColumnWidth(ctxColW),
-              3: FixedColumnWidth(ctxColW),
-              4: FixedColumnWidth(ctxColW),
-            },
+            columnWidths: columnWidths,
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
             children: [
-              // Header row
-              TableRow(
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: colors.outlineVariant),
+              headerRow,
+              ..._buildRows(_miniFields, _miniFieldLabels, text, colors),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── Полный профиль ──
+          Text(
+            'Полный профиль',
+            style: text.bodySmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colors.outline,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Table(
+            columnWidths: columnWidths,
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            children: [
+              headerRow,
+              ..._buildRows(_fullFields, _fullFieldLabels, text, colors),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Пометка про друзей ──
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('* ', style: text.bodySmall?.copyWith(color: colors.outline)),
+                Expanded(
+                  child: Text(
+                    'Настройки приватности не распространяются на ваших друзей — для них мини профиль и полный профиль всегда открыты.',
+                    style: text.bodySmall?.copyWith(color: colors.outline),
                   ),
                 ),
-                children: [
-                  const SizedBox(height: 36),
-                  ..._contextLabels.map(
-                    (label) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: text.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              // Data rows
-              ...List.generate(_fields.length, (fi) {
-                final field = _fields[fi];
-                final fieldLabel = _fieldLabels[fi];
-                final allOn = _get('all', field);
-
-                return TableRow(
-                  decoration: fi < _fields.length - 1
-                      ? BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                                color: colors.outlineVariant.withValues(alpha: 0.5)),
-                          ),
-                        )
-                      : null,
-                  children: [
-                    // Field label
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Text(fieldLabel, style: text.bodyMedium),
-                    ),
-
-                    // Context toggles
-                    ...List.generate(_contexts.length, (ci) {
-                      final ctx = _contexts[ci];
-                      final isAllColumn = ctx == 'all';
-                      final val = _get(ctx, field);
-
-                      // Остальные колонки неактивны если "Все" = true
-                      final disabled = !isAllColumn && allOn;
-
-                      return _TableCell(
-                        value: disabled ? true : val,
-                        disabled: disabled,
-                        onChanged: disabled
-                            ? null
-                            : (v) => _toggle(ctx, field, v),
-                      );
-                    }),
-                  ],
-                );
-              }),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+
+  List<TableRow> _buildRows(
+    List<String> fields,
+    List<String> labels,
+    TextTheme text,
+    ColorScheme colors,
+  ) {
+    return List.generate(fields.length, (fi) {
+      final field = fields[fi];
+      final label = labels[fi];
+
+      return TableRow(
+        decoration: fi < fields.length - 1
+            ? BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: colors.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+              )
+            : null,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Text(label, style: text.bodyMedium),
+          ),
+          ..._contexts.map((ctx) {
+            final val = _get(ctx, field);
+            return Center(
+              child: _EyeSwitch(
+                value: val,
+                onChanged: (v) => _toggle(ctx, field, v),
+              ),
+            );
+          }),
+        ],
+      );
+    });
+  }
 }
 
 // =======================
-// Cell widget
+// Eye switch
 // =======================
 
-class _TableCell extends StatelessWidget {
+class _EyeSwitch extends StatelessWidget {
   final bool value;
-  final bool disabled;
-  final ValueChanged<bool>? onChanged;
+  final ValueChanged<bool> onChanged;
 
-  const _TableCell({
-    required this.value,
-    required this.disabled,
-    this.onChanged,
-  });
+  const _EyeSwitch({required this.value, required this.onChanged});
+
+  static const double _trackW = 62;
+  static const double _trackH = 32;
+  static const double _thumbW = 32;
+  static const double _thumbH = 26;
+  static const double _thumbPadH = 2;
+  static const double _iconSize = 18;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    const dur = Duration(milliseconds: 200);
 
-    return Center(
-      child: Transform.scale(
-        scale: 0.88,
-        child: Switch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: disabled ? colors.outline : colors.primary,
-          trackColor: disabled
-              ? WidgetStateProperty.all(
-                  colors.surfaceContainerHighest,
-                )
-              : null,
-          thumbColor: disabled
-              ? WidgetStateProperty.all(colors.outline)
-              : null,
+    const thumbOff = _thumbPadH;
+    const thumbOn = _trackW - _thumbW - _thumbPadH;
+
+    // Иконка — в центре свободной части трека (противоположной стороне от ползунка)
+    const freeW = _trackW - _thumbW - _thumbPadH * 2;
+    final iconLeft = value
+        ? _thumbPadH + (freeW - _iconSize) / 2
+        : _thumbW + _thumbPadH + (freeW - _iconSize) / 2;
+
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: dur,
+        width: _trackW,
+        height: _trackH,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(_trackH / 2),
+          color: value ? colors.primary : colors.surfaceContainerHighest,
+          border: Border.all(
+            color: value
+                ? colors.primary
+                : colors.outline.withValues(alpha: 0.25),
+            width: 1,
+          ),
+        ),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // Иконка глаза
+            AnimatedPositioned(
+              duration: dur,
+              curve: Curves.easeInOut,
+              left: iconLeft,
+              top: (_trackH - _iconSize) / 2,
+              child: Icon(
+                value ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                size: _iconSize,
+                color: value
+                    ? Colors.white.withValues(alpha: 0.85)
+                    : colors.onSurface.withValues(alpha: 0.4),
+              ),
+            ),
+            // Ползунок (вытянутый овал)
+            AnimatedPositioned(
+              duration: dur,
+              curve: Curves.easeInOut,
+              left: value ? thumbOn : thumbOff,
+              top: (_trackH - _thumbH) / 2,
+              child: Container(
+                width: _thumbW,
+                height: _thumbH,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(_thumbH / 2),
+                  color: Colors.white,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

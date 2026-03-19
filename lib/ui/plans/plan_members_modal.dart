@@ -434,7 +434,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                       _removeMemberInFlight.contains(_owner.appUserId),
                   onRemoveMemberPressed: () =>
                       unawaited(_handleRemoveMemberPressed(_owner)),
-                  onOpenProfile: _owner.isMe == true ? () {} : () {
+                  onOpenProfile: () {
                     unawaited(UserCardSheet.show(
                       context,
                       targetUserId: _owner.appUserId,
@@ -463,7 +463,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                           _removeMemberInFlight.contains(m.appUserId),
                       onRemoveMemberPressed: () =>
                           unawaited(_handleRemoveMemberPressed(m)),
-                      onOpenProfile: m.isMe == true ? () {} : () {
+                      onOpenProfile: () {
                         unawaited(UserCardSheet.show(
                           context,
                           targetUserId: m.appUserId,
@@ -584,7 +584,7 @@ class _MemberRow extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: member.isMe == true ? null : onOpenProfile,
+            onTap: onOpenProfile,
             child: UserAvatarWidget(
               profile: profile,
               size: 50,
@@ -594,23 +594,15 @@ class _MemberRow extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: GestureDetector(
-              onTap: member.isMe == true ? null : onOpenProfile,
+              onTap: onOpenProfile,
               child: Builder(builder: (context) {
-                final hidden = profile?.nicknameHidden == true;
-                final displayNick = hidden
-                    ? 'Скрыто'
-                    : (profile?.nickname ?? member.nickname);
+                final displayNick = profile?.nickname ?? member.nickname;
                 return Text(
                   displayNick,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: nicknameWeight,
                     fontSize: 20,
-                    color: hidden
-                        ? Theme.of(context).colorScheme.outline
-                        : null,
-                    fontStyle:
-                        hidden ? FontStyle.italic : FontStyle.normal,
                   ),
                 );
               }),
