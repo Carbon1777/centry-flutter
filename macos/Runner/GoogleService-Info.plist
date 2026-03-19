@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.centry.mobile.app</string>
+	<string>com.example.centry</string>
 	<key>PROJECT_ID</key>
 	<string>centry1777</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:1052430642596:ios:2ff41b7c75830f83392531</string>
+	<string>1:1052430642596:ios:a2912e8525a86d0f392531</string>
 </dict>
 </plist>

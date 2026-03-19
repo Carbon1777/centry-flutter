@@ -797,9 +797,10 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
               child: Center(child: CircularProgressIndicator()),
             )
           else
-            SizedBox(
-              height: dialogMaxHeight,
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: dialogMaxHeight),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   ClipRRect(
                     borderRadius:
@@ -865,9 +866,8 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                       ),
                     ),
                   ),
-                  Expanded(
+                  Flexible(
                     child: SingleChildScrollView(
-                      physics: const NeverScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1583,19 +1583,18 @@ class _FeedPlanParticipantsDialogState
                               )
                             : null;
 
+                        final colors = Theme.of(context).colorScheme;
+                        final borderColor = isMe
+                            ? colors.primary
+                            : Colors.white.withValues(alpha: 0.18);
                         return Container(
                           margin: const EdgeInsets.symmetric(vertical: 2),
                           decoration: BoxDecoration(
-                            color: isMe
-                                ? Colors.white.withValues(alpha: 0.06)
-                                : Colors.transparent,
+                            color: Colors.white.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(14),
-                            border: isMe
-                                ? Border.all(
-                                    color:
-                                        Colors.white.withValues(alpha: 0.18),
-                                    width: 1)
-                                : null,
+                            border: Border.all(
+                                color: borderColor,
+                                width: isMe ? 1.5 : 1.0),
                           ),
                           child: ListTile(
                             leading: UserAvatarWidget(

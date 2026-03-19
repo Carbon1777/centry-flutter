@@ -43,10 +43,20 @@ class FeedPlaceCard extends StatelessWidget {
     return null; // нет активности — нет полоски
   }
 
-  bool get _hasActivity =>
-      place.interestedCount > 0 ||
-      place.plannedCount > 0 ||
-      place.visitedCount > 0;
+
+  String get _categoryLabel {
+    switch (place.category) {
+      case 'restaurant': return 'Ресторан';
+      case 'bar':        return 'Бар';
+      case 'nightclub':  return 'Ночной клуб';
+      case 'cinema':     return 'Кинотеатр';
+      case 'theatre':    return 'Театр';
+      case 'karaoke':    return 'Кaраоке';
+      case 'hookah':     return 'Кальянная';
+      case 'bathhouse':  return 'Баня / Сауна';
+      default:           return place.category;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +147,7 @@ class FeedPlaceCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                place.category,
+                                _categoryLabel,
                                 style: textTheme.bodySmall
                                     ?.copyWith(color: Colors.grey),
                               ),
@@ -153,36 +163,72 @@ class FeedPlaceCard extends StatelessWidget {
                                   ),
                                 ),
                               ],
-                              if (place.metroName != null) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  'м.${place.metroName}'
-                                  '${place.metroDistanceMeters != null ? " · ${place.metroDistanceMeters} м" : ""}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: textTheme.bodySmall?.copyWith(
-                                      color: Colors.grey.shade500),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-
-                              // Планы + сигналы в одну строку
+                              // Два блока в одну строку, выровнены по верху
+                              const SizedBox(height: 4),
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _PlansBadge(
-                                    count: place.countPlans,
-                                    colors: colors,
+                                  // ЛЕВЫЙ блок: метро → планы → история (без пропусков)
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (place.metroName != null) ...[
+                                          Text(
+                                            'м.${place.metroName}'
+                                            '${place.metroDistanceMeters != null ? " · ${place.metroDistanceMeters} м" : ""}',
+                                            style: textTheme.bodySmall?.copyWith(
+                                                color: Colors.grey.shade500),
+                                          ),
+                                          const SizedBox(height: 3),
+                                        ],
+                                        _PlansBadge(
+                                          count: place.countPlans,
+                                          colors: colors,
+                                        ),
+                                        if (place.pastPlansCount > 0) ...[
+                                          const SizedBox(height: 3),
+                                          _PastPlansBadge(count: place.pastPlansCount),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                  if (_hasActivity) ...[
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _SignalsRow(
-                                        interestedCount: place.interestedCount,
-                                        plannedCount: place.plannedCount,
-                                        visitedCount: place.visitedCount,
+                                  // ПРАВЫЙ блок: сигналы один под одним (без пропусков)
+                                  if (place.plannedCount > 0 ||
+                                      place.interestedCount > 0 ||
+                                      place.visitedCount > 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 8),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (place.plannedCount > 0)
+                                            _SignalChip(
+                                              icon: Icons.directions_walk,
+                                              label: '${place.plannedCount} идут',
+                                              color: _kColorPlanned,
+                                            ),
+                                          if (place.interestedCount > 0) ...[
+                                            const SizedBox(height: 3),
+                                            _SignalChip(
+                                              icon: Icons.visibility_outlined,
+                                              label: '${place.interestedCount} интерес.',
+                                              color: _kColorInterested,
+                                            ),
+                                          ],
+                                          if (place.visitedCount > 0) ...[
+                                            const SizedBox(height: 3),
+                                            _SignalChip(
+                                              icon: Icons.check_circle_outline,
+                                              label: '${place.visitedCount} были',
+                                              color: _kColorVisited,
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
-                                  ],
                                 ],
                               ),
                             ],
@@ -201,7 +247,7 @@ class FeedPlaceCard extends StatelessWidget {
   }
 }
 
-// ── Бейдж планов ──────────────────────────────────────────
+// ── Бейдж активных планов ─────────────────────────────────
 class _PlansBadge extends StatelessWidget {
   final int count;
   final ColorScheme colors;
@@ -210,40 +256,64 @@ class _PlansBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPlans = count > 0;
+    final active = count > 0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: hasPlans
-            ? colors.primary.withValues(alpha: 0.15)
-            : Colors.transparent,
+        color: active ? colors.primary.withValues(alpha: 0.15) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        border: hasPlans
-            ? Border.all(
-                color: colors.primary.withValues(alpha: 0.35),
-                width: 1,
-              )
+        border: active
+            ? Border.all(color: colors.primary.withValues(alpha: 0.35), width: 1)
             : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.event_note_outlined,
-            size: 13,
-            color: hasPlans ? colors.primary : Colors.grey.shade600,
-          ),
+          Icon(Icons.event_note_outlined,
+              size: 12,
+              color: active ? colors.primary : Colors.grey.shade600),
           const SizedBox(width: 4),
           Text(
             'Планов — $count',
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: hasPlans ? FontWeight.w700 : FontWeight.w400,
-              color: hasPlans ? colors.primary : Colors.grey.shade600,
+              fontSize: 11,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+              color: active ? colors.primary : Colors.grey.shade600,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Бейдж истории планов ──────────────────────────────────
+class _PastPlansBadge extends StatelessWidget {
+  final int count;
+
+  const _PastPlansBadge({required this.count});
+
+  static String _label(int n) {
+    final word = n == 1 ? 'плане' : 'планах';
+    return 'Было в $n $word';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.history, size: 13, color: Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          _label(count),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -272,47 +342,6 @@ class _PlacePhoto extends StatelessWidget {
     }
     return Image.asset('assets/images/place_placeholder.png',
         fit: BoxFit.cover);
-  }
-}
-
-// ── Строка сигналов — только ненулевые ────────────────────
-class _SignalsRow extends StatelessWidget {
-  final int interestedCount;
-  final int plannedCount;
-  final int visitedCount;
-
-  const _SignalsRow({
-    required this.interestedCount,
-    required this.plannedCount,
-    required this.visitedCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 4,
-      children: [
-        if (plannedCount > 0)
-          _SignalChip(
-            icon: Icons.directions_walk,
-            label: '$plannedCount идут',
-            color: _kColorPlanned,
-          ),
-        if (interestedCount > 0)
-          _SignalChip(
-            icon: Icons.visibility_outlined,
-            label: '$interestedCount интересуются',
-            color: _kColorInterested,
-          ),
-        if (visitedCount > 0)
-          _SignalChip(
-            icon: Icons.check_circle_outline,
-            label: '$visitedCount были',
-            color: _kColorVisited,
-          ),
-      ],
-    );
   }
 }
 
