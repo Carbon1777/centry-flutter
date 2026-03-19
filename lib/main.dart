@@ -10,6 +10,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'config/supabase_config.dart';
 import 'app/app.dart';
 import 'push/push_notifications.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   runZonedGuarded(() async {
@@ -21,7 +22,9 @@ Future<void> main() async {
 
     if (!kIsWeb) {
       try {
-        await Firebase.initializeApp();
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       } catch (e) {
         // ignore

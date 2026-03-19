@@ -559,17 +559,14 @@ class _MemberRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSelfParticipant = member.isMe == true && member.role != 'OWNER';
+    final isMe = member.isMe == true;
+    final colors = Theme.of(context).colorScheme;
 
-    final bg =
-        isSelfParticipant ? Colors.white.withValues(alpha: 0.06) : Colors.transparent;
-
-    final border = isSelfParticipant
-        ? Border.all(color: Colors.white.withValues(alpha: 0.18), width: 1)
-        : null;
-
-    final nicknameWeight =
-        isSelfParticipant ? FontWeight.w800 : FontWeight.w600;
+    final borderColor = isMe
+        ? colors.primary
+        : Colors.white.withValues(alpha: 0.18);
+    final borderWidth = isMe ? 1.5 : 1.0;
+    final nicknameWeight = isMe ? FontWeight.w800 : FontWeight.w600;
 
     final showAddFriendButton = !isReadOnly && showAddFriend;
     final showRemoveMemberButton = !isReadOnly && member.canRemoveMember;
@@ -577,9 +574,9 @@ class _MemberRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: bg,
+        color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
-        border: border,
+        border: Border.all(color: borderColor, width: borderWidth),
       ),
       child: Row(
         children: [

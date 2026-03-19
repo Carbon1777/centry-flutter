@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'email_screen.dart';
@@ -27,9 +28,6 @@ class PermissionsScreen extends StatefulWidget {
 }
 
 class _PermissionsScreenState extends State<PermissionsScreen> {
-  PermissionStatus? _locationStatus;
-  PermissionStatus? _notificationStatus;
-
   bool _loading = false;
   _PermissionStep _step = _PermissionStep.intro;
 
@@ -48,8 +46,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       return;
     }
 
-    _refreshStatuses();
-
     _introTimer = Timer(const Duration(milliseconds: 4500), () {
       if (!mounted) return;
       setState(() {
@@ -64,33 +60,33 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     super.dispose();
   }
 
-  Future<void> _refreshStatuses() async {
-    final loc = await Permission.location.status;
-    final noti = await Permission.notification.status;
-    if (!mounted) return;
-
-    setState(() {
-      _locationStatus = loc;
-      _notificationStatus = noti;
-    });
-  }
-
-  Future<void> _requestPermission(
-    Permission permission,
-    void Function(PermissionStatus) saveStatus,
-  ) async {
+  Future<void> _requestLocation() async {
     if (_loading) return;
-
     setState(() => _loading = true);
 
-    final result = await permission.request();
+    // Geolocator корректно удерживает CLLocationManager на iOS —
+    // системный диалог гарантированно показывается.
+    await Geolocator.requestPermission();
+
     if (!mounted) return;
+    setState(() => _loading = false);
+    _goNextStep();
+  }
 
-    setState(() {
-      saveStatus(result);
-      _loading = false;
-    });
+  Future<void> _requestNotifications() async {
+    if (_loading) return;
+    setState(() => _loading = true);
 
+    // FirebaseMessaging использует UNUserNotificationCenter напрямую —
+    // надёжнее permission_handler на iOS.
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
     _goNextStep();
   }
 
@@ -123,9 +119,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final _ = _locationStatus?.isGranted == true ||
-        _notificationStatus?.isGranted == true;
-
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -158,10 +151,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               'Ваша локация нужна, чтобы подбирать события, места и интересные активности рядом с вами.',
           actionLabel: 'Разрешить',
           loading: _loading,
-          onAction: () => _requestPermission(
-            Permission.location,
-            (s) => _locationStatus = s,
-          ),
+          onAction: _requestLocation,
         );
 
       case _PermissionStep.notifications:
@@ -171,10 +161,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               'Разрешение на уведомления нужно, чтобы вовремя сообщать об интересных событиях, ивентах, приглашениях и активности ваших друзей.',
           actionLabel: 'Разрешить',
           loading: _loading,
-          onAction: () => _requestPermission(
-            Permission.notification,
-            (s) => _notificationStatus = s,
-          ),
+          onAction: _requestNotifications,
         );
     }
   }

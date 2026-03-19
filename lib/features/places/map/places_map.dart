@@ -63,7 +63,7 @@ class _PlacesMapState extends State<PlacesMap> {
   static const double _labelMaxWidth = 140;
   static const double _markerHeight = 110;
 
-  static const double _focusZoom = 20.0;
+  static const double _focusZoom = 17.0;
   static const double _userZoom = 16.0;
 
   final Distance _distance = const Distance();
@@ -254,25 +254,14 @@ class _PlacesMapState extends State<PlacesMap> {
   }
 
   Widget _markerIcon(String emoji) {
-    final scale = _emojiScale();
+    // Transform.scale на Text внутри flutter_map маркеров ломает Impeller (iOS).
+    // Решение: считаем размер шрифта напрямую без Transform.
+    final fontSize = 22.0 * _emojiScale();
 
-    return Transform.scale(
-      scale: scale,
-      alignment: Alignment.bottomCenter,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Text(
-            emoji,
-            style:
-                const TextStyle(fontSize: 26, color: Colors.white), // было 24
-          ),
-          Text(
-            emoji,
-            style: const TextStyle(fontSize: 22), // было 20
-          ),
-        ],
-      ),
+    return Text(
+      emoji,
+      textDirection: TextDirection.ltr,
+      style: TextStyle(fontSize: fontSize),
     );
   }
 
@@ -428,7 +417,7 @@ class _PlacesMapState extends State<PlacesMap> {
             initialCenter: initialCenter,
             initialZoom: geo != null ? 14 : 11,
             minZoom: 3,
-            maxZoom: 23.0,
+            maxZoom: 19.0,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),

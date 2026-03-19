@@ -11,6 +11,9 @@ class FeedPlaceDto {
   final int interestedCount;
   final int plannedCount;
   final int visitedCount;
+  final int pastPlansCount;
+  final double? lat;
+  final double? lng;
 
   const FeedPlaceDto({
     required this.placeId,
@@ -25,6 +28,9 @@ class FeedPlaceDto {
     required this.interestedCount,
     required this.plannedCount,
     required this.visitedCount,
+    required this.pastPlansCount,
+    this.lat,
+    this.lng,
   });
 
   static int? _asIntNullable(dynamic v) {
@@ -56,6 +62,9 @@ class FeedPlaceDto {
       interestedCount: (json['interested_count'] as num?)?.toInt() ?? 0,
       plannedCount: (json['planned_count'] as num?)?.toInt() ?? 0,
       visitedCount: (json['visited_count'] as num?)?.toInt() ?? 0,
+      pastPlansCount: (json['past_plans_count'] as num?)?.toInt() ?? 0,
+      lat: _asDouble(json['lat']),
+      lng: _asDouble(json['lng']),
     );
   }
 }
