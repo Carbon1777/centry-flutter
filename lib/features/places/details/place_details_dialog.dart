@@ -1505,14 +1505,33 @@ class _PlanShellTile extends StatelessWidget {
 // Feed: модалка участников плана
 // ──────────────────────────────────────────────
 
-class _FeedPlanParticipantsDialog extends StatelessWidget {
+class _FeedPlanParticipantsDialog extends StatefulWidget {
   final PlanShellDto shell;
 
   const _FeedPlanParticipantsDialog({required this.shell});
 
   @override
+  State<_FeedPlanParticipantsDialog> createState() =>
+      _FeedPlanParticipantsDialogState();
+}
+
+class _FeedPlanParticipantsDialogState
+    extends State<_FeedPlanParticipantsDialog> {
+  String? _currentAppUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    UserSnapshotStorage().read().then((snapshot) {
+      if (mounted && snapshot != null) {
+        setState(() => _currentAppUserId = snapshot.id);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final preview = shell.participantsPublicPreview;
+    final preview = widget.shell.participantsPublicPreview;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -1528,7 +1547,7 @@ class _FeedPlanParticipantsDialog extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      shell.title ?? 'Участники',
+                      widget.shell.title ?? 'Участники',
                       style: Theme.of(context).textTheme.titleMedium,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1549,42 +1568,60 @@ class _FeedPlanParticipantsDialog extends StatelessWidget {
                     )
                   : ListView.builder(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
                       itemCount: preview.length,
                       itemBuilder: (context, i) {
                         final p = preview[i];
-                        // Конвертируем в UserMiniProfile для единого стиля аватара
-                        final miniProfile = p.isPublic
+                        final isMe = _currentAppUserId != null &&
+                            p.userId == _currentAppUserId;
+                        final miniProfile = p.userId != null
                             ? UserMiniProfile(
-                                userId: p.userId ?? '',
+                                userId: p.userId!,
                                 nickname: p.nickname,
-                                nicknameHidden: p.nicknameHidden,
                                 avatarUrl: p.avatarUrl,
-                                avatarHidden: p.avatarHidden,
                               )
                             : null;
 
-                        return ListTile(
-                          leading: UserAvatarWidget(
-                            profile: miniProfile,
-                            size: 40,
-                            borderRadius: const BorderRadius.all(Radius.circular(10)),
-                          ),
-                          title: Text(
-                            !p.isPublic || p.nicknameHidden
-                                ? 'Скрыто'
-                                : (p.nickname?.isNotEmpty == true ? p.nickname! : '—'),
-                            style: (!p.isPublic || p.nicknameHidden)
-                                ? const TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)
+                        return Container(
+                          margin: const EdgeInsets.symmetric(vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isMe
+                                ? Colors.white.withValues(alpha: 0.06)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                            border: isMe
+                                ? Border.all(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.18),
+                                    width: 1)
                                 : null,
                           ),
-                          onTap: p.userId != null
-                              ? () => UserCardSheet.show(
-                                    context,
-                                    targetUserId: p.userId!,
-                                    cardContext: 'in_feed',
-                                  )
-                              : null,
+                          child: ListTile(
+                            leading: UserAvatarWidget(
+                              profile: miniProfile,
+                              size: 40,
+                              borderRadius:
+                                  const BorderRadius.all(Radius.circular(10)),
+                            ),
+                            title: Text(
+                              p.nickname?.isNotEmpty == true
+                                  ? p.nickname!
+                                  : '—',
+                              style: TextStyle(
+                                fontWeight: isMe
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                            onTap: p.userId != null
+                                ? () => UserCardSheet.show(
+                                      context,
+                                      targetUserId: p.userId!,
+                                      cardContext: 'in_feed',
+                                    )
+                                : null,
+                          ),
                         );
                       },
                     ),

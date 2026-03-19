@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/profile/leisure_constants.dart';
+import '../../ui/common/center_toast.dart';
 
 // =======================
 // Мини-данные профиля для списков
@@ -9,32 +10,26 @@ import '../../features/profile/leisure_constants.dart';
 
 class UserMiniProfile {
   final String userId;
+  final bool miniHidden;
   final String? nickname;
-  final bool nicknameHidden;
   final String? avatarUrl;
-  final bool avatarHidden;
   final String? name;
-  final bool nameHidden;
 
   const UserMiniProfile({
     required this.userId,
+    this.miniHidden = false,
     this.nickname,
-    this.nicknameHidden = false,
     this.avatarUrl,
-    this.avatarHidden = false,
     this.name,
-    this.nameHidden = false,
   });
 
   factory UserMiniProfile.fromMap(String userId, Map<String, dynamic> m) {
     return UserMiniProfile(
       userId: userId,
+      miniHidden: m['mini_hidden'] as bool? ?? false,
       nickname: m['nickname'] as String?,
-      nicknameHidden: m['nickname_hidden'] as bool? ?? false,
       avatarUrl: m['avatar_url'] as String?,
-      avatarHidden: m['avatar_hidden'] as bool? ?? false,
       name: m['name'] as String?,
-      nameHidden: m['name_hidden'] as bool? ?? false,
     );
   }
 }
@@ -86,22 +81,6 @@ class UserAvatarWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
-    if (profile?.avatarHidden == true) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          border: Border.all(color: colors.outlineVariant, width: 1.5),
-        ),
-        child: Icon(
-          Icons.visibility_off_outlined,
-          color: colors.outline,
-          size: size * 0.45,
-        ),
-      );
-    }
-
     final url = profile?.avatarUrl;
     if (url != null && url.isNotEmpty) {
       return ClipRRect(
@@ -150,8 +129,8 @@ class UserCardSheet extends StatefulWidget {
     BuildContext context, {
     required String targetUserId,
     required String cardContext,
-  }) {
-    return showDialog<void>(
+  }) async {
+    final errorMsg = await showDialog<String?>(
       context: context,
       barrierDismissible: true,
       builder: (_) => UserCardSheet(
@@ -159,6 +138,9 @@ class UserCardSheet extends StatefulWidget {
         context: cardContext,
       ),
     );
+    if (errorMsg != null && context.mounted) {
+      await showCenterToast(context, message: errorMsg, isError: true);
+    }
   }
 
   @override
@@ -211,9 +193,19 @@ class _UserCardSheetState extends State<UserCardSheet> {
                   ),
                 );
               }
+              final card = snap.data!;
+              if (card.miniHidden) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  Navigator.of(context, rootNavigator: true)
+                      .pop('Пользователь закрыл возможность просмотра');
+                });
+                return const SizedBox.shrink();
+              }
               return _CardContent(
-                card: snap.data!,
+                card: card,
                 targetUserId: widget.targetUserId,
+                cardContext: widget.context,
               );
             },
           ),
@@ -245,8 +237,9 @@ class _UserCardSheetState extends State<UserCardSheet> {
 class _CardContent extends StatelessWidget {
   final _UserCard card;
   final String targetUserId;
+  final String cardContext;
 
-  const _CardContent({required this.card, required this.targetUserId});
+  const _CardContent({required this.card, required this.targetUserId, required this.cardContext});
 
   String _genderLabel(String? g) {
     switch (g) {
@@ -285,7 +278,7 @@ class _CardContent extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: _avatarWidget(card, colors),
+                  child: _avatarWidget(colors),
                 ),
               ),
               const SizedBox(width: 14),
@@ -296,17 +289,11 @@ class _CardContent extends StatelessWidget {
                     Text('Никнейм', style: text.bodySmall),
                     const SizedBox(height: 2),
                     Text(
-                      card.nicknameHidden
-                          ? 'Скрыто'
-                          : (card.nickname?.isNotEmpty == true
-                              ? card.nickname!
-                              : 'Пользователь'),
+                      card.nickname?.isNotEmpty == true
+                          ? card.nickname!
+                          : 'Пользователь',
                       style: text.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: card.nicknameHidden ? colors.outline : null,
-                        fontStyle: card.nicknameHidden
-                            ? FontStyle.italic
-                            : FontStyle.normal,
                       ),
                     ),
                   ],
@@ -319,24 +306,13 @@ class _CardContent extends StatelessWidget {
           Divider(height: 1, color: colors.outlineVariant),
           const SizedBox(height: 14),
 
-          _CardRow(
-            label: 'Имя',
-            value: card.nameHidden ? null : card.name,
-            hidden: card.nameHidden,
-          ),
+          _CardRow(label: 'Имя', value: card.name),
           const SizedBox(height: 10),
-          _CardRow(
-            label: 'Пол',
-            value: card.genderHidden ? null : _genderLabel(card.gender),
-            hidden: card.genderHidden,
-          ),
+          _CardRow(label: 'Пол', value: _genderLabel(card.gender)),
           const SizedBox(height: 10),
           _CardRow(
             label: 'Возраст',
-            value: card.ageHidden
-                ? null
-                : (card.age != null ? '${card.age}' : null),
-            hidden: card.ageHidden,
+            value: card.age != null ? '${card.age}' : null,
           ),
 
           const SizedBox(height: 16),
@@ -346,8 +322,6 @@ class _CardContent extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: GestureDetector(
               onTap: () {
-                // Закрываем диалог (он на root navigator), затем
-                // показываем шторку через overlay context (ещё валиден).
                 final rootNav = Navigator.of(context, rootNavigator: true);
                 final overlayCtx = rootNav.overlay!.context;
                 rootNav.pop();
@@ -355,6 +329,7 @@ class _CardContent extends StatelessWidget {
                   _FullProfileSheet.showWithContext(
                     overlayCtx,
                     targetUserId: targetUserId,
+                    cardContext: cardContext,
                   );
                 });
               },
@@ -373,10 +348,7 @@ class _CardContent extends StatelessWidget {
     );
   }
 
-  Widget _avatarWidget(_UserCard card, ColorScheme colors) {
-    if (card.avatarHidden) {
-      return Icon(Icons.visibility_off_outlined, color: colors.outline, size: 28);
-    }
+  Widget _avatarWidget(ColorScheme colors) {
     if (card.avatarUrl != null && card.avatarUrl!.isNotEmpty) {
       return Image.network(
         card.avatarUrl!,
@@ -392,21 +364,12 @@ class _CardContent extends StatelessWidget {
 class _CardRow extends StatelessWidget {
   final String label;
   final String? value;
-  final bool hidden;
 
-  const _CardRow({
-    required this.label,
-    required this.value,
-    required this.hidden,
-  });
+  const _CardRow({required this.label, this.value});
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final colors = Theme.of(context).colorScheme;
-
-    final displayValue =
-        hidden ? 'Скрыто' : (value?.isNotEmpty == true ? value! : '—');
 
     return Row(
       children: [
@@ -415,11 +378,8 @@ class _CardRow extends StatelessWidget {
           child: Text(label, style: text.bodySmall),
         ),
         Text(
-          displayValue,
-          style: text.bodyMedium?.copyWith(
-            color: hidden ? colors.outline : null,
-            fontStyle: hidden ? FontStyle.italic : FontStyle.normal,
-          ),
+          value?.isNotEmpty == true ? value! : '—',
+          style: text.bodyMedium,
         ),
       ],
     );
@@ -430,41 +390,50 @@ class _CardRow extends StatelessWidget {
 // Полный профиль пользователя (просмотр)
 // =======================
 
-class _FullProfileSheet extends StatefulWidget {
-  final String targetUserId;
+class _FullProfileSheet extends StatelessWidget {
+  final _FullProfile profile;
 
-  const _FullProfileSheet({required this.targetUserId});
+  const _FullProfileSheet({required this.profile});
 
-  static void showWithContext(BuildContext context, {required String targetUserId}) {
+  static Future<void> showWithContext(
+    BuildContext context, {
+    required String targetUserId,
+    required String cardContext,
+  }) async {
+    final Object? res;
+    try {
+      res = await Supabase.instance.client.rpc(
+        'get_user_full_profile',
+        params: {
+          'p_target_user_id': targetUserId,
+          'p_context': cardContext,
+        },
+      );
+    } catch (_) {
+      return;
+    }
+    if (res is! Map) return;
+    final profile = _FullProfile.fromMap(res.cast<String, dynamic>());
+
+    if (profile.fullProfileHidden) {
+      if (context.mounted) {
+        await showCenterToast(
+          context,
+          message: 'Пользователь закрыл возможность просмотра',
+          isError: true,
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _FullProfileSheet(targetUserId: targetUserId),
+      builder: (_) => _FullProfileSheet(profile: profile),
     );
-  }
-
-  @override
-  State<_FullProfileSheet> createState() => _FullProfileSheetState();
-}
-
-class _FullProfileSheetState extends State<_FullProfileSheet> {
-  late Future<_FullProfile> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<_FullProfile> _load() async {
-    final res = await Supabase.instance.client.rpc(
-      'get_user_full_profile',
-      params: {'p_target_user_id': widget.targetUserId},
-    );
-    if (res is! Map) throw StateError('invalid response');
-    return _FullProfile.fromMap(res.cast<String, dynamic>());
   }
 
   @override
@@ -527,23 +496,7 @@ class _FullProfileSheetState extends State<_FullProfileSheet> {
               const Divider(height: 1),
 
               // Тело
-              Expanded(
-                child: FutureBuilder<_FullProfile>(
-                  future: _future,
-                  builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snap.hasError) {
-                      return Center(
-                        child: Text('Ошибка загрузки',
-                            style: theme.textTheme.bodyMedium),
-                      );
-                    }
-                    return _FullProfileBody(profile: snap.data!);
-                  },
-                ),
-              ),
+              Expanded(child: _FullProfileBody(profile: profile)),
             ],
           ),
         ),
@@ -1065,47 +1018,32 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
 
 class _UserCard {
   final String userId;
+  final bool miniHidden;
   final String? nickname;
-  final bool nicknameHidden;
-  final String? avatarKind;
   final String? avatarUrl;
-  final bool avatarHidden;
   final String? name;
-  final bool nameHidden;
   final String? gender;
-  final bool genderHidden;
   final int? age;
-  final bool ageHidden;
 
   const _UserCard({
     required this.userId,
+    required this.miniHidden,
     this.nickname,
-    required this.nicknameHidden,
-    this.avatarKind,
     this.avatarUrl,
-    required this.avatarHidden,
     this.name,
-    required this.nameHidden,
     this.gender,
-    required this.genderHidden,
     this.age,
-    required this.ageHidden,
   });
 
   factory _UserCard.fromMap(Map<String, dynamic> m) {
     return _UserCard(
       userId: m['user_id'] as String,
+      miniHidden: m['mini_hidden'] as bool? ?? false,
       nickname: m['nickname'] as String?,
-      nicknameHidden: m['nickname_hidden'] as bool? ?? false,
-      avatarKind: m['avatar_kind'] as String?,
       avatarUrl: m['avatar_url'] as String?,
-      avatarHidden: m['avatar_hidden'] as bool? ?? false,
       name: m['name'] as String?,
-      nameHidden: m['name_hidden'] as bool? ?? false,
       gender: m['gender'] as String?,
-      genderHidden: m['gender_hidden'] as bool? ?? false,
       age: m['age'] as int?,
-      ageHidden: m['age_hidden'] as bool? ?? false,
     );
   }
 }
@@ -1116,6 +1054,7 @@ class _UserCard {
 
 class _FullProfile {
   final String userId;
+  final bool fullProfileHidden;
   final String? nickname;
   final bool nicknameHidden;
   final String? avatarUrl;
@@ -1134,6 +1073,7 @@ class _FullProfile {
 
   const _FullProfile({
     required this.userId,
+    required this.fullProfileHidden,
     this.nickname,
     required this.nicknameHidden,
     this.avatarUrl,
@@ -1160,6 +1100,7 @@ class _FullProfile {
 
     return _FullProfile(
       userId: m['user_id'] as String,
+      fullProfileHidden: m['full_profile_hidden'] as bool? ?? false,
       nickname: m['nickname'] as String?,
       nicknameHidden: m['nickname_hidden'] as bool? ?? false,
       avatarUrl: m['avatar_url'] as String?,

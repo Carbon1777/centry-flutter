@@ -688,14 +688,7 @@ class _FriendCard extends StatelessWidget {
                       children: [
                         Text(
                           'Ник: ${_nickLabel(profile, friend.displayName)}',
-                          style: titleStyle?.copyWith(
-                            color: profile?.nicknameHidden == true
-                                ? Theme.of(context).colorScheme.outline
-                                : null,
-                            fontStyle: profile?.nicknameHidden == true
-                                ? FontStyle.italic
-                                : FontStyle.normal,
-                          ),
+                          style: titleStyle,
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -786,13 +779,11 @@ class _FriendCard extends StatelessWidget {
 
   static String _nickLabel(UserMiniProfile? profile, String fallback) {
     if (profile == null) return fallback;
-    if (profile.nicknameHidden) return 'Скрыто';
     return profile.nickname ?? fallback;
   }
 
   static String _nameLabel(UserMiniProfile? profile) {
     if (profile == null) return 'Имя: —';
-    if (profile.nameHidden) return 'Имя: Скрыто';
     final name = profile.name;
     if (name == null || name.isEmpty) return 'Имя: — Не указано';
     return 'Имя: $name';
