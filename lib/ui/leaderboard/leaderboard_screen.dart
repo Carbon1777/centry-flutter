@@ -4,7 +4,7 @@ import '../../data/leaderboard/leaderboard_dto.dart';
 import '../../data/leaderboard/leaderboard_repository.dart';
 import '../shared/spinning_logo.dart';
 
-const _kGold   = Color(0xFFFFD700);
+const _kGold = Color(0xFFFFD700);
 const _kSilver = Color(0xFFB8C4CE);
 const _kBronze = Color(0xFFCD8B4A);
 
@@ -83,7 +83,8 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Токены',
-                    subtitle: 'Рейтинг пользователей по количеству заработанных бонусных токенов.',
+                    subtitle:
+                        'Рейтинг пользователей по количеству заработанных бонусных токенов.',
                     icon: Icons.monetization_on_outlined,
                     accentColor: const Color(0xFFFFD700),
                     column: snapshot.tokens,
@@ -94,7 +95,7 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Активность',
-                    subtitle: 'Рейтинг пользователей по количеству созданных планов и планов с их участием.',
+                    subtitle: 'Рейтинг пользователей по количеству планов.',
                     icon: Icons.local_fire_department_outlined,
                     accentColor: const Color(0xFFFF7043),
                     column: snapshot.activity,
@@ -220,12 +221,14 @@ class _ColumnCard extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ...List.generate(entries.length, (i) => _EntryRow(
-                    entry: entries[i],
-                    scoreLabel: scoreLabel,
-                    accentColor: accentColor,
-                    showDivider: i < entries.length - 1,
-                  )),
+                  ...List.generate(
+                      entries.length,
+                      (i) => _EntryRow(
+                            entry: entries[i],
+                            scoreLabel: scoreLabel,
+                            accentColor: accentColor,
+                            showDivider: i < entries.length - 1,
+                          )),
                   if (myEntry != null) ...[
                     const SizedBox(height: 6),
                     _MyEntryBlock(
@@ -263,10 +266,14 @@ class _EntryRow extends StatelessWidget {
 
   Color _medalColor(int place) {
     switch (place) {
-      case 1: return _kGold;
-      case 2: return _kSilver;
-      case 3: return _kBronze;
-      default: return Colors.transparent;
+      case 1:
+        return _kGold;
+      case 2:
+        return _kSilver;
+      case 3:
+        return _kBronze;
+      default:
+        return Colors.transparent;
     }
   }
 
@@ -332,8 +339,7 @@ class _EntryRow extends StatelessWidget {
                           : 'Пользователь',
                       style: text.bodySmall?.copyWith(
                         fontSize: 13,
-                        fontWeight:
-                            isTop3 ? FontWeight.w700 : FontWeight.w400,
+                        fontWeight: isTop3 ? FontWeight.w700 : FontWeight.w400,
                         color: isTop3
                             ? medalColor
                             : colors.onSurface.withValues(alpha: 0.9),
@@ -556,4 +562,3 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
-
