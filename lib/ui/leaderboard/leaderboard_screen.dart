@@ -83,8 +83,7 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Токены',
-                    subtitle:
-                        'Рейтинг пользователей по количеству заработанных бонусных токенов.',
+                    subtitle: 'Рейтинг по количеству заработанных токенов.',
                     icon: Icons.monetization_on_outlined,
                     accentColor: const Color(0xFFFFD700),
                     column: snapshot.tokens,
@@ -95,7 +94,7 @@ class _LeaderboardBody extends StatelessWidget {
                 Expanded(
                   child: _ColumnCard(
                     title: 'Активность',
-                    subtitle: 'Рейтинг пользователей по количеству планов.',
+                    subtitle: 'Рейтинг по количеству завершенных планов.',
                     icon: Icons.local_fire_department_outlined,
                     accentColor: const Color(0xFFFF7043),
                     column: snapshot.activity,
