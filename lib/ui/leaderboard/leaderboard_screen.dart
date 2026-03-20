@@ -75,39 +75,41 @@ class _LeaderboardBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: _ColumnCard(
-                    title: 'Токены',
-                    subtitle: 'Рейтинг по количеству заработанных токенов.',
-                    icon: Icons.monetization_on_outlined,
-                    accentColor: const Color(0xFFFFD700),
-                    column: snapshot.tokens,
-                    scoreLabel: _fmt,
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _ColumnCard(
+                      title: 'Токены',
+                      subtitle: 'Рейтинг по количеству заработанных токенов.',
+                      icon: Icons.monetization_on_outlined,
+                      accentColor: const Color(0xFFFFD700),
+                      column: snapshot.tokens,
+                      scoreLabel: _fmt,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ColumnCard(
-                    title: 'Активность',
-                    subtitle: 'Рейтинг по количеству завершенных планов.',
-                    icon: Icons.local_fire_department_outlined,
-                    accentColor: const Color(0xFFFF7043),
-                    column: snapshot.activity,
-                    scoreLabel: _fmt,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _ColumnCard(
+                      title: 'Активность',
+                      subtitle: 'Рейтинг по количеству завершенных планов.',
+                      icon: Icons.local_fire_department_outlined,
+                      accentColor: const Color(0xFFFF7043),
+                      column: snapshot.activity,
+                      scoreLabel: _fmt,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const Expanded(
-            child: Center(
-              child: SpinningLogo(),
-            ),
+            flex: 1,
+            child: Center(child: SpinningLogo()),
           ),
         ],
       ),
@@ -161,7 +163,6 @@ class _ColumnCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
         children: [
           // ── Шапка ──
           Container(
@@ -213,31 +214,36 @@ class _ColumnCard extends StatelessWidget {
 
           // ── Список ──
           if (entries.isEmpty)
-            _EmptyColumn(accentColor: accentColor)
+            Expanded(
+                child: Center(child: _EmptyColumn(accentColor: accentColor)))
           else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ...List.generate(
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                child: Column(
+                  children: [
+                    ...List.generate(
                       entries.length,
-                      (i) => _EntryRow(
-                            entry: entries[i],
-                            scoreLabel: scoreLabel,
-                            accentColor: accentColor,
-                            showDivider: i < entries.length - 1,
-                          )),
-                  if (myEntry != null) ...[
-                    const SizedBox(height: 6),
-                    _MyEntryBlock(
-                      entry: myEntry,
-                      scoreLabel: scoreLabel,
-                      accentColor: accentColor,
+                      (i) => Expanded(
+                        child: _EntryRow(
+                          entry: entries[i],
+                          scoreLabel: scoreLabel,
+                          accentColor: accentColor,
+                          showDivider: i < entries.length - 1,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 2),
+                    if (myEntry != null) ...[
+                      const SizedBox(height: 6),
+                      _MyEntryBlock(
+                        entry: myEntry,
+                        scoreLabel: scoreLabel,
+                        accentColor: accentColor,
+                      ),
+                      const SizedBox(height: 2),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
         ],
@@ -285,11 +291,10 @@ class _EntryRow extends StatelessWidget {
     final medalColor = _medalColor(place);
 
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+        Expanded(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Место / медаль
               SizedBox(
@@ -316,13 +321,17 @@ class _EntryRow extends StatelessWidget {
               ),
               const SizedBox(width: 4),
 
-              // Аватар
-              _MiniAvatar(
-                url: entry.avatarUrl,
-                size: 28,
-                borderColor: isTop3
-                    ? medalColor.withValues(alpha: 0.6)
-                    : colors.outlineVariant.withValues(alpha: 0.3),
+              // Аватар — жёсткий SizedBox, фото не раздвигает строку
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: _MiniAvatar(
+                  url: entry.avatarUrl,
+                  size: 28,
+                  borderColor: isTop3
+                      ? medalColor.withValues(alpha: 0.6)
+                      : colors.outlineVariant.withValues(alpha: 0.3),
+                ),
               ),
               const SizedBox(width: 6),
 
