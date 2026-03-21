@@ -91,6 +91,7 @@ class _PlanAddByIdModalState extends State<PlanAddByIdModal> {
               const Divider(height: 1, thickness: 1),
               Flexible(
                 child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

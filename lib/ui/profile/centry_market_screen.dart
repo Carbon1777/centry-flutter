@@ -180,6 +180,7 @@ class _CentryMarketScreenState extends State<CentryMarketScreen> {
           // Scrollable body
           Flexible(
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

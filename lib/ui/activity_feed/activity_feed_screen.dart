@@ -496,6 +496,7 @@ class _FeedBodyState extends State<_FeedBody> {
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        physics: const ClampingScrollPhysics(),
         itemCount: places.length,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (context, index) {

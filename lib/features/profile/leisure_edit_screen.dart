@@ -112,6 +112,7 @@ class _LeisureEditScreenState extends State<LeisureEditScreen> {
         ],
       ),
       body: ListView(
+        physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
         children: [
           _buildMultiSection(

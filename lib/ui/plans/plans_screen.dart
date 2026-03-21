@@ -572,6 +572,7 @@ class _PlansList extends StatelessWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      physics: const ClampingScrollPhysics(),
       itemCount: plans.length,
       itemBuilder: (context, index) {
         final plan = plans[index];

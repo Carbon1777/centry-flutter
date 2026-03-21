@@ -448,6 +448,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                 child: ListView.separated(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  physics: const ClampingScrollPhysics(),
                   itemCount: _members.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemBuilder: (_, index) {

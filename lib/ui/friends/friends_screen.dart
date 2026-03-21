@@ -297,6 +297,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        physics: const ClampingScrollPhysics(),
         itemCount: _friends.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, index) {

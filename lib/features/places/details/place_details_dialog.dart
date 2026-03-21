@@ -459,6 +459,18 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
         return 'cinema';
       case 'Театр':
         return 'theatre';
+      case 'Карaоке':
+      case 'Karaoke':
+        return 'karaoke';
+      case 'Кальянная':
+      case 'Кальянные':
+        return 'hookah';
+      case 'Баня / Сауна':
+      case 'Баня и сауна':
+      case 'Бани Сауны':
+      case 'Баня':
+      case 'Сауна':
+        return 'bathhouse';
       default:
         return 'bar';
     }
@@ -868,6 +880,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                   ),
                   Flexible(
                     child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

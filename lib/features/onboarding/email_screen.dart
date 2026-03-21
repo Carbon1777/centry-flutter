@@ -211,6 +211,7 @@ class _EmailScreenState extends State<EmailScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
           child: ConstrainedBox(
             constraints: BoxConstraints(

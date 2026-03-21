@@ -14,6 +14,7 @@ import '../../data/places/places_repository_impl.dart';
 import '../../data/bonus/bonus_repository_impl.dart';
 import '../../data/leaderboard/leaderboard_repository_impl.dart';
 import '../leaderboard/leaderboard_screen.dart';
+import '../common/center_toast.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -343,6 +344,7 @@ class _ProfileContent extends StatelessWidget {
               children: [
                 Expanded(
                   child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 6, 16, 92),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,7 +446,7 @@ class _ProfileContent extends StatelessWidget {
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 4),
 
                 // Секция "Стиль отдыха" — нижняя часть профиля
                 _LeisureSection(
@@ -661,6 +663,12 @@ class _CityPickerSheet extends StatelessWidget {
     const options = [
       'Москва',
       'Санкт-Петербург',
+      'Казань',
+      'Нижний Новгород',
+      'Краснодар',
+      'Ростов-на-Дону',
+      'Новосибирск',
+      'Сочи',
     ];
 
     return SafeArea(
@@ -1232,12 +1240,7 @@ class _CopyableValue extends StatelessWidget {
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Скопировано'),
-        duration: Duration(seconds: 1),
-      ),
-    );
+    await showCenterToast(context, message: 'ID пользователя скопирован');
   }
 
   @override

@@ -122,6 +122,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     );
 
     return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

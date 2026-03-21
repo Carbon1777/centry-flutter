@@ -103,6 +103,7 @@ class _AvatarPickerScreenState extends State<AvatarPickerScreen> {
           final avatars = snap.data ?? [];
 
           return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

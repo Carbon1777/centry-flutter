@@ -14,6 +14,7 @@ class LegalDocumentScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(document.title)),
       body: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
         child: SelectableText(
           document.content,

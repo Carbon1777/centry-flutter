@@ -306,8 +306,20 @@ class _PlacesFiltersSheetState extends State<_PlacesFiltersSheet> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : ListView(
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                   children: [
+                    if (_availableRatings.isNotEmpty) ...[
+                      const _SectionHeader(title: 'Рейтинг'),
+                      const SizedBox(height: 8),
+                      _RatingChipGroup(
+                        options: _availableRatings,
+                        selected: _selectedRating,
+                        onSelect: (v) =>
+                            setState(() => _selectedRating = v),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     if (_availableCities.isNotEmpty) ...[
                       const _SectionHeader(title: 'Город'),
                       const SizedBox(height: 8),
@@ -350,17 +362,6 @@ class _PlacesFiltersSheetState extends State<_PlacesFiltersSheet> {
                           _availableAreas =
                               _sortSelected(_originalAreas, _selectedAreaIds);
                         }),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (_availableRatings.isNotEmpty) ...[
-                      const _SectionHeader(title: 'Рейтинг'),
-                      const SizedBox(height: 8),
-                      _RatingChipGroup(
-                        options: _availableRatings,
-                        selected: _selectedRating,
-                        onSelect: (v) =>
-                            setState(() => _selectedRating = v),
                       ),
                     ],
                   ],
