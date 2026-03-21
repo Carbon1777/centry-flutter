@@ -225,6 +225,7 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
               else ...[
                 Expanded(
                   child: ListView(
+                    physics: const ClampingScrollPhysics(),
                     children: [
                       _buildCheckRow(
                         label: 'Пользовательское соглашение',

@@ -521,6 +521,7 @@ class _FullProfileBody extends StatelessWidget {
         return Stack(
           children: [
             SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
               child: _FullProfileContent(profile: profile),
             ),

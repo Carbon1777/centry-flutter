@@ -49,15 +49,23 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
 
   final List<String> _types = const [
     'Бар',
-    'Ночной клуб',
     'Ресторан',
-    'Кино',
-    'Театр',
+    'Ночной клуб',
+    'Кинотеатр',
+    'Карaоке',
+    'Кальянная',
+    'Баня / Сауна',
   ];
 
   final List<String> _cities = const [
     'Москва',
     'Санкт-Петербург',
+    'Казань',
+    'Нижний Новгород',
+    'Краснодар',
+    'Ростов-на-Дону',
+    'Новосибирск',
+    'Сочи',
   ];
 
   @override
@@ -176,6 +184,7 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
           Padding(
             padding: const EdgeInsets.all(24),
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               child: Form(
                 key: _formKey,
                 child: Column(

@@ -576,6 +576,7 @@ class _PlacesListState extends State<_PlacesList> {
       case 'Ресторан':
         return 'restaurant';
       case 'Кино':
+      case 'Кинотеатр':
         return 'cinema';
       case 'Театр':
         return 'theatre';
@@ -583,8 +584,11 @@ class _PlacesListState extends State<_PlacesList> {
       case 'Karaoke':
         return 'karaoke';
       case 'Кальянная':
+      case 'Кальянные':
         return 'hookah';
       case 'Баня / Сауна':
+      case 'Баня и сауна':
+      case 'Бани Сауны':
       case 'Баня':
       case 'Сауна':
         return 'bathhouse';
@@ -869,6 +873,7 @@ class _PlacesListState extends State<_PlacesList> {
               Expanded(
                 child: ListView.separated(
                   controller: _scrollController,
+                  physics: const ClampingScrollPhysics(),
                   padding: EdgeInsets.zero,
                   itemCount: _places.length + (_loading ? 1 : 0),
                   separatorBuilder: (_, __) => const SizedBox(height: 8),

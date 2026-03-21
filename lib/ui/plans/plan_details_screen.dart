@@ -389,6 +389,12 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
         return 'Кинотеатр';
       case 'theatre':
         return 'Театр';
+      case 'karaoke':
+        return 'Карaоке';
+      case 'hookah':
+        return 'Кальянная';
+      case 'bathhouse':
+        return 'Баня / Сауна';
       default:
         return 'Место';
     }
@@ -918,9 +924,22 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       case 'Ресторан':
         return 'restaurant';
       case 'Кино':
+      case 'Кинотеатр':
         return 'cinema';
       case 'Театр':
         return 'theatre';
+      case 'Карaоке':
+      case 'Karaoke':
+        return 'karaoke';
+      case 'Кальянная':
+      case 'Кальянные':
+        return 'hookah';
+      case 'Баня / Сауна':
+      case 'Баня и сауна':
+      case 'Бани Сауны':
+      case 'Баня':
+      case 'Сауна':
+        return 'bathhouse';
       default:
         return 'restaurant';
     }
@@ -1453,6 +1472,7 @@ class _PlanSubmissionCandidateDetailsDialogState
           child: Stack(
             children: [
               SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

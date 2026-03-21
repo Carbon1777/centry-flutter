@@ -221,6 +221,7 @@ class _NicknameScreenState extends State<NicknameScreen> {
             children: [
               Expanded(
                 child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

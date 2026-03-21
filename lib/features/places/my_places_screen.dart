@@ -389,6 +389,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
+                        physics: const ClampingScrollPhysics(),
                         itemCount: totalItems,
                         itemBuilder: (context, index) {
                           if (index < _submissions.length) {
@@ -531,6 +532,12 @@ class _MyPlaceSubmissionItem {
         return 'Кинотеатр';
       case 'theatre':
         return 'Театр';
+      case 'karaoke':
+        return 'Карaоке';
+      case 'hookah':
+        return 'Кальянная';
+      case 'bathhouse':
+        return 'Баня / Сауна';
       default:
         return type.isEmpty ? 'Место' : type;
     }
@@ -938,6 +945,7 @@ class _MyPlaceSubmissionDetailsDialogState
           child: Stack(
             children: [
               SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

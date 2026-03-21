@@ -18,6 +18,12 @@ String _categoryLabel(String category) {
       return 'Кинотеатр';
     case 'theatre':
       return 'Театр';
+    case 'karaoke':
+      return 'Карaоке';
+    case 'hookah':
+      return 'Кальянная';
+    case 'bathhouse':
+      return 'Баня / Сауна';
     default:
       return 'Место';
   }

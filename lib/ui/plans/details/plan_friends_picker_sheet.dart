@@ -211,6 +211,7 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
                     ? _buildEmptyState(context)
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 22),
+                        physics: const ClampingScrollPhysics(),
                         itemCount: visibleFriends.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (_, index) {

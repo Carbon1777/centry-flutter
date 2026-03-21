@@ -58,6 +58,7 @@ class PlanAddMemberModal extends StatelessWidget {
               const Divider(height: 1, thickness: 1),
               Flexible(
                 child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [

@@ -800,9 +800,11 @@ class _PlaceActionChip extends StatelessWidget {
         child: Text(
           label,
           textAlign: TextAlign.center,
+          maxLines: 1,
           style: theme.textTheme.labelLarge?.copyWith(
             color: enabled ? activeColor : disabledColor,
             fontWeight: FontWeight.w700,
+            fontSize: 11.5,
           ),
         ),
       ),

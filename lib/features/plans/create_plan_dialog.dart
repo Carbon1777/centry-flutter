@@ -227,6 +227,7 @@ class _CreatePlanDialogState extends State<CreatePlanDialog> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
             child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               child: Form(
                 key: _formKey,
                 child: Column(

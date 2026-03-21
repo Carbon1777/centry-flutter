@@ -138,6 +138,7 @@ class _PlanInviteModalState extends State<PlanInviteModal> {
               ),
               Flexible(
                 child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -358,6 +358,7 @@ class _AddPlaceToPlanSheetState extends State<_AddPlaceToPlanSheet>
                             child: ListView.separated(
                               padding:
                                   const EdgeInsets.fromLTRB(16, 14, 16, 22),
+                              physics: const ClampingScrollPhysics(),
                               itemCount: _plans.length,
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 12),
