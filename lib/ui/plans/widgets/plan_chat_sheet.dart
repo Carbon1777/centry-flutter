@@ -885,7 +885,7 @@ class _PlanChatSheetState extends State<PlanChatSheet>
         raw = raw.substring(qIdx + quoteEnd.length);
       }
       final quoted = raw.length > 80 ? '${raw.substring(0, 80)}…' : raw;
-      finalText = '« $author: $quoted »\n$text';
+      finalText = '« @$author: $quoted »\n$text';
     } else {
       finalText = text;
     }

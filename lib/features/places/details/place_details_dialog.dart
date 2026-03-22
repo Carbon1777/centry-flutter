@@ -848,7 +848,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                             if (_effectivePreviewMediaUrl != null) {
                               return Image.network(
                                 _effectivePreviewMediaUrl!,
-                                fit: BoxFit.contain,
+                                fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => fallback(),
                               );
                             }
@@ -857,7 +857,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 Supabase.instance.client.storage
                                     .from('brand-media')
                                     .getPublicUrl(_effectivePreviewStorageKey!),
-                                fit: BoxFit.contain,
+                                fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => fallback(),
                               );
                             }

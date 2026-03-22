@@ -63,7 +63,7 @@ _ParsedMessage _parseMessage(String raw) {
   final colonIdx = quoteContent.indexOf(': ');
   if (colonIdx == -1) return _ParsedMessage(body: raw);
 
-  final nick = '@${quoteContent.substring(0, colonIdx)}';
+  final nick = quoteContent.substring(0, colonIdx);
   final quoted = quoteContent.substring(colonIdx + 2);
   return _ParsedMessage(quotedNickname: nick, quotedText: quoted, body: body);
 }
