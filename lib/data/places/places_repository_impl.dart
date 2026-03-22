@@ -391,20 +391,42 @@ class PlacesRepositoryImpl implements PlacesRepository {
   }
 
   @override
-  Future<Map<String, double>?> getCitiesCenter(List<String> cityIds) async {
-    if (cityIds.isEmpty) return null;
+  Future<Map<String, double>?> getCenterForFilter({
+    List<String>? cityIds,
+    List<String>? areaIds,
+  }) async {
+    List<String> targetAreaIds;
 
-    final response = await _client
+    if (areaIds != null && areaIds.isNotEmpty) {
+      // Already have area IDs — use directly
+      targetAreaIds = areaIds;
+    } else if (cityIds != null && cityIds.isNotEmpty) {
+      // Resolve area IDs for the given cities (two-step to avoid PostgREST nested filter issues)
+      final areasResponse = await _client
+          .from('core_areas')
+          .select('id')
+          .inFilter('city_id', cityIds);
+      targetAreaIds = (areasResponse as List)
+          .map((row) => row['id']?.toString())
+          .whereType<String>()
+          .toList();
+    } else {
+      return null;
+    }
+
+    if (targetAreaIds.isEmpty) return null;
+
+    final placesResponse = await _client
         .from('core_places')
-        .select('lat, lng, core_areas!inner(city_id)')
-        .filter('core_areas.city_id', 'in', '(${cityIds.map((id) => '"$id"').join(',')})');
+        .select('lat, lng')
+        .inFilter('area_id', targetAreaIds);
 
-    if (response.isEmpty) return null;
+    if ((placesResponse as List).isEmpty) return null;
 
     double sumLat = 0;
     double sumLng = 0;
     int count = 0;
-    for (final row in response) {
+    for (final row in placesResponse) {
       final lat = (row['lat'] as num?)?.toDouble();
       final lng = (row['lng'] as num?)?.toDouble();
       if (lat != null && lng != null) {
