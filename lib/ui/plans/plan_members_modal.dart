@@ -444,11 +444,12 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                 ),
               ),
               const Divider(height: 1, thickness: 1),
-              Expanded(
+              Flexible(
                 child: ListView.separated(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   physics: const ClampingScrollPhysics(),
+                  shrinkWrap: true,
                   itemCount: _members.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 6),
                   itemBuilder: (_, index) {

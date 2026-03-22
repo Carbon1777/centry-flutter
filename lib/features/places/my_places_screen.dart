@@ -13,6 +13,7 @@ import 'package:centry/features/places/details/place_details_dialog.dart';
 import 'package:centry/features/places/map/places_map.dart';
 import 'package:centry/features/places/filters/places_filters_controller.dart';
 import 'package:centry/ui/common/center_toast.dart';
+import 'package:centry/ui/common/category_placeholder.dart';
 import 'package:centry/ui/places/places_screen.dart'; // PlaceCard / PlaceUiModel
 import 'package:centry/ui/plans/plan_details_screen.dart';
 
@@ -285,6 +286,9 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
         placeId: place.dto.id,
         title: place.dto.title,
         typeLabel: place.typeLabel,
+        categoryCode: place.dto.categories.isNotEmpty
+            ? place.dto.categories.first
+            : place.dto.type,
         address: place.dto.address,
         lat: place.dto.lat,
         lng: place.dto.lng,
@@ -646,10 +650,26 @@ class _MyPlaceSubmissionCardState extends State<_MyPlaceSubmissionCard> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.asset(
-                            'assets/images/place_placeholder.png',
-                            fit: BoxFit.cover,
-                          ),
+                          child: Builder(builder: (_) {
+                            final catUrl = categoryPlaceholderUrl(
+                              widget.submission.type,
+                              widget.submission.submissionId,
+                            );
+                            if (catUrl != null) {
+                              return Image.network(
+                                catUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Image.asset(
+                                  'assets/images/place_placeholder.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              );
+                            }
+                            return Image.asset(
+                              'assets/images/place_placeholder.png',
+                              fit: BoxFit.cover,
+                            );
+                          }),
                         ),
                       ),
                     ],
@@ -954,10 +974,26 @@ class _MyPlaceSubmissionDetailsDialogState
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          Image.asset(
-                            'assets/images/place_placeholder.png',
-                            fit: BoxFit.cover,
-                          ),
+                          Builder(builder: (_) {
+                            final catUrl = categoryPlaceholderUrl(
+                              widget.submission.type,
+                              widget.submission.submissionId,
+                            );
+                            if (catUrl != null) {
+                              return Image.network(
+                                catUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Image.asset(
+                                  'assets/images/place_placeholder.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              );
+                            }
+                            return Image.asset(
+                              'assets/images/place_placeholder.png',
+                              fit: BoxFit.cover,
+                            );
+                          }),
                           Positioned(
                             right: 12,
                             bottom: 12,

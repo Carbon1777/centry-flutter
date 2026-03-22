@@ -51,6 +51,7 @@ Future<void> showFeedPlaceDetailSheet({
       placeId: place.placeId,
       title: place.name,
       typeLabel: _categoryLabel(place.category),
+      categoryCode: place.category,
       address: '',
       lat: place.lat ?? 0,
       lng: place.lng ?? 0,
