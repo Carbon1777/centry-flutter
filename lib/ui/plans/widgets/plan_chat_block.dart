@@ -7,6 +7,7 @@ import '../../../data/plans/plan_details_dto.dart';
 import '../../../data/plans/plans_repository.dart';
 import '../../../features/profile/user_card_sheet.dart';
 import 'plan_chat_message_bubble.dart';
+import '../../common/center_toast.dart';
 import 'plan_chat_sheet.dart';
 
 class PlanChatBlock extends StatefulWidget {
@@ -429,6 +430,17 @@ class _PlanChatBlockState extends State<PlanChatBlock> {
 
       unawaited(_queueRefresh());
       unawaited(_markReadIfNeeded());
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString();
+      if (msg.contains('Chat write is not allowed')) {
+        await showCenterToast(
+          context,
+          message: 'План закрыт. Отправка сообщений невозможна.',
+          isError: true,
+        );
+      }
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _sending = false);

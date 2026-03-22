@@ -573,40 +573,41 @@ class _MemberRow extends StatelessWidget {
     final showAddFriendButton = !isReadOnly && showAddFriend;
     final showRemoveMemberButton = !isReadOnly && member.canRemoveMember;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor, width: borderWidth),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: onOpenProfile,
-            child: UserAvatarWidget(
-              profile: profile,
-              size: 50,
-              borderRadius: BorderRadius.circular(9),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: GestureDetector(
-              onTap: onOpenProfile,
-              child: Builder(builder: (context) {
-                final displayNick = profile?.nickname ?? member.nickname;
-                return Text(
-                  displayNick,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: nicknameWeight,
-                    fontSize: 20,
-                  ),
-                );
-              }),
-            ),
-          ),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor, width: borderWidth),
+        ),
+        child: InkWell(
+          onTap: onOpenProfile,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                UserAvatarWidget(
+                  profile: profile,
+                  size: 50,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Builder(builder: (context) {
+                    final displayNick = profile?.nickname ?? member.nickname;
+                    return Text(
+                      displayNick,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: nicknameWeight,
+                        fontSize: 20,
+                      ),
+                    );
+                  }),
+                ),
           if (showAddFriendButton)
             Padding(
               padding: const EdgeInsets.only(left: 4),
@@ -663,7 +664,10 @@ class _MemberRow extends StatelessWidget {
                 ),
               ),
             ),
-        ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

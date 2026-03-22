@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../ui/common/center_toast.dart';
 
 class AddPlaceDialogResult {
   const AddPlaceDialogResult({
@@ -147,16 +146,6 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
     if (_selectedType == null || _selectedCity == null) return;
 
     final websiteRaw = _linkController.text.trim();
-    if (websiteRaw.isEmpty || !_isValidUrl(websiteRaw)) {
-      if (mounted) {
-        await showCenterToast(
-          context,
-          message: 'Адрес сайта не валиден',
-          isError: true,
-        );
-      }
-      return;
-    }
 
     final result = AddPlaceDialogResult(
       name: _nameController.text.trim(),
@@ -312,7 +301,15 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       onTap: _submitting
                           ? null
                           : () => _openInputDialog(_linkController, 'Сайт'),
-                      decoration: _inputDecoration('Сайт *'),
+                      decoration: _inputDecoration('Сайт'),
+                      validator: (v) {
+                        final val = v?.trim() ?? '';
+                        if (val.isEmpty) return 'Обязательное поле';
+                        if (!_isValidUrl(val)) {
+                          return 'Укажите адрес сайта (например: site.ru)';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 28),
                     Center(
