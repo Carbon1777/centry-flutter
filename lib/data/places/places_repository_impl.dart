@@ -406,9 +406,16 @@ class PlacesRepositoryImpl implements PlacesRepository {
 
     final response = await _client.rpc('get_location_center_v1', params: params);
 
-    if (response == null || response is! Map) return null;
-    final lat = (response['lat'] as num?)?.toDouble();
-    final lng = (response['lng'] as num?)?.toDouble();
+    Map<String, dynamic>? data;
+    if (response is Map) {
+      data = Map<String, dynamic>.from(response);
+    } else if (response is List && response.isNotEmpty && response.first is Map) {
+      data = Map<String, dynamic>.from(response.first as Map);
+    }
+    if (data == null) return null;
+
+    final lat = (data['lat'] as num?)?.toDouble();
+    final lng = (data['lng'] as num?)?.toDouble();
     if (lat == null || lng == null) return null;
     return {'lat': lat, 'lng': lng};
   }
