@@ -8,6 +8,7 @@ import '../../../data/feed/feed_repository.dart';
 import '../../../data/feed/plan_shell_dto.dart';
 import '../../profile/user_card_sheet.dart';
 import '../../../data/places/place_dto.dart';
+import '../../../ui/common/category_placeholder.dart';
 import '../../../data/places/places_repository.dart';
 import '../../../ui/common/center_toast.dart';
 import '../../../ui/places/places_screen.dart';
@@ -24,6 +25,9 @@ class PlaceDetailsDialog extends StatefulWidget {
   final String address;
   final double lat;
   final double lng;
+
+  /// Код категории ('bar', 'restaurant', …) — для подбора category placeholder
+  final String? categoryCode;
 
   final String? websiteUrl;
   final String? previewMediaUrl;
@@ -56,6 +60,7 @@ class PlaceDetailsDialog extends StatefulWidget {
     required this.address,
     required this.lat,
     required this.lng,
+    this.categoryCode,
     this.websiteUrl,
     this.previewMediaUrl,
     this.previewStorageKey,
@@ -796,7 +801,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
 
     final screenHeight = MediaQuery.of(context).size.height;
     final dialogMaxHeight = screenHeight - MediaQuery.of(context).viewInsets.bottom - 80;
-    final imageHeight = (screenHeight * 0.22).clamp(120.0, 200.0);
+    final imageHeight = (screenHeight * 0.18).clamp(90.0, 150.0);
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -822,35 +827,42 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          if (_effectivePreviewMediaUrl != null)
-                            Image.network(
-                              _effectivePreviewMediaUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) {
-                                return Image.asset(
-                                  'assets/images/place_placeholder.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            )
-                          else if (_effectivePreviewStorageKey != null)
-                            Image.network(
-                              Supabase.instance.client.storage
-                                  .from('brand-media')
-                                  .getPublicUrl(_effectivePreviewStorageKey!),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) {
-                                return Image.asset(
-                                  'assets/images/place_placeholder.png',
-                                  fit: BoxFit.cover,
-                                );
-                              },
-                            )
-                          else
-                            Image.asset(
-                              'assets/images/place_placeholder.png',
-                              fit: BoxFit.cover,
-                            ),
+                          Builder(builder: (_) {
+                            final catUrl = categoryPlaceholderUrl(
+                                widget.categoryCode ?? '', widget.placeId);
+
+                            Widget fallback() => catUrl != null
+                                ? Image.network(
+                                    catUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Image.asset(
+                                      'assets/images/place_placeholder.png',
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                : Image.asset(
+                                    'assets/images/place_placeholder.png',
+                                    fit: BoxFit.cover,
+                                  );
+
+                            if (_effectivePreviewMediaUrl != null) {
+                              return Image.network(
+                                _effectivePreviewMediaUrl!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => fallback(),
+                              );
+                            }
+                            if (_effectivePreviewStorageKey != null) {
+                              return Image.network(
+                                Supabase.instance.client.storage
+                                    .from('brand-media')
+                                    .getPublicUrl(_effectivePreviewStorageKey!),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => fallback(),
+                              );
+                            }
+                            return fallback();
+                          }),
                           if (_effectivePreviewIsPlaceholder)
                             Positioned(
                               bottom: 8,
@@ -881,7 +893,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                   Flexible(
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -924,15 +936,15 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                             ),
                             // Feed-specific: сигналы + планы — сразу под названием
                             if (widget.feedCountPlans != null) ...[
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               const Divider(height: 1),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               _FeedSignalsRow(
                                 interestedCount: widget.feedInterestedCount ?? 0,
                                 plannedCount: widget.feedPlannedCount ?? 0,
                                 visitedCount: widget.feedVisitedCount ?? 0,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               SizedBox(
                                 width: double.infinity,
                                 child: OutlinedButton.icon(
@@ -956,7 +968,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                       'Планов — ${widget.feedCountPlans}'),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               const Divider(height: 1),
                             ],
                             const SizedBox(height: 4),

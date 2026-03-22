@@ -331,6 +331,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
             placeId: dto.id,
             title: dto.title,
             typeLabel: _typeLabelFromCategory(dto.type),
+            categoryCode: dto.type,
             address: dto.address,
             lat: dto.lat,
             lng: dto.lng,

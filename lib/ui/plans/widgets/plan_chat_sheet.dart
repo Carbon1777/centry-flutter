@@ -881,11 +881,11 @@ class _PlanChatSheetState extends State<PlanChatSheet>
       var raw = replyingTo.text;
       const quoteEnd = ' »\n';
       final qIdx = raw.indexOf(quoteEnd);
-      if (raw.startsWith('« @') && qIdx != -1) {
+      if ((raw.startsWith('« @') || raw.startsWith('« ')) && qIdx != -1) {
         raw = raw.substring(qIdx + quoteEnd.length);
       }
       final quoted = raw.length > 80 ? '${raw.substring(0, 80)}…' : raw;
-      finalText = '« @$author: $quoted »\n$text';
+      finalText = '« $author: $quoted »\n$text';
     } else {
       finalText = text;
     }

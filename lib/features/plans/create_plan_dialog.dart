@@ -286,6 +286,8 @@ class _CreatePlanDialogState extends State<CreatePlanDialog> {
                           onPressed: _canSubmit ? _submit : null,
                           child: const Text(
                             'Создать',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),

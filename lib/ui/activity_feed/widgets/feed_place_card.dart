@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/feed/feed_place_dto.dart';
+import '../../common/category_placeholder.dart';
 
 // Цвета сигналов
 const _kColorPlanned    = Color(0xFF2E7D32); // зелёный — идут
@@ -107,7 +108,10 @@ class FeedPlaceCard extends StatelessWidget {
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: _PlacePhoto(
-                                      storageKey: place.photoStorageKey),
+                                    storageKey: place.photoStorageKey,
+                                    category: place.category,
+                                    placeId: place.placeId,
+                                  ),
                                 ),
                               ),
                               if (place.rating != null) ...[
@@ -321,11 +325,31 @@ class _PastPlansBadge extends StatelessWidget {
 // ── Фото места ────────────────────────────────────────────
 class _PlacePhoto extends StatelessWidget {
   final String? storageKey;
+  final String category;
+  final String placeId;
 
-  const _PlacePhoto({required this.storageKey});
+  const _PlacePhoto({
+    required this.storageKey,
+    required this.category,
+    required this.placeId,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final catUrl = categoryPlaceholderUrl(category, placeId);
+
+    Widget fallback() => catUrl != null
+        ? Image.network(
+            catUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Image.asset(
+              'assets/images/place_placeholder.png',
+              fit: BoxFit.cover,
+            ),
+          )
+        : Image.asset('assets/images/place_placeholder.png',
+            fit: BoxFit.cover);
+
     final key = storageKey;
     if (key != null && key.isNotEmpty) {
       final url = Supabase.instance.client.storage
@@ -334,14 +358,11 @@ class _PlacePhoto extends StatelessWidget {
       return Image.network(
         url,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(
-          'assets/images/place_placeholder.png',
-          fit: BoxFit.cover,
-        ),
+        errorBuilder: (_, __, ___) => fallback(),
       );
     }
-    return Image.asset('assets/images/place_placeholder.png',
-        fit: BoxFit.cover);
+
+    return fallback();
   }
 }
 

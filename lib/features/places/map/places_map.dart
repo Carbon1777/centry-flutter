@@ -83,13 +83,19 @@ class _PlacesMapState extends State<PlacesMap> {
       }
     });
 
+    widget.filtersController.addListener(_onFiltersChanged);
     widget.focusPlace?.addListener(_onExternalFocusRequested);
     _pendingFocusPlace = widget.focusPlace?.value;
+  }
+
+  void _onFiltersChanged() {
+    if (_mapReady) _scheduleLoadByViewport();
   }
 
   @override
   void dispose() {
     _repoInvalidationSub.cancel(); // 🔴
+    widget.filtersController.removeListener(_onFiltersChanged);
     widget.focusPlace?.removeListener(_onExternalFocusRequested);
     _debounceViewport?.cancel();
     _debounceLabels?.cancel();
@@ -317,6 +323,9 @@ class _PlacesMapState extends State<PlacesMap> {
             placeId: place.id,
             title: place.title,
             typeLabel: place.categoriesDisplay?.join(' · ') ?? _typeLabel(place.type),
+            categoryCode: place.categories.isNotEmpty
+                ? place.categories.first
+                : place.type,
             address:
                 place.address.isNotEmpty ? place.address : 'Адрес не указан',
             lat: place.lat,

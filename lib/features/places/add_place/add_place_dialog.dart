@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../ui/common/center_toast.dart';
+
 class AddPlaceDialogResult {
   const AddPlaceDialogResult({
     required this.name,
@@ -87,6 +89,19 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
     );
   }
 
+  bool _isValidUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      final normalized =
+          trimmed.startsWith('http') ? trimmed : 'https://$trimmed';
+      final uri = Uri.parse(normalized);
+      return uri.host.isNotEmpty && uri.host.contains('.');
+    } catch (_) {
+      return false;
+    }
+  }
+
   String _humanizeSubmitError(Object error) {
     if (error is PostgrestException) {
       final message = error.message.trim();
@@ -131,15 +146,25 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedType == null || _selectedCity == null) return;
 
+    final websiteRaw = _linkController.text.trim();
+    if (websiteRaw.isEmpty || !_isValidUrl(websiteRaw)) {
+      if (mounted) {
+        await showCenterToast(
+          context,
+          message: 'Адрес сайта не валиден',
+          isError: true,
+        );
+      }
+      return;
+    }
+
     final result = AddPlaceDialogResult(
       name: _nameController.text.trim(),
       typeLabel: _selectedType!,
       city: _selectedCity!,
       street: _streetController.text.trim(),
       house: _houseController.text.trim(),
-      website: _linkController.text.trim().isEmpty
-          ? null
-          : _linkController.text.trim(),
+      website: websiteRaw,
     );
 
     if (widget.onSubmit == null) {
@@ -287,7 +312,7 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       onTap: _submitting
                           ? null
                           : () => _openInputDialog(_linkController, 'Сайт'),
-                      decoration: _inputDecoration('Сайт'),
+                      decoration: _inputDecoration('Сайт *'),
                     ),
                     const SizedBox(height: 28),
                     Center(
@@ -311,6 +336,8 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                                 )
                               : const Text(
                                   'Добавить место',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(fontWeight: FontWeight.w600),
                                 ),
                         ),
@@ -394,7 +421,12 @@ class _AddPlaceTextInputDialogState extends State<_AddPlaceTextInputDialog> {
       child: Align(
         alignment: Alignment.topCenter,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 118, 20, 0),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            MediaQuery.of(context).size.height * 0.14,
+            20,
+            0,
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: Material(

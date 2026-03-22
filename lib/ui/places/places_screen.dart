@@ -11,6 +11,7 @@ import '../../core/geo/geo_service.dart';
 import '../../data/places/place_dto.dart';
 import '../../data/places/places_feed_result.dart';
 import '../../data/places/places_repository.dart';
+import '../common/category_placeholder.dart';
 import '../../data/places/places_repository_impl.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import 'package:centry/features/places/geo_info/places_geo_info_controller.dart';
@@ -900,6 +901,9 @@ class _PlacesListState extends State<_PlacesList> {
                             placeId: place.dto.id,
                             title: place.dto.title,
                             typeLabel: place.typeLabel,
+                            categoryCode: place.dto.categories.isNotEmpty
+                                ? place.dto.categories.first
+                                : place.dto.type,
                             address: place.dto.address,
                             lat: place.dto.lat,
                             lng: place.dto.lng,
@@ -997,18 +1001,34 @@ class PlaceCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                           child: Builder(
                             builder: (_) {
-                              final url = place.dto.previewMediaUrl;
+                              final category =
+                                  place.dto.categories.isNotEmpty
+                                      ? place.dto.categories.first
+                                      : place.dto.type;
+                              final catUrl = categoryPlaceholderUrl(
+                                  category, place.dto.id);
 
+                              Widget fallback() => catUrl != null
+                                  ? Image.network(
+                                      catUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          Image.asset(
+                                        'assets/images/place_placeholder.png',
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : Image.asset(
+                                      'assets/images/place_placeholder.png',
+                                      fit: BoxFit.cover,
+                                    );
+
+                              final url = place.dto.previewMediaUrl;
                               if (url != null && url.isNotEmpty) {
                                 return Image.network(
                                   url,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) {
-                                    return Image.asset(
-                                      'assets/images/place_placeholder.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
+                                  errorBuilder: (_, __, ___) => fallback(),
                                 );
                               }
 
@@ -1018,23 +1038,14 @@ class PlaceCard extends StatelessWidget {
                                     .instance.client.storage
                                     .from('brand-media')
                                     .getPublicUrl(key);
-
                                 return Image.network(
                                   publicUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) {
-                                    return Image.asset(
-                                      'assets/images/place_placeholder.png',
-                                      fit: BoxFit.cover,
-                                    );
-                                  },
+                                  errorBuilder: (_, __, ___) => fallback(),
                                 );
                               }
 
-                              return Image.asset(
-                                'assets/images/place_placeholder.png',
-                                fit: BoxFit.cover,
-                              );
+                              return fallback();
                             },
                           ),
                         ),

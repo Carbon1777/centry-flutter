@@ -732,7 +732,7 @@ class _PlaceCandidateCard extends StatelessWidget {
       if (url != null && url.isNotEmpty) {
         return Image.network(
           url,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => Image.asset(
             'assets/images/place_placeholder.png',
             fit: BoxFit.cover,
@@ -747,7 +747,7 @@ class _PlaceCandidateCard extends StatelessWidget {
             .getPublicUrl(key);
         return Image.network(
           publicUrl,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => Image.asset(
             'assets/images/place_placeholder.png',
             fit: BoxFit.cover,
