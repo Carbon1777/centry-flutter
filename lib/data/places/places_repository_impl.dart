@@ -357,6 +357,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
     List<String>? types,
+    double? minRating,
   }) async {
     try {
       final params = {
@@ -367,6 +368,7 @@ class PlacesRepositoryImpl implements PlacesRepository {
         if (cityIds != null && cityIds.isNotEmpty) 'p_city_ids': cityIds,
         if (areaIds != null && areaIds.isNotEmpty) 'p_area_ids': areaIds,
         if (types != null && types.isNotEmpty) 'p_types': types,
+        if (minRating != null) 'p_min_rating': minRating,
       };
 
       final response = await _client.rpc(

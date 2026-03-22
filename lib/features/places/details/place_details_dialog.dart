@@ -800,8 +800,8 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     );
 
     final screenHeight = MediaQuery.of(context).size.height;
-    final dialogMaxHeight = screenHeight - MediaQuery.of(context).viewInsets.bottom - 80;
-    final imageHeight = (screenHeight * 0.18).clamp(90.0, 150.0);
+    final dialogMaxHeight = screenHeight * 0.93 - MediaQuery.of(context).viewInsets.bottom;
+    final imageHeight = (screenHeight * 0.15).clamp(80.0, 130.0);
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1011,38 +1011,35 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 ),
                               ],
                             ),
-                            if (_effectiveWebsiteUrl != null &&
-                                _effectiveWebsiteUrl!.trim().isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              OutlinedButton(
-                                onPressed: _openWebsite,
-                                child: const Text('Сайт'),
-                              ),
-                            ],
-                            if (_effectivePhones.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            if ((_effectiveWebsiteUrl != null &&
+                                    _effectiveWebsiteUrl!.trim().isNotEmpty) ||
+                                _effectivePhones.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 6,
                                 children: [
+                                  if (_effectiveWebsiteUrl != null &&
+                                      _effectiveWebsiteUrl!.trim().isNotEmpty)
+                                    OutlinedButton(
+                                      onPressed: _openWebsite,
+                                      child: const Text('Сайт'),
+                                    ),
                                   for (final p in _effectivePhones)
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 6),
-                                      child: OutlinedButton(
-                                        onPressed: () async {
-                                          final tel = p.trim();
-                                          if (tel.isEmpty) return;
-                                          final uri = Uri(
-                                            scheme: 'tel',
-                                            path: tel,
-                                          );
-                                          await launchUrl(
-                                            uri,
-                                            mode:
-                                                LaunchMode.externalApplication,
-                                          );
-                                        },
-                                        child: Text(p),
-                                      ),
+                                    OutlinedButton(
+                                      onPressed: () async {
+                                        final tel = p.trim();
+                                        if (tel.isEmpty) return;
+                                        final uri = Uri(
+                                          scheme: 'tel',
+                                          path: tel,
+                                        );
+                                        await launchUrl(
+                                          uri,
+                                          mode: LaunchMode.externalApplication,
+                                        );
+                                      },
+                                      child: Text(p),
                                     ),
                                 ],
                               ),

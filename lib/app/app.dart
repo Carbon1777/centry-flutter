@@ -49,6 +49,7 @@ class App extends StatelessWidget {
       navigatorKey: App.navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
+      scrollBehavior: const MaterialScrollBehavior().copyWith(overscroll: false),
 
       // ✅ ЛОКАЛИЗАЦИИ
       locale: const Locale('ru'),
