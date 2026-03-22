@@ -68,6 +68,7 @@ abstract class PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
     List<String>? types,
+    double? minRating,
   });
 
   /// Approximate geographic center for the given location filter.

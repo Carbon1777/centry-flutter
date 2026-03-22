@@ -145,7 +145,7 @@ class _PlacesFiltersSheetState extends State<_PlacesFiltersSheet> {
             final value = (e['value'] as num).toDouble();
             return _RatingOption(
               value: value,
-              label: value == 5.0 ? '= 5.0' : e['label'].toString(),
+              label: e['label'].toString(),
             );
           })
           .toList();

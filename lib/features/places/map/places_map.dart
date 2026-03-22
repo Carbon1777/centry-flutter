@@ -132,12 +132,22 @@ class _PlacesMapState extends State<PlacesMap> {
           .getCenterForFilter(cityIds: usedCityIds, areaIds: usedAreaIds)
           .then((center) {
         if (!mounted || center == null) return;
-        _mapController.move(LatLng(center['lat']!, center['lng']!), 12.0);
-        final cam = _mapController.camera;
-        setState(() {
-          _currentZoom = cam.zoom;
-          _currentCenter = cam.center;
-        });
+        final newCenter = LatLng(center['lat']!, center['lng']!);
+
+        // Если текущая позиция камеры уже близко к новому центру (< 50 км) —
+        // не сбрасываем позицию и зум, просто перегружаем маркеры
+        final cur = _currentCenter;
+        final distToNew =
+            cur != null ? _distance(cur, newCenter) : double.infinity;
+
+        if (distToNew > 50000) {
+          _mapController.move(newCenter, 12.0);
+          final cam = _mapController.camera;
+          setState(() {
+            _currentZoom = cam.zoom;
+            _currentCenter = cam.center;
+          });
+        }
         _scheduleLoadByViewport();
         _scheduleRecomputeLabels();
       });
@@ -232,6 +242,7 @@ class _PlacesMapState extends State<PlacesMap> {
         cityIds: payload.cityIds,
         areaIds: payload.areaIds,
         types: payload.types,
+        minRating: payload.minRating,
       );
 
       if (!mounted) return;
@@ -510,8 +521,48 @@ class _PlacesMapState extends State<PlacesMap> {
               _lastCityIds = initPayload.cityIds ?? const [];
               _lastAreaIds = initPayload.areaIds ?? const [];
 
+              // Всегда немедленно запускаем загрузку маркеров по текущему viewport.
               _scheduleLoadByViewport();
               _scheduleRecomputeLabels();
+
+              // Если при открытии карты уже активен фильтр города/района —
+              // дополнительно центрируем камеру на нём (если далеко > 50 км).
+              final hasCityFilter =
+                  (initPayload.cityIds?.isNotEmpty ?? false) ||
+                  (initPayload.areaIds?.isNotEmpty ?? false);
+
+              if (hasCityFilter) {
+                final usedAreaIds =
+                    initPayload.areaIds?.isNotEmpty == true
+                        ? initPayload.areaIds
+                        : null;
+                final usedCityIds =
+                    usedAreaIds == null ? initPayload.cityIds : null;
+
+                widget.repository
+                    .getCenterForFilter(
+                        cityIds: usedCityIds, areaIds: usedAreaIds)
+                    .then((center) {
+                  if (!mounted || center == null) return;
+                  final newCenter =
+                      LatLng(center['lat']!, center['lng']!);
+                  final cur = _currentCenter;
+                  final dist = cur != null
+                      ? _distance(cur, newCenter)
+                      : double.infinity;
+
+                  if (dist > 50000) {
+                    _mapController.move(newCenter, 12.0);
+                    final updatedCam = _mapController.camera;
+                    setState(() {
+                      _currentZoom = updatedCam.zoom;
+                      _currentCenter = updatedCam.center;
+                    });
+                    // После перемещения перегружаем маркеры для нового viewport
+                    _scheduleLoadByViewport();
+                  }
+                });
+              }
 
               final pending = _pendingFocusPlace;
               _pendingFocusPlace = null;
