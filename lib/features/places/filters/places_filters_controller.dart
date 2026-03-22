@@ -52,7 +52,9 @@ class PlacesFiltersController extends ChangeNotifier {
     if (_state.minRating != null) {
       items.add(PlaceFilterItem(
         id: 'rating',
-        title: '≥ ${_state.minRating!.toStringAsFixed(1)} ★',
+        title: _state.minRating == 5.0
+            ? '= ${_state.minRating!.toStringAsFixed(1)} ★'
+            : '≥ ${_state.minRating!.toStringAsFixed(1)} ★',
       ));
     }
 
