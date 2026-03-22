@@ -364,6 +364,7 @@ class _PlacesListState extends State<_PlacesList> {
   bool _loading = false;
   bool _hasMore = true;
   int _offset = 0;
+  int _loadGeneration = 0;
 
   bool _creatingPlaceSubmission = false;
 
@@ -496,15 +497,21 @@ class _PlacesListState extends State<_PlacesList> {
   }
 
   Future<void> _loadInitial() async {
+    // Инвалидируем предыдущий запрос: даже если он ещё в полёте,
+    // его результат будет проигнорирован (_loadGeneration не совпадёт).
+    _loadGeneration++;
     _places.clear();
     _offset = 0;
     _hasMore = true;
+    _loading = false;
     setState(() {});
     await _loadNext();
   }
 
   Future<void> _loadNext() async {
     if (_loading || !_hasMore) return;
+
+    final gen = _loadGeneration;
     setState(() => _loading = true);
 
     try {
@@ -520,6 +527,8 @@ class _PlacesListState extends State<_PlacesList> {
         offset: _offset,
       );
 
+      if (!mounted || gen != _loadGeneration) return;
+
       final uiItems = result.items.map(_mapToUi).toList();
 
       setState(() {
@@ -529,6 +538,7 @@ class _PlacesListState extends State<_PlacesList> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted || gen != _loadGeneration) return;
       setState(() {
         _loading = false;
         _hasMore = false;
