@@ -1,7 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/profile_photos/profile_photo_dto.dart';
+import '../../data/profile_photos/profile_photos_repository_impl.dart';
 import '../../features/profile/leisure_constants.dart';
+import '../../features/profile/photo_fullscreen_viewer.dart';
 import '../../ui/common/center_toast.dart';
 
 // =======================
@@ -525,7 +529,10 @@ class _FullProfileBody extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
               child: _FullProfileContent(profile: profile),
             ),
-            _FullProfileMediaSheet(availableHeight: constraints.maxHeight),
+            _FullProfileMediaSheet(
+              availableHeight: constraints.maxHeight,
+              targetUserId: profile.userId,
+            ),
           ],
         );
       },
@@ -839,13 +846,17 @@ class _LeisureChip extends StatelessWidget {
 }
 
 // =======================
-// Шторка «Фото и видео» — точная копия _ProfileMediaSheet
+// Шторка «Фото» — read-only просмотр чужого профиля
 // =======================
 
 class _FullProfileMediaSheet extends StatefulWidget {
   final double availableHeight;
+  final String targetUserId;
 
-  const _FullProfileMediaSheet({required this.availableHeight});
+  const _FullProfileMediaSheet({
+    required this.availableHeight,
+    required this.targetUserId,
+  });
 
   @override
   State<_FullProfileMediaSheet> createState() => _FullProfileMediaSheetState();
@@ -858,40 +869,55 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
   bool _expanded = false;
   double _dragOffsetY = 0;
 
+  final _repo = ProfilePhotosRepositoryImpl();
+  List<ProfilePhotoDto> _photos = [];
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotos();
+  }
+
+  Future<void> _loadPhotos() async {
+    try {
+      final photos = await _repo.getPhotos(widget.targetUserId);
+      if (!mounted) return;
+      setState(() { _photos = photos; _loaded = true; });
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
   void _toggle() => setState(() => _expanded = !_expanded);
 
   void _onDragUpdate(DragUpdateDetails d) {
     _dragOffsetY += d.primaryDelta ?? 0;
     if (!_expanded && _dragOffsetY <= -10) {
-      setState(() {
-        _expanded = true;
-        _dragOffsetY = 0;
-      });
+      setState(() { _expanded = true; _dragOffsetY = 0; });
     } else if (_expanded && _dragOffsetY >= 12) {
-      setState(() {
-        _expanded = false;
-        _dragOffsetY = 0;
-      });
+      setState(() { _expanded = false; _dragOffsetY = 0; });
     }
   }
 
   void _onDragEnd(DragEndDetails d) {
-    final velocity = d.primaryVelocity ?? 0;
-    if (!_expanded && velocity < -220) {
-      setState(() => _expanded = true);
-    } else if (_expanded && velocity > 220) {
-      setState(() => _expanded = false);
-    }
+    final v = d.primaryVelocity ?? 0;
+    if (!_expanded && v < -220) { setState(() => _expanded = true); }
+    else if (_expanded && v > 220) { setState(() => _expanded = false); }
     _dragOffsetY = 0;
+  }
+
+  void _openFullscreen(int index) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PhotoFullscreenViewer(photos: _photos, initialIndex: index),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-
-    final maxHeight = widget.availableHeight;
-    final targetHeight = _expanded ? maxHeight : _kCollapsedHeight;
+    final targetHeight = _expanded ? widget.availableHeight : _kCollapsedHeight;
 
     return Align(
       alignment: Alignment.bottomCenter,
@@ -914,23 +940,21 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Drag handle + header
+              // Drag handle + title
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _toggle,
                 onVerticalDragUpdate: _onDragUpdate,
                 onVerticalDragEnd: _onDragEnd,
                 child: ConstrainedBox(
-                  constraints:
-                      const BoxConstraints(maxHeight: _kCollapsedHeight - 1),
+                  constraints: const BoxConstraints(maxHeight: _kCollapsedHeight - 1),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       const SizedBox(height: 10),
                       Center(
                         child: Container(
-                          width: 52,
-                          height: 5,
+                          width: 52, height: 5,
                           decoration: BoxDecoration(
                             color: colors.onSurface.withValues(alpha: 0.45),
                             borderRadius: BorderRadius.circular(3),
@@ -941,7 +965,7 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
-                          'Фото и видео',
+                          'Фото',
                           textAlign: TextAlign.center,
                           style: textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w700),
@@ -952,60 +976,86 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
                   ),
                 ),
               ),
+
+              // Expanded content
               if (_expanded)
                 Flexible(
                   fit: FlexFit.tight,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      if (constraints.maxHeight < 20) {
-                        return const SizedBox.shrink();
-                      }
-                      return Column(
-                        mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: colors.outline.withValues(alpha: 0.2),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              physics: const NeverScrollableScrollPhysics(),
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 40, vertical: 24),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.camera_alt_outlined,
-                                        size: 72,
-                                        color: colors.onSurface
-                                            .withValues(alpha: 0.25),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      Text(
-                                        'Упссс, и мы хотели бы посмотреть, но будет доступно с релизом проекта. 😅',
-                                        textAlign: TextAlign.center,
-                                        style: textTheme.titleMedium?.copyWith(
-                                          color: colors.onSurface
-                                              .withValues(alpha: 0.55),
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    if (constraints.maxHeight < 20) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        Divider(height: 1, thickness: 1,
+                            color: colors.outline.withValues(alpha: 0.2)),
+                        Expanded(child: _buildContent(colors, textTheme)),
+                      ],
+                    );
+                  }),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(ColorScheme colors, TextTheme textTheme) {
+    if (!_loaded) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+
+    if (_photos.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Text(
+            'Фото пока нет',
+            textAlign: TextAlign.center,
+            style: textTheme.bodyMedium?.copyWith(
+              color: colors.onSurface.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 3,
+            mainAxisSpacing: 3,
+          ),
+          itemCount: _photos.length,
+          itemBuilder: (ctx, i) => GestureDetector(
+            onTap: () => _openFullscreen(i),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: _photos[i].publicUrl,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => ColoredBox(
+                  color: colors.surfaceContainerHighest,
+                  child: Center(
+                    child: Icon(Icons.image_outlined,
+                        color: colors.onSurface.withValues(alpha: 0.3)),
+                  ),
+                ),
+                errorWidget: (_, __, ___) => ColoredBox(
+                  color: colors.surfaceContainerHighest,
+                  child: Center(
+                    child: Icon(Icons.broken_image_outlined,
+                        color: colors.onSurface.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

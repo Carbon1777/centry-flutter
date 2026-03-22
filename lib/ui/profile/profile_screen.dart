@@ -1,9 +1,17 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/profile_photos/profile_photo_dto.dart';
+import '../../data/profile_photos/profile_photos_repository_impl.dart';
+import '../../features/profile/photo_crop_screen.dart';
+import '../../features/profile/photo_fullscreen_viewer.dart';
 import '../../features/profile/profile_email_modal.dart';
 import '../../features/profile/avatar_picker_screen.dart';
 import '../../features/profile/privacy_settings_screen.dart';
@@ -471,7 +479,10 @@ class _ProfileContent extends StatelessWidget {
         ),
       ],
     ),
-            _ProfileMediaSheet(availableHeight: constraints.maxHeight),
+            _ProfileMediaSheet(
+              availableHeight: constraints.maxHeight,
+              userId: userId,
+            ),
           ],
         );
       },
@@ -1833,8 +1844,12 @@ class _PickerTile extends StatelessWidget {
 
 class _ProfileMediaSheet extends StatefulWidget {
   final double availableHeight;
+  final String userId;
 
-  const _ProfileMediaSheet({required this.availableHeight});
+  const _ProfileMediaSheet({
+    required this.availableHeight,
+    required this.userId,
+  });
 
   @override
   State<_ProfileMediaSheet> createState() => _ProfileMediaSheetState();
@@ -1843,45 +1858,335 @@ class _ProfileMediaSheet extends StatefulWidget {
 class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
   static const double _kCollapsedHeight = 76;
   static const Duration _kAnimDuration = Duration(milliseconds: 320);
+  static const int _kMaxPhotos = 9;
 
+  // Sheet expand state
   bool _expanded = false;
   double _dragOffsetY = 0;
+
+  // Photos
+  final _repo = ProfilePhotosRepositoryImpl();
+  List<ProfilePhotoDto> _photos = [];
+  bool _photosLoaded = false;
+  bool _isUploading = false;
+
+  // Delete mode
+  bool _deleteMode = false;
+  Set<String> _selectedIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPhotos();
+  }
+
+  Future<void> _loadPhotos() async {
+    try {
+      final photos = await _repo.getPhotos(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _photos = photos;
+        _photosLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _photosLoaded = true);
+    }
+  }
+
+  // ── Expand / collapse ──
 
   void _toggle() => setState(() => _expanded = !_expanded);
 
   void _onDragUpdate(DragUpdateDetails d) {
     _dragOffsetY += d.delta.dy;
     if (!_expanded && _dragOffsetY <= -10) {
-      setState(() {
-        _expanded = true;
-        _dragOffsetY = 0;
-      });
+      setState(() { _expanded = true; _dragOffsetY = 0; });
     } else if (_expanded && _dragOffsetY >= 12) {
-      setState(() {
-        _expanded = false;
-        _dragOffsetY = 0;
-      });
+      setState(() { _expanded = false; _dragOffsetY = 0; });
     }
   }
 
   void _onDragEnd(DragEndDetails d) {
-    final velocity = d.primaryVelocity ?? 0;
-    if (!_expanded && velocity < -220) {
-      setState(() => _expanded = true);
-    } else if (_expanded && velocity > 220) {
-      setState(() => _expanded = false);
-    }
+    final v = d.primaryVelocity ?? 0;
+    if (!_expanded && v < -220) { setState(() => _expanded = true); }
+    else if (_expanded && v > 220) { setState(() => _expanded = false); }
     _dragOffsetY = 0;
   }
+
+  // ── Upload ──
+
+  Future<void> _showAddPhotoOptions() async {
+    final freeSlots = _kMaxPhotos - _photos.length;
+    if (freeSlots <= 0) return;
+
+    final result = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 4),
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Сделать фото'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Выбрать из галереи'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    if (result == ImageSource.camera) {
+      await _pickFromCamera();
+    } else {
+      await _pickFromGallery(freeSlots);
+    }
+  }
+
+  Future<void> _pickFromCamera() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.camera, imageQuality: 92,
+    );
+    if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    await _cropAndUpload(bytes);
+  }
+
+  Future<void> _pickFromGallery(int freeSlots) async {
+    final picked = await ImagePicker().pickMultiImage(imageQuality: 92);
+    if (picked.isEmpty || !mounted) return;
+
+    List<XFile> toProcess = picked;
+    if (picked.length > freeSlots) {
+      toProcess = picked.sublist(0, freeSlots);
+      if (mounted) {
+        showCenterToast(
+          context,
+          message: 'Во время бета-тестирования доступно до $_kMaxPhotos фото. '
+              'Сейчас свободно только $freeSlots мест, '
+              'поэтому добавлены первые $freeSlots фото.',
+          duration: const Duration(seconds: 4),
+        );
+      }
+    }
+
+    // Все фото из галереи загружаются как есть (без кропа).
+    // Кроп доступен через «Заменить» в fullscreen viewer.
+    await _uploadBatch(toProcess);
+  }
+
+  Future<void> _cropAndUpload(Uint8List bytes) async {
+    final croppedBytes = await Navigator.of(context).push<Uint8List>(
+      MaterialPageRoute(builder: (_) => PhotoCropScreen(imageBytes: bytes)),
+    );
+    if (croppedBytes == null || !mounted) return;
+    setState(() => _isUploading = true);
+    try {
+      await _uploadOne(croppedBytes);
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _uploadBatch(List<XFile> files) async {
+    setState(() => _isUploading = true);
+    try {
+      for (final file in files) {
+        if (!mounted) return;
+        final bytes = await file.readAsBytes();
+        await _uploadOne(bytes);
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _uploadOne(Uint8List bytes) async {
+    try {
+      final client = Supabase.instance.client;
+      final authUserId = client.auth.currentUser?.id;
+      if (authUserId == null) return;
+
+      // Сжимаем в WebP — убирает EXIF, нормализует ориентацию
+      final webpBytes = await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: 1920, minHeight: 1920,
+        quality: 88,
+        format: CompressFormat.webp,
+        keepExif: false,
+      );
+
+      final storagePath = '$authUserId/${_generateUuid()}.webp';
+
+      await client.storage.from('profile-photos').uploadBinary(
+        storagePath, webpBytes,
+        fileOptions: const FileOptions(contentType: 'image/webp'),
+      );
+
+      final newPhoto = await _repo.addPhoto(
+        storageKey: storagePath,
+        sizeBytes: webpBytes.length,
+      );
+
+      if (mounted) setState(() => _photos = [..._photos, newPhoto]);
+    } catch (_) {
+      if (mounted) {
+        showCenterToast(context, message: 'Ошибка загрузки фото', isError: true);
+      }
+    }
+  }
+
+  // ── Delete mode ──
+
+  void _enterDeleteMode() => setState(() {
+    _deleteMode = true;
+    _selectedIds = {};
+  });
+
+  void _exitDeleteMode() => setState(() {
+    _deleteMode = false;
+    _selectedIds = {};
+  });
+
+  void _toggleSelection(String id) => setState(() {
+    final updated = Set<String>.from(_selectedIds);
+    if (updated.contains(id)) { updated.remove(id); } else { updated.add(id); }
+    _selectedIds = updated;
+  });
+
+  Future<void> _confirmAndDelete() async {
+    final count = _selectedIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить фото?'),
+        content: Text(
+          count == 1
+              ? 'Выбранное фото будет удалено без возможности восстановления.'
+              : 'Выбранные фото ($count) будут удалены без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final ids = _selectedIds.toList();
+
+      // Сохраняем storage keys до удаления, чтобы очистить storage на клиенте
+      final storageKeys = _photos
+          .where((p) => ids.contains(p.id))
+          .map((p) => p.storageKey)
+          .toList();
+
+      await _repo.deletePhotos(ids);
+
+      // Клиентская очистка storage (best-effort, не блокирует UI)
+      if (storageKeys.isNotEmpty) {
+        Supabase.instance.client.storage
+            .from('profile-photos')
+            .remove(storageKeys)
+            .ignore();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _photos = _photos.where((p) => !ids.contains(p.id)).toList();
+        _exitDeleteMode();
+      });
+    } catch (e) {
+      if (mounted) {
+        await showCenterToast(context, message: 'Ошибка удаления', isError: true);
+      }
+    }
+  }
+
+  // ── Reorder ──
+
+  Future<void> _onPhotoSwap(int fromIdx, int toIdx) async {
+    if (fromIdx == toIdx) return;
+    final photoA = _photos[fromIdx];
+    final photoB = _photos[toIdx];
+
+    // Оптимистичный UI
+    final updated = List<ProfilePhotoDto>.from(_photos);
+    updated[fromIdx] = photoB;
+    updated[toIdx] = photoA;
+    setState(() => _photos = updated);
+
+    try {
+      await _repo.reorderPhotos(idA: photoA.id, idB: photoB.id);
+    } catch (_) {
+      if (mounted) {
+        showCenterToast(context, message: 'Ошибка сохранения порядка', isError: true);
+        await _loadPhotos();
+      }
+    }
+  }
+
+  void _openFullscreen(int index) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PhotoFullscreenViewer(
+        photos: _photos,
+        initialIndex: index,
+        isOwner: true,
+        onPhotoReplaced: _loadPhotos,
+      ),
+    ));
+  }
+
+  static String _generateUuid() {
+    final rng = Random.secure();
+    final b = List<int>.generate(16, (_) => rng.nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+    return '${h.substring(0,8)}-${h.substring(8,12)}-${h.substring(12,16)}'
+        '-${h.substring(16,20)}-${h.substring(20)}';
+  }
+
+  // ── Build ──
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final maxHeight = widget.availableHeight
+    final maxH = widget.availableHeight
         .clamp(_kCollapsedHeight, widget.availableHeight)
         .toDouble();
-    final targetHeight = _expanded ? maxHeight : _kCollapsedHeight;
+    final targetH = _expanded ? maxH : _kCollapsedHeight;
+    final hasPhotos = _photos.isNotEmpty;
 
     return Align(
       alignment: Alignment.bottomCenter,
@@ -1889,7 +2194,7 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
         duration: _kAnimDuration,
         curve: Curves.easeOutCubic,
         width: double.infinity,
-        height: targetHeight,
+        height: targetH,
         decoration: BoxDecoration(
           color: colors.surfaceContainerHigh,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1904,24 +2209,21 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Drag handle + header — фиксированная высота, тапается и свайпается
+              // ── Drag handle + title ──
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _toggle,
                 onVerticalDragUpdate: _onDragUpdate,
                 onVerticalDragEnd: _onDragEnd,
                 child: ConstrainedBox(
-                  constraints:
-                      const BoxConstraints(maxHeight: _kCollapsedHeight - 1),
+                  constraints: const BoxConstraints(maxHeight: _kCollapsedHeight - 1),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      // Drag handle pill
                       const SizedBox(height: 10),
                       Center(
                         child: Container(
-                          width: 52,
-                          height: 5,
+                          width: 52, height: 5,
                           decoration: BoxDecoration(
                             color: colors.onSurface.withValues(alpha: 0.45),
                             borderRadius: BorderRadius.circular(3),
@@ -1929,7 +2231,6 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Заголовок — сразу после ручки
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
@@ -1944,64 +2245,310 @@ class _ProfileMediaSheetState extends State<_ProfileMediaSheet> {
                   ),
                 ),
               ),
+
+              // ── Expanded content ──
               if (_expanded)
                 Flexible(
                   fit: FlexFit.tight,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      if (constraints.maxHeight < 20) {
-                        return const SizedBox.shrink();
-                      }
-                      return Column(
-                        mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: colors.outline.withValues(alpha: 0.2),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              physics:
-                                  const NeverScrollableScrollPhysics(),
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 40, vertical: 24),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.camera_alt_outlined,
-                                        size: 72,
-                                        color: colors.onSurface
-                                            .withValues(alpha: 0.25),
-                                      ),
-                                      const SizedBox(height: 20),
-                                      Text(
-                                        'Упссс, и мы хотели бы посмотреть, но будет доступно с релизом проекта. 😅',
-                                        textAlign: TextAlign.center,
-                                        style:
-                                            textTheme.titleMedium?.copyWith(
-                                          color: colors.onSurface
-                                              .withValues(alpha: 0.55),
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    if (constraints.maxHeight < 20) return const SizedBox.shrink();
+                    return Column(
+                      children: [
+                        Divider(height: 1, thickness: 1,
+                            color: colors.outline.withValues(alpha: 0.2)),
+                        Expanded(child: _buildExpandedContent(
+                          colors, textTheme, hasPhotos,
+                        )),
+                      ],
+                    );
+                  }),
                 ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedContent(
+    ColorScheme colors,
+    TextTheme textTheme,
+    bool hasPhotos,
+  ) {
+    if (!_photosLoaded) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // «Выбрать / Удалить / Отменить» — только когда есть фото
+          if (hasPhotos)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: _deleteMode
+                        ? (_selectedIds.isNotEmpty
+                            ? _confirmAndDelete
+                            : _exitDeleteMode)
+                        : _enterDeleteMode,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 160),
+                      child: Text(
+                        _deleteMode
+                            ? (_selectedIds.isNotEmpty ? 'Удалить' : 'Отменить')
+                            : 'Выбрать',
+                        key: ValueKey(_deleteMode
+                            ? (_selectedIds.isNotEmpty ? 'del' : 'cancel')
+                            : 'sel'),
+                        style: textTheme.labelMedium?.copyWith(
+                          color: (_deleteMode && _selectedIds.isNotEmpty)
+                              ? Colors.red
+                              : colors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Сетка 3×9
+          _buildGrid(colors),
+
+          // Инфо-текст
+          const SizedBox(height: 20),
+          Text(
+            'Во время бета-тестирования можно добавить до 9 фото. '
+            'С релизом проекта появится возможность загружать '
+            'больше фото и видео.',
+            textAlign: TextAlign.center,
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurface.withValues(alpha: 0.55),
+              height: 1.5,
+            ),
+          ),
+
+          // Индикатор загрузки
+          if (_isUploading)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 10),
+                  Text('Загружаем фото...',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colors.onSurface.withValues(alpha: 0.6),
+                      )),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGrid(ColorScheme colors) {
+    return AspectRatio(
+      aspectRatio: 1,
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 3,
+          mainAxisSpacing: 3,
+        ),
+        itemCount: _kMaxPhotos,
+        itemBuilder: (ctx, i) => _buildCell(ctx, i, colors),
+      ),
+    );
+  }
+
+  Widget _buildCell(BuildContext context, int index, ColorScheme colors) {
+    final hasPhoto = index < _photos.length;
+
+    // Пустая ячейка
+    if (!hasPhoto) {
+      return GestureDetector(
+        onTap: (!_isUploading && !_deleteMode) ? _showAddPhotoOptions : null,
+        child: Container(
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Center(
+            child: Icon(Icons.add_circle_outline, size: 26,
+                color: colors.onSurface.withValues(alpha: 0.3)),
+          ),
+        ),
+      );
+    }
+
+    final photo = _photos[index];
+    final isSelected = _selectedIds.contains(photo.id);
+
+    // Режим выделения
+    if (_deleteMode) {
+      return GestureDetector(
+        onTap: () => _toggleSelection(photo.id),
+        child: _PhotoCell(
+          photo: photo,
+          isSelected: isSelected,
+          showCheckbox: true,
+          colors: colors,
+        ),
+      );
+    }
+
+    // Нормальный режим — drag & drop + tap
+    return LongPressDraggable<int>(
+      data: index,
+      delay: const Duration(milliseconds: 400),
+      feedback: Material(
+        color: Colors.transparent,
+        child: Opacity(
+          opacity: 0.85,
+          child: SizedBox(
+            width: 110, height: 110,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _PhotoImage(photo: photo),
+            ),
+          ),
+        ),
+      ),
+      childWhenDragging: Container(
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerHighest.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: colors.outline.withValues(alpha: 0.3), width: 1.5,
+          ),
+        ),
+      ),
+      child: DragTarget<int>(
+        onWillAcceptWithDetails: (d) => d.data != index,
+        onAcceptWithDetails: (d) => _onPhotoSwap(d.data, index),
+        builder: (ctx, candidates, _) {
+          final isTarget = candidates.isNotEmpty;
+          return GestureDetector(
+            onTap: () => _openFullscreen(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: isTarget
+                    ? Border.all(color: colors.primary, width: 2.5)
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(isTarget ? 4 : 6),
+                child: _PhotoImage(photo: photo),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// =======================
+// Photo cell (with checkbox overlay)
+// =======================
+
+class _PhotoCell extends StatelessWidget {
+  final ProfilePhotoDto photo;
+  final bool isSelected;
+  final bool showCheckbox;
+  final ColorScheme colors;
+
+  const _PhotoCell({
+    required this.photo,
+    required this.isSelected,
+    required this.showCheckbox,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _PhotoImage(photo: photo),
+          if (showCheckbox)
+            Container(
+              color: isSelected
+                  ? colors.primary.withValues(alpha: 0.35)
+                  : Colors.black.withValues(alpha: 0.12),
+            ),
+          if (showCheckbox)
+            Positioned(
+              top: 6, right: 6,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 22, height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? colors.primary : Colors.transparent,
+                  border: Border.all(
+                    color: isSelected ? colors.primary : Colors.white,
+                    width: 2,
+                  ),
+                ),
+                child: isSelected
+                    ? const Icon(Icons.check, size: 13, color: Colors.white)
+                    : null,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// =======================
+// Photo image (cached)
+// =======================
+
+class _PhotoImage extends StatelessWidget {
+  final ProfilePhotoDto photo;
+
+  const _PhotoImage({required this.photo});
+
+  @override
+  Widget build(BuildContext context) {
+    final dimColor =
+        Theme.of(context).colorScheme.surfaceContainerHighest;
+    final iconColor =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3);
+
+    return CachedNetworkImage(
+      imageUrl: photo.publicUrl,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => ColoredBox(
+        color: dimColor,
+        child: Center(child: Icon(Icons.image_outlined, color: iconColor)),
+      ),
+      errorWidget: (_, __, ___) => ColoredBox(
+        color: dimColor,
+        child: Center(
+            child: Icon(Icons.broken_image_outlined, color: iconColor)),
       ),
     );
   }
