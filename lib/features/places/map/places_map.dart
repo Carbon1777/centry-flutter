@@ -72,8 +72,9 @@ class _PlacesMapState extends State<PlacesMap> {
 
   PlaceDto? _pendingFocusPlace;
 
-  /// Предыдущий список cityIds для определения смены города
+  /// Предыдущие cityIds/areaIds для определения смены локации
   List<String> _lastCityIds = const [];
+  List<String> _lastAreaIds = const [];
 
   @override
   void initState() {
@@ -94,18 +95,42 @@ class _PlacesMapState extends State<PlacesMap> {
   void _onFiltersChanged() {
     if (!_mapReady) return;
 
-    final newCityIds = widget.filtersController.buildPayload().cityIds ?? const [];
-    final cityChanged = !_listEquals(_lastCityIds, newCityIds);
-    _lastCityIds = List<String>.from(newCityIds);
+    final payload = widget.filtersController.buildPayload();
+    final newCityIds = payload.cityIds ?? const [];
+    final newAreaIds = payload.areaIds ?? const [];
 
-    if (cityChanged && newCityIds.isNotEmpty) {
-      // Перемещаем карту в центр выбранного города
-      widget.repository.getCitiesCenter(newCityIds).then((center) {
+    final cityChanged = !_listEquals(_lastCityIds, newCityIds);
+    final areaChanged = !_listEquals(_lastAreaIds, newAreaIds);
+
+    _lastCityIds = List<String>.from(newCityIds);
+    _lastAreaIds = List<String>.from(newAreaIds);
+
+    if (cityChanged || areaChanged) {
+      if (newCityIds.isEmpty && newAreaIds.isEmpty) {
+        // Сброс фильтра → возврат к геопозиции (zoom 14, как при первом открытии карты)
+        final geo = GeoService.instance.current.value;
+        if (geo != null) {
+          _mapController.move(LatLng(geo.lat, geo.lng), 14.0);
+          final cam = _mapController.camera;
+          setState(() {
+            _currentZoom = cam.zoom;
+            _currentCenter = cam.center;
+          });
+          _scheduleRecomputeLabels();
+        }
+        _scheduleLoadByViewport();
+        return;
+      }
+
+      // Центрируем на районе (если выбран), иначе на городе
+      final usedAreaIds = newAreaIds.isNotEmpty ? newAreaIds : null;
+      final usedCityIds = newAreaIds.isEmpty ? newCityIds : null;
+
+      widget.repository
+          .getCenterForFilter(cityIds: usedCityIds, areaIds: usedAreaIds)
+          .then((center) {
         if (!mounted || center == null) return;
-        _mapController.move(
-          LatLng(center['lat']!, center['lng']!),
-          12.0,
-        );
+        _mapController.move(LatLng(center['lat']!, center['lng']!), 12.0);
         final cam = _mapController.camera;
         setState(() {
           _currentZoom = cam.zoom;
@@ -115,6 +140,7 @@ class _PlacesMapState extends State<PlacesMap> {
         _scheduleRecomputeLabels();
       });
     } else {
+      // Только тип/рейтинг изменился — остаёмся на месте, перегружаем маркеры
       _scheduleLoadByViewport();
     }
   }
@@ -474,6 +500,13 @@ class _PlacesMapState extends State<PlacesMap> {
               final cam = _mapController.camera;
               _currentZoom = cam.zoom;
               _currentCenter = cam.center;
+
+              // Инициализируем last-состояние фильтров из текущего контроллера,
+              // чтобы первый _onFiltersChanged после init() не считал смену города
+              // и не двигал карту при применении только типового фильтра.
+              final initPayload = widget.filtersController.buildPayload();
+              _lastCityIds = initPayload.cityIds ?? const [];
+              _lastAreaIds = initPayload.areaIds ?? const [];
 
               _scheduleLoadByViewport();
               _scheduleRecomputeLabels();
