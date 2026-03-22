@@ -374,6 +374,9 @@ class PlacesRepositoryImpl implements PlacesRepository {
         params: params,
       );
 
+      // json_agg returns NULL when there are no matching rows
+      if (response == null) return const [];
+
       if (response is! List) {
         throw StateError('Unexpected get_places_map_v2 response');
       }
@@ -385,6 +388,33 @@ class PlacesRepositoryImpl implements PlacesRepository {
     } catch (e) {
       rethrow;
     }
+  }
+
+  @override
+  Future<Map<String, double>?> getCitiesCenter(List<String> cityIds) async {
+    if (cityIds.isEmpty) return null;
+
+    final response = await _client
+        .from('core_places')
+        .select('lat, lng, core_areas!inner(city_id)')
+        .filter('core_areas.city_id', 'in', '(${cityIds.map((id) => '"$id"').join(',')})');
+
+    if (response.isEmpty) return null;
+
+    double sumLat = 0;
+    double sumLng = 0;
+    int count = 0;
+    for (final row in response) {
+      final lat = (row['lat'] as num?)?.toDouble();
+      final lng = (row['lng'] as num?)?.toDouble();
+      if (lat != null && lng != null) {
+        sumLat += lat;
+        sumLng += lng;
+        count++;
+      }
+    }
+    if (count == 0) return null;
+    return {'lat': sumLat / count, 'lng': sumLng / count};
   }
 
   // ===========================================================

@@ -70,6 +70,10 @@ abstract class PlacesRepository {
     List<String>? types,
   });
 
+  /// Approximate center of cities (avg of place coordinates).
+  /// Returns null if no places found for those IDs.
+  Future<Map<String, double>?> getCitiesCenter(List<String> cityIds);
+
   Future<Map<String, dynamic>> loadPlacesFiltersState({
     double? lat,
     double? lng,

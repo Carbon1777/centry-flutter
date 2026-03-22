@@ -72,6 +72,9 @@ class _PlacesMapState extends State<PlacesMap> {
 
   PlaceDto? _pendingFocusPlace;
 
+  /// Предыдущий список cityIds для определения смены города
+  List<String> _lastCityIds = const [];
+
   @override
   void initState() {
     super.initState();
@@ -89,7 +92,39 @@ class _PlacesMapState extends State<PlacesMap> {
   }
 
   void _onFiltersChanged() {
-    if (_mapReady) _scheduleLoadByViewport();
+    if (!_mapReady) return;
+
+    final newCityIds = widget.filtersController.buildPayload().cityIds ?? const [];
+    final cityChanged = !_listEquals(_lastCityIds, newCityIds);
+    _lastCityIds = List<String>.from(newCityIds);
+
+    if (cityChanged && newCityIds.isNotEmpty) {
+      // Перемещаем карту в центр выбранного города
+      widget.repository.getCitiesCenter(newCityIds).then((center) {
+        if (!mounted || center == null) return;
+        _mapController.move(
+          LatLng(center['lat']!, center['lng']!),
+          12.0,
+        );
+        final cam = _mapController.camera;
+        setState(() {
+          _currentZoom = cam.zoom;
+          _currentCenter = cam.center;
+        });
+        _scheduleLoadByViewport();
+        _scheduleRecomputeLabels();
+      });
+    } else {
+      _scheduleLoadByViewport();
+    }
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   @override
@@ -181,7 +216,10 @@ class _PlacesMapState extends State<PlacesMap> {
       _scheduleRecomputeLabels();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _items = const [];
+        _loading = false;
+      });
     }
   }
 
