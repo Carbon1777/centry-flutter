@@ -395,48 +395,22 @@ class PlacesRepositoryImpl implements PlacesRepository {
     List<String>? cityIds,
     List<String>? areaIds,
   }) async {
-    List<String> targetAreaIds;
-
+    final params = <String, dynamic>{};
     if (areaIds != null && areaIds.isNotEmpty) {
-      // Already have area IDs — use directly
-      targetAreaIds = areaIds;
+      params['p_area_ids'] = areaIds;
     } else if (cityIds != null && cityIds.isNotEmpty) {
-      // Resolve area IDs for the given cities (two-step to avoid PostgREST nested filter issues)
-      final areasResponse = await _client
-          .from('core_areas')
-          .select('id')
-          .inFilter('city_id', cityIds);
-      targetAreaIds = (areasResponse as List)
-          .map((row) => row['id']?.toString())
-          .whereType<String>()
-          .toList();
+      params['p_city_ids'] = cityIds;
     } else {
       return null;
     }
 
-    if (targetAreaIds.isEmpty) return null;
+    final response = await _client.rpc('get_location_center_v1', params: params);
 
-    final placesResponse = await _client
-        .from('core_places')
-        .select('lat, lng')
-        .inFilter('area_id', targetAreaIds);
-
-    if ((placesResponse as List).isEmpty) return null;
-
-    double sumLat = 0;
-    double sumLng = 0;
-    int count = 0;
-    for (final row in placesResponse) {
-      final lat = (row['lat'] as num?)?.toDouble();
-      final lng = (row['lng'] as num?)?.toDouble();
-      if (lat != null && lng != null) {
-        sumLat += lat;
-        sumLng += lng;
-        count++;
-      }
-    }
-    if (count == 0) return null;
-    return {'lat': sumLat / count, 'lng': sumLng / count};
+    if (response == null || response is! Map) return null;
+    final lat = (response['lat'] as num?)?.toDouble();
+    final lng = (response['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+    return {'lat': lat, 'lng': lng};
   }
 
   // ===========================================================
