@@ -93,8 +93,6 @@ class _PlacesMapState extends State<PlacesMap> {
   }
 
   void _onFiltersChanged() {
-    if (!_mapReady) return;
-
     final payload = widget.filtersController.buildPayload();
     final newCityIds = payload.cityIds ?? const [];
     final newAreaIds = payload.areaIds ?? const [];
@@ -102,8 +100,12 @@ class _PlacesMapState extends State<PlacesMap> {
     final cityChanged = !_listEquals(_lastCityIds, newCityIds);
     final areaChanged = !_listEquals(_lastAreaIds, newAreaIds);
 
+    // Обновляем всегда — даже если карта ещё не ready,
+    // чтобы init() из prefs не вызывал ложный cityChanged
     _lastCityIds = List<String>.from(newCityIds);
     _lastAreaIds = List<String>.from(newAreaIds);
+
+    if (!_mapReady) return;
 
     if (cityChanged || areaChanged) {
       if (newCityIds.isEmpty && newAreaIds.isEmpty) {
