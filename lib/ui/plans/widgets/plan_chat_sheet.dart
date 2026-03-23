@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../data/plans/plan_details_dto.dart';
 import 'plan_chat_message_bubble.dart';
@@ -832,6 +833,12 @@ class _PlanChatSheetState extends State<PlanChatSheet>
                   _enterEditMode(message);
                 }
               : null,
+          onCopy: !message.isTombstone
+              ? () {
+                  Clipboard.setData(ClipboardData(text: message.text));
+                  Navigator.of(context).pop();
+                }
+              : null,
           onDeleteForMe: () async {
             Navigator.of(context).pop();
             await deleteForMe(message.id);
@@ -1470,6 +1477,7 @@ class _PlanChatComposer extends StatelessWidget {
 class _MessageActionSheet extends StatelessWidget {
   final VoidCallback? onReply;
   final VoidCallback? onEdit;
+  final VoidCallback? onCopy;
   final Future<void> Function() onDeleteForMe;
   final Future<void> Function()? onDeleteForAll;
   final VoidCallback? onSelectMultiple;
@@ -1478,6 +1486,7 @@ class _MessageActionSheet extends StatelessWidget {
     required this.onDeleteForMe,
     this.onReply,
     this.onEdit,
+    this.onCopy,
     this.onDeleteForAll,
     this.onSelectMultiple,
   });
@@ -1547,6 +1556,16 @@ class _MessageActionSheet extends StatelessWidget {
                 label: 'Редактировать',
                 labelColor: Colors.white,
                 onTap: onEdit!,
+              ),
+              divider(),
+            ],
+            if (onCopy != null) ...[
+              _ActionTile(
+                icon: Icons.copy_outlined,
+                iconColor: Colors.white.withValues(alpha: 0.60),
+                label: 'Скопировать текст',
+                labelColor: Colors.white.withValues(alpha: 0.90),
+                onTap: onCopy!,
               ),
               divider(),
             ],

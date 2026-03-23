@@ -145,4 +145,72 @@ class PrivateChatsRepositoryImpl implements PrivateChatsRepository {
     final map = _asMap(response);
     return map['ok'] == true;
   }
+
+  @override
+  Future<void> editMessage({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+    required String text,
+  }) async {
+    await _client.rpc(
+      'edit_private_chat_message_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_chat_id': chatId,
+        'p_message_id': messageId,
+        'p_text': text,
+      },
+    );
+  }
+
+  @override
+  Future<void> deleteMessageForAll({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+  }) async {
+    await _client.rpc(
+      'delete_private_chat_message_for_all_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_chat_id': chatId,
+        'p_message_id': messageId,
+      },
+    );
+  }
+
+  @override
+  Future<void> deleteMessageForMe({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+  }) async {
+    await _client.rpc(
+      'delete_private_chat_message_for_me_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_chat_id': chatId,
+        'p_message_id': messageId,
+      },
+    );
+  }
+
+  @override
+  Future<void> deleteMessagesBulk({
+    required String appUserId,
+    required String chatId,
+    required List<String> messageIds,
+    required String mode,
+  }) async {
+    await _client.rpc(
+      'delete_private_chat_messages_bulk_v1',
+      params: {
+        'p_app_user_id': appUserId,
+        'p_chat_id': chatId,
+        'p_message_ids': messageIds,
+        'p_mode': mode,
+      },
+    );
+  }
 }

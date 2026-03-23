@@ -816,6 +816,95 @@ class _FriendCard extends StatelessWidget {
     required this.onSendAttentionSign,
   });
 
+  void _showActionsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 28),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF252D3D), Color(0xFF181E2B)],
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.13)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.45),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 6),
+              _FriendActionTile(
+                icon: Icons.event_outlined,
+                iconColor: const Color(0xFF7FB0FF),
+                label: 'Добавить в план',
+                labelColor: Colors.white,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onAddToPlan();
+                },
+              ),
+              _friendActionDivider(),
+              if (canCreateChat) ...[
+                _FriendActionTile(
+                  icon: Icons.chat_bubble_outline,
+                  iconColor: Colors.white.withValues(alpha: 0.80),
+                  label: 'Создать чат',
+                  labelColor: Colors.white,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onCreateChat();
+                  },
+                ),
+                _friendActionDivider(),
+              ],
+              _FriendActionTile(
+                icon: Icons.person_remove_outlined,
+                iconColor: const Color(0xFFFF445A),
+                label: 'Удалить из друзей',
+                labelColor: const Color(0xFFFF445A),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onRemoveFriend();
+                },
+              ),
+              _friendActionDivider(),
+              _FriendActionTile(
+                icon: Icons.block,
+                iconColor: const Color(0xFFFF445A),
+                label: 'Заблокировать',
+                labelColor: const Color(0xFFFF445A),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onBlock();
+                },
+              ),
+              const SizedBox(height: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _friendActionDivider() => Divider(
+        height: 1,
+        thickness: 1,
+        indent: 16,
+        endIndent: 16,
+        color: Colors.white.withValues(alpha: 0.07),
+      );
+
   @override
   Widget build(BuildContext context) {
     final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -835,58 +924,76 @@ class _FriendCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IntrinsicWidth(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.35),
-                ),
-              ),
-              child: InkWell(
-                onTap: onOpenProfile,
-                onLongPress: onSendAttentionSign,
-                borderRadius: BorderRadius.circular(14),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      UserAvatarWidget(
-                        profile: profile,
-                        size: 48,
-                        borderRadius: BorderRadius.circular(12),
+          Row(
+            children: [
+              Expanded(
+                child: IntrinsicWidth(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
                       ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Ник: ${_nickLabel(profile, friend.displayName)}',
-                            style: titleStyle,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _nameLabel(profile),
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
+                    ),
+                    child: InkWell(
+                      onTap: onOpenProfile,
+                      onLongPress: onSendAttentionSign,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            UserAvatarWidget(
+                              profile: profile,
+                              size: 48,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Ник: ${_nickLabel(profile, friend.displayName)}',
+                                  style: titleStyle,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _nameLabel(profile),
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.chevron_right,
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.color
+                                  ?.withValues(alpha: 0.7),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.chevron_right,
-                        color: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.color
-                            ?.withValues(alpha: 0.7),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => _showActionsSheet(context),
+                icon: const Icon(Icons.more_horiz, size: 18),
+                label: const Text('Меню'),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Container(
@@ -920,85 +1027,6 @@ class _FriendCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          // Строка 1: Создать чат + Заблокировать (серверные условия)
-          if (canCreateChat)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  OutlinedButton(
-                    onPressed: onCreateChat,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text('Создать чат'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton(
-                    onPressed: onBlock,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor: const Color(0xFFFF445A),
-                      side: const BorderSide(color: Color(0xFFFF445A)),
-                    ),
-                    child: const Text('Заблокировать'),
-                  ),
-                ],
-              ),
-            ),
-          // Строка 2: Удалить + Добавить в план
-          Row(
-            children: [
-              InkWell(
-                onTap: onRemoveFriend,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text(
-                    'Удалить',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: const Color.fromARGB(255, 238, 60, 60),
-                        ),
-                  ),
-                ),
-              ),
-              const Spacer(),
-              if (!canCreateChat)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: OutlinedButton(
-                    onPressed: onBlock,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      foregroundColor: const Color(0xFFFF445A),
-                      side: const BorderSide(color: Color(0xFFFF445A)),
-                    ),
-                    child: const Text('Заблокировать'),
-                  ),
-                ),
-              OutlinedButton(
-                onPressed: onAddToPlan,
-                style: OutlinedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text('Добавить в план'),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1014,5 +1042,44 @@ class _FriendCard extends StatelessWidget {
     final name = profile.name;
     if (name == null || name.isEmpty) return 'Имя: — Не указано';
     return 'Имя: $name';
+  }
+}
+
+class _FriendActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color labelColor;
+  final VoidCallback onTap;
+
+  const _FriendActionTile({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.labelColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 14),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: labelColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

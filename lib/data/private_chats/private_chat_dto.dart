@@ -63,10 +63,12 @@ class PrivateChatMessageDto {
   final String text;
   final DateTime createdAt;
   final DateTime? deletedAt;
+  final DateTime? editedAt;
   final String messageKind;
   final bool isMine;
 
   bool get isTombstone => deletedAt != null || messageKind == 'TOMBSTONE';
+  bool get isEdited => editedAt != null && !isTombstone;
 
   const PrivateChatMessageDto({
     required this.id,
@@ -76,6 +78,7 @@ class PrivateChatMessageDto {
     required this.text,
     required this.createdAt,
     this.deletedAt,
+    this.editedAt,
     required this.messageKind,
     required this.isMine,
   });
@@ -90,6 +93,9 @@ class PrivateChatMessageDto {
         createdAt: DateTime.parse(j['created_at'] as String),
         deletedAt: j['deleted_at'] != null
             ? DateTime.parse(j['deleted_at'] as String)
+            : null,
+        editedAt: j['edited_at'] != null
+            ? DateTime.parse(j['edited_at'] as String)
             : null,
         messageKind: j['message_kind'] as String? ?? 'USER_TEXT',
         isMine: j['is_mine'] as bool? ?? false,
@@ -108,6 +114,7 @@ class PrivateChatSnapshotDto {
   final int unreadCount;
   final List<PrivateChatMessageDto> messages;
   final bool hasMore;
+  final int? firstUnreadRoomSeq;
 
   const PrivateChatSnapshotDto({
     required this.chatId,
@@ -117,6 +124,7 @@ class PrivateChatSnapshotDto {
     required this.unreadCount,
     required this.messages,
     required this.hasMore,
+    this.firstUnreadRoomSeq,
   });
 
   factory PrivateChatSnapshotDto.fromJson(Map<String, dynamic> j) =>
@@ -131,6 +139,9 @@ class PrivateChatSnapshotDto {
                 PrivateChatMessageDto.fromJson(e as Map<String, dynamic>))
             .toList(),
         hasMore: j['has_more'] as bool? ?? false,
+        firstUnreadRoomSeq: j['first_unread_room_seq'] != null
+            ? (j['first_unread_room_seq'] as num).toInt()
+            : null,
       );
 }
 

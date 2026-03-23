@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -20,19 +22,24 @@ class _PrivateChatsListScreenState extends State<PrivateChatsListScreen>
   late final _repo =
       PrivateChatsRepositoryImpl(Supabase.instance.client);
 
+  static const _kRefreshInterval = Duration(seconds: 5);
+
   List<PrivateChatListItemDto> _chats = [];
   Map<String, UserMiniProfile> _profiles = {};
   bool _loading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    _refreshTimer = Timer.periodic(_kRefreshInterval, (_) => _load());
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
