@@ -25,6 +25,7 @@ import '../leaderboard/leaderboard_screen.dart';
 import '../common/center_toast.dart';
 import '../blocks/blocks_screen.dart';
 import '../attention_signs/attention_sign_box_screen.dart';
+import '../attention_signs/attention_signs_bus.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -511,18 +512,41 @@ class _AttentionSignBoxIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkResponse(
-      containedInkWell: true,
-      highlightShape: BoxShape.circle,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AttentionSignBoxScreen(appUserId: userId),
-        ),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-        child: Text('🎁', style: TextStyle(fontSize: 63)),
-      ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: AttentionSignsBus.instance.hasIncoming,
+      builder: (context, hasIncoming, _) {
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            InkResponse(
+              containedInkWell: true,
+              highlightShape: BoxShape.circle,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AttentionSignBoxScreen(appUserId: userId),
+                ),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                child: Text('🎁', style: TextStyle(fontSize: 63)),
+              ),
+            ),
+            if (hasIncoming)
+              Positioned(
+                right: 2,
+                top: 2,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
