@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../common/center_toast.dart';
 
+import '../../data/attention_signs/attention_signs_repository_impl.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
 import '../../data/friends/friends_repository_impl.dart';
@@ -50,6 +51,7 @@ class PlanMembersModal extends StatefulWidget {
 
 class _PlanMembersModalState extends State<PlanMembersModal> {
   late final FriendsRepository _friendsRepository;
+  late final AttentionSignsRepositoryImpl _attentionSignsRepo;
 
   late PlanMemberDto _owner;
   late List<PlanMemberDto> _members;
@@ -75,6 +77,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
   void initState() {
     super.initState();
     _friendsRepository = FriendsRepositoryImpl(Supabase.instance.client);
+    _attentionSignsRepo = AttentionSignsRepositoryImpl(Supabase.instance.client);
 
     _owner = widget.ownerMember;
     _members = List<PlanMemberDto>.from(widget.members);
@@ -321,6 +324,74 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
     }
   }
 
+  Future<void> _handleSendAttentionSign(PlanMemberDto target) async {
+    if (!mounted) return;
+    if (widget.isReadOnly) return;
+    if (target.isMe == true) return;
+
+    final nick = target.nickname;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Знак внимания'),
+        content: Text(
+            'Вы действительно хотите отправить знак внимания пользователю $nick?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    try {
+      final box = await _attentionSignsRepo.getMyBox(appUserId: widget.appUserId);
+      if (!mounted) return;
+
+      final mySign = box.mySign;
+      if (mySign == null) {
+        await showCenterToast(
+          context,
+          message: 'Сегодня знаков не осталось. Ждите следующий знак.',
+          isError: true,
+        );
+        return;
+      }
+
+      final result = await _attentionSignsRepo.sendSign(
+        appUserId: widget.appUserId,
+        targetUserId: target.appUserId,
+        dailySignId: mySign.dailySignId,
+      );
+      if (!mounted) return;
+      if (result.isSuccess) {
+        await showCenterToast(context, message: 'Знак внимания отправлен');
+      } else {
+        await showCenterToast(
+          context,
+          message: result.error ?? 'Не удалось отправить знак',
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      await showCenterToast(
+        context,
+        message: 'Ошибка отправки знака: $e',
+        isError: true,
+      );
+    }
+  }
+
   Future<bool> _confirmRemoveMemberDialog() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -441,6 +512,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                       cardContext: 'in_plans',
                     ));
                   },
+                  onLongPress: (_owner.isMe == true || widget.isReadOnly)
+                      ? null
+                      : () => unawaited(_handleSendAttentionSign(_owner)),
                 ),
               ),
               const Divider(height: 1, thickness: 1),
@@ -472,6 +546,9 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
                           cardContext: 'in_plans',
                         ));
                       },
+                      onLongPress: (m.isMe == true || widget.isReadOnly)
+                          ? null
+                          : () => unawaited(_handleSendAttentionSign(m)),
                     );
                   },
                 ),
@@ -546,6 +623,7 @@ class _MemberRow extends StatelessWidget {
   final bool removeDisabled;
   final VoidCallback onRemoveMemberPressed;
   final VoidCallback onOpenProfile;
+  final VoidCallback? onLongPress;
 
   const _MemberRow({
     required this.member,
@@ -557,6 +635,7 @@ class _MemberRow extends StatelessWidget {
     required this.removeDisabled,
     required this.onRemoveMemberPressed,
     required this.onOpenProfile,
+    this.onLongPress,
   });
 
   @override
@@ -584,6 +663,7 @@ class _MemberRow extends StatelessWidget {
         ),
         child: InkWell(
           onTap: onOpenProfile,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

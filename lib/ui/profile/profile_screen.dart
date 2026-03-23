@@ -23,6 +23,8 @@ import '../../data/bonus/bonus_repository_impl.dart';
 import '../../data/leaderboard/leaderboard_repository_impl.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../common/center_toast.dart';
+import '../blocks/blocks_screen.dart';
+import '../attention_signs/attention_sign_box_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -445,16 +447,20 @@ class _ProfileContent extends StatelessWidget {
                           const SizedBox(height: 6),
                           _PrivacySettingsTextLink(),
                           const SizedBox(height: 2),
+                          _BlockingTextLink(userId: userId),
+                          const SizedBox(height: 2),
                           _MyPlacesTextLink(),
                           const SizedBox(height: 2),
                           _RatingTextLink(userId: userId),
+                          const SizedBox(height: 6),
+                          _AttentionSignBoxIcon(userId: userId),
                         ],
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 4),
+                const SizedBox(height: 12),
 
                 // Секция "Стиль отдыха" — нижняя часть профиля
                 _LeisureSection(
@@ -486,6 +492,37 @@ class _ProfileContent extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+// =======================
+// App Version Label
+// =======================
+
+// =======================
+// Коробка знаков внимания — карточка в профиле
+// =======================
+
+class _AttentionSignBoxIcon extends StatelessWidget {
+  final String userId;
+
+  const _AttentionSignBoxIcon({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkResponse(
+      containedInkWell: true,
+      highlightShape: BoxShape.circle,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AttentionSignBoxScreen(appUserId: userId),
+        ),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Text('🎁', style: TextStyle(fontSize: 63)),
+      ),
     );
   }
 }
@@ -850,6 +887,44 @@ class _PrivacySettingsTextLink extends StatelessWidget {
             Icon(Icons.lock_outline, size: 14, color: colors.primary),
             const SizedBox(width: 5),
             Text('Настройки',
+                style: text.bodySmall?.copyWith(color: colors.primary)),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right, size: 14, color: colors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Блокировка — текстовая ссылка
+// =======================
+
+class _BlockingTextLink extends StatelessWidget {
+  final String userId;
+
+  const _BlockingTextLink({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+            builder: (_) => BlocksScreen(appUserId: userId)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.block_outlined, size: 14, color: colors.primary),
+            const SizedBox(width: 5),
+            Text('Блокировка',
                 style: text.bodySmall?.copyWith(color: colors.primary)),
             const SizedBox(width: 2),
             Icon(Icons.chevron_right, size: 14, color: colors.primary),

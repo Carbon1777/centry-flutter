@@ -7,7 +7,11 @@ import '../common/center_toast.dart';
 import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
+import '../../data/attention_signs/attention_signs_repository_impl.dart';
+import '../../data/blocks/blocks_repository_impl.dart';
+import '../../data/private_chats/private_chats_repository_impl.dart';
 import '../../features/profile/user_card_sheet.dart';
+import '../private_chats/private_chat_screen.dart';
 import 'widgets/add_friend_by_public_id_dialog.dart';
 import 'friends_refresh_bus.dart';
 import 'modals/add_friend_to_plan_modal.dart';
@@ -30,6 +34,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
   bool _loading = true;
   List<FriendDto> _friends = const <FriendDto>[];
   Map<String, UserMiniProfile> _profiles = {};
+  // canCreate[friendUserId] == true → кнопка «Создать чат» видна
+  Map<String, bool> _canCreateChat = {};
+  late final _privateChatsRepo =
+      PrivateChatsRepositoryImpl(Supabase.instance.client);
+  late final _blocksRepo = BlocksRepositoryImpl(Supabase.instance.client);
+  late final _attentionSignsRepo =
+      AttentionSignsRepositoryImpl(Supabase.instance.client);
 
   RealtimeChannel? _friendshipsLowSub;
   RealtimeChannel? _friendshipsHighSub;
@@ -59,15 +70,27 @@ class _FriendsScreenState extends State<FriendsScreen> {
       );
       if (!mounted) return;
 
-      final profiles = await loadUserMiniProfiles(
-        userIds: friends.map((f) => f.friendUserId).toList(),
-        context: 'friends',
-      );
+      final ids = friends.map((f) => f.friendUserId).toList();
+
+      final results = await Future.wait([
+        loadUserMiniProfiles(userIds: ids, context: 'friends'),
+        // Параллельно проверяем canCreateChat для каждого друга
+        Future.wait(ids.map((id) => _privateChatsRepo
+            .canCreatePrivateChat(appUserId: widget.appUserId, partnerId: id)
+            .then((r) => MapEntry(id, r.canCreate))
+            .catchError((_) => MapEntry(id, false)))),
+      ]);
       if (!mounted) return;
+
+      final profiles = results[0] as Map<String, UserMiniProfile>;
+      final canCreateEntries =
+          (results[1] as List<MapEntry<String, bool>>);
+      final canCreate = Map<String, bool>.fromEntries(canCreateEntries);
 
       setState(() {
         _friends = friends;
         _profiles = profiles;
+        _canCreateChat = canCreate;
         _loading = false;
       });
     } catch (e) {
@@ -305,6 +328,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           return _FriendCard(
             friend: friend,
             profile: _profiles[friend.friendUserId],
+            canCreateChat: _canCreateChat[friend.friendUserId] ?? false,
             onOpenProfile: () {
               unawaited(UserCardSheet.show(
                 context,
@@ -324,6 +348,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
             },
             onRemoveFriend: () {
               unawaited(_removeFriend(context, friend));
+            },
+            onCreateChat: () {
+              unawaited(_createChat(context, friend));
+            },
+            onBlock: () {
+              unawaited(_blockFriend(context, friend));
+            },
+            onSendAttentionSign: () {
+              unawaited(_handleSendAttentionSign(context, friend));
             },
           );
         },
@@ -603,6 +636,75 @@ class _FriendsScreenState extends State<FriendsScreen> {
     }
   }
 
+  Future<void> _createChat(BuildContext context, FriendDto friend) async {
+    final nick = _profiles[friend.friendUserId]?.nickname ?? friend.displayName;
+    final confirmed = await _confirm(
+      context,
+      title: 'Создать чат',
+      message: 'Создать чат с пользователем $nick?',
+      confirmText: 'Создать',
+      cancelText: 'Отмена',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    try {
+      final result = await _privateChatsRepo.createPrivateChat(
+        appUserId: widget.appUserId,
+        partnerId: friend.friendUserId,
+      );
+      if (!context.mounted) return;
+
+      if (!result.isSuccess) {
+        await _showError(context, result.error ?? 'Ошибка создания чата');
+        return;
+      }
+
+      final profile = _profiles[friend.friendUserId];
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          appUserId: widget.appUserId,
+          chatId: result.chatId!,
+          partnerUserId: friend.friendUserId,
+          partnerProfile: profile,
+        ),
+      ));
+      if (!mounted) return;
+      await _load();
+    } catch (e) {
+      if (!context.mounted) return;
+      await _showError(context, e);
+    }
+  }
+
+  Future<void> _blockFriend(BuildContext context, FriendDto friend) async {
+    final nick = _profiles[friend.friendUserId]?.nickname ?? friend.displayName;
+    final confirmed = await _confirm(
+      context,
+      title: 'Заблокировать',
+      message: 'Заблокировать $nick? Дружба будет разорвана.',
+      confirmText: 'Заблокировать',
+      cancelText: 'Отмена',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    try {
+      final result = await _blocksRepo.blockUser(
+        appUserId: widget.appUserId,
+        targetUserId: friend.friendUserId,
+      );
+      if (!context.mounted) return;
+
+      if (result.isSuccess) {
+        await showCenterToast(context, message: 'Пользователь заблокирован');
+        if (!mounted) return;
+        await _load();
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      await _showError(context, e);
+    }
+  }
+
   Future<void> _removeFriend(BuildContext context, FriendDto friend) async {
     final confirmed = await _confirmRemove(context, friend.displayName);
     if (!confirmed) return;
@@ -628,24 +730,90 @@ class _FriendsScreenState extends State<FriendsScreen> {
       await _showError(context, e);
     }
   }
+
+  Future<void> _handleSendAttentionSign(
+      BuildContext context, FriendDto friend) async {
+    final nick = friend.displayName;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Знак внимания'),
+        content: Text(
+            'Вы действительно хотите отправить знак внимания пользователю $nick?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    try {
+      final box =
+          await _attentionSignsRepo.getMyBox(appUserId: widget.appUserId);
+      if (!context.mounted) return;
+      final mySign = box.mySign;
+      if (mySign == null) {
+        await showCenterToast(
+          context,
+          message: 'Сегодня знаков не осталось. Ждите следующий знак.',
+          isError: true,
+        );
+        return;
+      }
+      final result = await _attentionSignsRepo.sendSign(
+        appUserId: widget.appUserId,
+        targetUserId: friend.friendUserId,
+        dailySignId: mySign.dailySignId,
+      );
+      if (!context.mounted) return;
+      if (result.isSuccess) {
+        await showCenterToast(context, message: 'Знак внимания отправлен');
+      } else {
+        await showCenterToast(
+          context,
+          message: result.error ?? 'Не удалось отправить знак',
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      await showCenterToast(context, message: 'Ошибка: $e', isError: true);
+    }
+  }
 }
 
 class _FriendCard extends StatelessWidget {
   final FriendDto friend;
   final UserMiniProfile? profile;
+  final bool canCreateChat;
 
   final VoidCallback onOpenProfile;
   final VoidCallback onEditNote;
   final VoidCallback onAddToPlan;
   final VoidCallback onRemoveFriend;
+  final VoidCallback onCreateChat;
+  final VoidCallback onBlock;
+  final VoidCallback onSendAttentionSign;
 
   const _FriendCard({
     required this.friend,
     required this.profile,
+    required this.canCreateChat,
     required this.onOpenProfile,
     required this.onEditNote,
     required this.onAddToPlan,
     required this.onRemoveFriend,
+    required this.onCreateChat,
+    required this.onBlock,
+    required this.onSendAttentionSign,
   });
 
   @override
@@ -663,51 +831,60 @@ class _FriendCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.25),
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: onOpenProfile,
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  UserAvatarWidget(
-                    profile: profile,
-                    size: 48,
-                    borderRadius: BorderRadius.circular(12),
+          IntrinsicWidth(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.35),
+                ),
+              ),
+              child: InkWell(
+                onTap: onOpenProfile,
+                onLongPress: onSendAttentionSign,
+                borderRadius: BorderRadius.circular(14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      UserAvatarWidget(
+                        profile: profile,
+                        size: 48,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Ник: ${_nickLabel(profile, friend.displayName)}',
+                            style: titleStyle,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _nameLabel(profile),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.chevron_right,
+                        color: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.color
+                            ?.withValues(alpha: 0.7),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Ник: ${_nickLabel(profile, friend.displayName)}',
-                          style: titleStyle,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _nameLabel(profile),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.color
-                        ?.withValues(alpha: 0.7),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -744,6 +921,39 @@ class _FriendCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
+          // Строка 1: Создать чат + Заблокировать (серверные условия)
+          if (canCreateChat)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: onCreateChat,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Создать чат'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: onBlock,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: const Color(0xFFFF445A),
+                      side: const BorderSide(color: Color(0xFFFF445A)),
+                    ),
+                    child: const Text('Заблокировать'),
+                  ),
+                ],
+              ),
+            ),
+          // Строка 2: Удалить + Добавить в план
           Row(
             children: [
               InkWell(
@@ -761,6 +971,22 @@ class _FriendCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              if (!canCreateChat)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: OutlinedButton(
+                    onPressed: onBlock,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: const Color(0xFFFF445A),
+                      side: const BorderSide(color: Color(0xFFFF445A)),
+                    ),
+                    child: const Text('Заблокировать'),
+                  ),
+                ),
               OutlinedButton(
                 onPressed: onAddToPlan,
                 style: OutlinedButton.styleFrom(

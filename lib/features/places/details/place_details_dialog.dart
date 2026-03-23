@@ -2,6 +2,7 @@ import '../../../data/local/user_snapshot_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/services.dart';
+import '../../../data/attention_signs/attention_signs_repository_impl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/feed/feed_repository.dart';
@@ -1540,6 +1541,8 @@ class _FeedPlanParticipantsDialog extends StatefulWidget {
 class _FeedPlanParticipantsDialogState
     extends State<_FeedPlanParticipantsDialog> {
   String? _currentAppUserId;
+  late final _attentionSignsRepo =
+      AttentionSignsRepositoryImpl(Supabase.instance.client);
 
   @override
   void initState() {
@@ -1549,6 +1552,52 @@ class _FeedPlanParticipantsDialogState
         setState(() => _currentAppUserId = snapshot.id);
       }
     });
+  }
+
+  Future<void> _handleSendAttentionSign(
+      String targetUserId, String? nickname) async {
+    final myUserId = _currentAppUserId;
+    if (myUserId == null) return;
+
+    final nick =
+        nickname?.isNotEmpty == true ? nickname! : 'этого участника';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Знак внимания'),
+        content: Text(
+            'Вы действительно хотите отправить знак внимания пользователю $nick?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Отправить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    try {
+      final box = await _attentionSignsRepo.getMyBox(appUserId: myUserId);
+      final mySign = box.mySign;
+      if (mySign == null) {
+        if (mounted) showCenterToast(context, message: 'Нет знака для отправки');
+        return;
+      }
+      await _attentionSignsRepo.sendSign(
+        appUserId: myUserId,
+        targetUserId: targetUserId,
+        dailySignId: mySign.dailySignId,
+      );
+      if (mounted) showCenterToast(context, message: 'Знак внимания отправлен!');
+    } catch (e) {
+      if (mounted) showCenterToast(context, message: 'Ошибка: $e');
+    }
   }
 
   @override
@@ -1641,6 +1690,9 @@ class _FeedPlanParticipantsDialogState
                                       targetUserId: p.userId!,
                                       cardContext: 'in_feed',
                                     )
+                                : null,
+                            onLongPress: (p.userId != null && !isMe)
+                                ? () => _handleSendAttentionSign(p.userId!, p.nickname)
                                 : null,
                           ),
                         );

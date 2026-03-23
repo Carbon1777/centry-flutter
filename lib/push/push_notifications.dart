@@ -461,8 +461,9 @@ class PushNotifications {
         return;
       }
 
-      // Chat message: tap just brings app to foreground, no navigation needed.
+      // Chat messages: tap just brings app to foreground, no navigation needed.
       if (kind == 'PLAN_CHAT_MESSAGE') return;
+      if (kind == 'PRIVATE_CHAT_MESSAGE') return;
 
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
@@ -570,6 +571,11 @@ class PushNotifications {
   static bool isPlanChatMessage(RemoteMessage m) {
     final t = (m.data['type'] ?? '').toString().trim();
     return t == 'PLAN_CHAT_MESSAGE';
+  }
+
+  static bool isPrivateChatMessage(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString().trim();
+    return t == 'PRIVATE_CHAT_MESSAGE';
   }
 
   static bool isFriendRequestReceived(RemoteMessage m) {
@@ -1308,6 +1314,56 @@ class PushNotifications {
     await _local.show(id, title, normalizedBody, details, payload: payload);
   }
 
+  static Future<void> showPrivateChatMessage(RemoteMessage m) async {
+    if (!isPrivateChatMessage(m)) return;
+
+    final chatId = (m.data['chat_id'] ?? '').toString().trim();
+
+    const title = 'Новое сообщение';
+    const body =
+        'У вас новое личное сообщение. Откройте приложение, чтобы посмотреть.';
+
+    final msgId = (m.messageId ?? '').toString();
+    final idSeed = chatId.isNotEmpty
+        ? 'private_chat_message:$chatId'
+        : (msgId.isNotEmpty ? 'private_chat_message:$msgId' : 'private_chat_message');
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      ...m.data,
+      'kind': 'PRIVATE_CHAT_MESSAGE',
+      'type': 'PRIVATE_CHAT_MESSAGE',
+      if (chatId.isNotEmpty) 'chat_id': chatId,
+      'title': title,
+      'body': body,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+  }
+
   static Future<void> showPlanChatMessage(RemoteMessage m) async {
     if (!isPlanChatMessage(m)) return;
 
@@ -1392,6 +1448,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showFriendRequest(message);
     await PushNotifications.showFriendRemoved(message);
     await PushNotifications.showPlanChatMessage(message);
+    await PushNotifications.showPrivateChatMessage(message);
   } catch (e) {
     // ignore
   }
