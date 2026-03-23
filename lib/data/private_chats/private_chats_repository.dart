@@ -45,4 +45,30 @@ abstract class PrivateChatsRepository {
     required String appUserId,
     required String chatId,
   });
+
+  Future<void> editMessage({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+    required String text,
+  });
+
+  Future<void> deleteMessageForAll({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+  });
+
+  Future<void> deleteMessageForMe({
+    required String appUserId,
+    required String chatId,
+    required String messageId,
+  });
+
+  Future<void> deleteMessagesBulk({
+    required String appUserId,
+    required String chatId,
+    required List<String> messageIds,
+    required String mode,
+  });
 }

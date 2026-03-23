@@ -209,7 +209,10 @@ function isPlanVotingOrEventReminder(payload: Record<string, unknown>): boolean 
 }
 
 function isAttentionSignReceived(payload: Record<string, unknown>): boolean {
-  return String(payload["type"] ?? "") === "ATTENTION_SIGN_RECEIVED";
+  const t = String(payload["type"] ?? "");
+  return t === "ATTENTION_SIGN_RECEIVED"
+    || t === "ATTENTION_SIGN_ACCEPTED"
+    || t === "ATTENTION_SIGN_DECLINED";
 }
 
 function safeShort(text: string, maxLen: number): string {

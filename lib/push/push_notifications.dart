@@ -1451,6 +1451,77 @@ class PushNotifications {
     await _local.show(id, title, body, details, payload: payload);
   }
 
+  static bool _isAttentionSignAcceptedOrDeclined(RemoteMessage m) {
+    final t = (m.data['type'] ?? '').toString().trim();
+    return t == 'ATTENTION_SIGN_ACCEPTED' || t == 'ATTENTION_SIGN_DECLINED';
+  }
+
+  static Future<void> showAttentionSignAcceptedOrDeclined(RemoteMessage m) async {
+    if (!_isAttentionSignAcceptedOrDeclined(m)) return;
+
+    final t = (m.data['type'] ?? '').toString().trim();
+    final isAccepted = t == 'ATTENTION_SIGN_ACCEPTED';
+    final title = isAccepted ? 'Знак внимания принят' : 'Знак внимания отклонён';
+    final body = isAccepted
+        ? 'Ваш знак внимания был принят'
+        : 'Ваш знак внимания был отклонён';
+
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
+    final idSeed = eventId.isNotEmpty
+        ? 'attention_sign_result:$eventId'
+        : 'attention_sign_result:${m.messageId ?? ''}';
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      ...m.data,
+      'kind': t,
+      'type': t,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
+      'title': title,
+      'body': body,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+  }
+
   static Future<void> showPlanChatMessage(RemoteMessage m) async {
     if (!isPlanChatMessage(m)) return;
 
@@ -1537,6 +1608,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showPlanChatMessage(message);
     await PushNotifications.showPrivateChatMessage(message);
     await PushNotifications.showAttentionSignReceived(message);
+    await PushNotifications.showAttentionSignAcceptedOrDeclined(message);
   } catch (e) {
     // ignore
   }

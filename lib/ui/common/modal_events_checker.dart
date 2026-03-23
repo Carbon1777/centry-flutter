@@ -95,17 +95,18 @@ Future<void> _showEventModal({
     final submissionId = p['submission_id'] as String?;
     final showInviteButton = isAccepted && !alreadyFriends && submissionId != null;
 
-    final result = await showDialog<String>(
+    final title = isAccepted ? 'Знак внимания принят' : 'Знак внимания отклонён';
+    final body = isAccepted
+        ? '«$nick» принял ваш знак внимания!'
+        : '«$nick» отклонил ваш знак внимания.';
+
+    final result = await _showAttentionSignDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _ModalEventDialog(
-        nick: nick,
-        isAccepted: isAccepted,
-        stickerUrl: event.stickerUrl,
-        showInviteButton: showInviteButton,
-        onInvite: showInviteButton ? () => Navigator.of(ctx).pop('invite') : null,
-        onClose: () => Navigator.of(ctx).pop(),
-      ),
+      title: title,
+      body: body,
+      titleColor: isAccepted ? Colors.green : Colors.red,
+      stickerUrl: event.stickerUrl,
+      showInviteButton: showInviteButton,
     );
 
     try {
@@ -594,6 +595,77 @@ Future<_DialogResult?> _showFriendRequestDialog({
   );
 }
 
+/// Для ATTENTION_SIGN_ACCEPTED / DECLINED —
+/// единый стиль с остальными модалками, но со стикером.
+Future<String?> _showAttentionSignDialog({
+  required BuildContext context,
+  required String title,
+  required String body,
+  Color? titleColor,
+  String? stickerUrl,
+  bool showInviteButton = false,
+}) {
+  return showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    useRootNavigator: true,
+    builder: (ctx) => AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+      titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+      contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+      actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      title: Text(
+        title,
+        style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: titleColor,
+            ),
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (stickerUrl != null && stickerUrl.isNotEmpty) ...[
+              CachedNetworkImage(
+                imageUrl: stickerUrl,
+                width: 80,
+                height: 80,
+                fit: BoxFit.contain,
+                errorWidget: (_, __, ___) => Icon(
+                  Icons.star_outline,
+                  size: 64,
+                  color: Theme.of(ctx).colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            Text(
+              body,
+              style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                    fontSize: 16,
+                    height: 1.3,
+                  ),
+            ),
+          ],
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        if (showInviteButton)
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('invite'),
+            child: const Text('Пригласить в друзья'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Закрыть'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Для PLAN_VOTING_REMINDER_* и PLAN_OWNER_PRIORITY_* —
 /// показывает «Перейти к плану» (возвращает accept) и «Закрыть» (null).
 Future<_DialogResult?> _showScheduledDialog({
@@ -646,73 +718,3 @@ Future<_DialogResult?> _showScheduledDialog({
   );
 }
 
-// ── Existing ATTENTION_SIGN dialog widget (unchanged) ──────────────────────
-
-class _ModalEventDialog extends StatelessWidget {
-  final String nick;
-  final bool isAccepted;
-  final String? stickerUrl;
-  final bool showInviteButton;
-  final VoidCallback? onInvite;
-  final VoidCallback onClose;
-
-  const _ModalEventDialog({
-    required this.nick,
-    required this.isAccepted,
-    required this.stickerUrl,
-    required this.showInviteButton,
-    this.onInvite,
-    required this.onClose,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final title = isAccepted
-        ? '«$nick» принял ваш знак внимания!'
-        : '«$nick» отклонил ваш знак внимания';
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (stickerUrl != null) ...[
-            CachedNetworkImage(
-              imageUrl: stickerUrl!,
-              width: 80,
-              height: 80,
-              fit: BoxFit.contain,
-              errorWidget: (_, __, ___) => Icon(
-                Icons.star_outline,
-                size: 64,
-                color: colors.primary,
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodyLarge
-                ?.copyWith(fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-      actions: [
-        if (showInviteButton)
-          TextButton(
-            onPressed: onInvite,
-            child: const Text('Пригласить в друзья'),
-          ),
-        TextButton(
-          onPressed: onClose,
-          child: const Text('Закрыть'),
-        ),
-      ],
-    );
-  }
-}
