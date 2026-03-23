@@ -25,8 +25,10 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
   @override
   void initState() {
     super.initState();
-    // Пользователь открыл Коробку — сбрасываем красные кружки немедленно.
-    AttentionSignsBus.instance.setHasIncoming(false);
+    // Сбрасываем бейдж в следующем фрейме, чтобы не менять notifier во время build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AttentionSignsBus.instance.setHasIncoming(false);
+    });
     _load();
   }
 
@@ -75,20 +77,22 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: _BoxContent(
-                box: _box!,
-                onAccept: _handleAccept,
-                onDecline: _handleDecline,
-              ),
+          : _BoxContent(
+              box: _box!,
+              onAccept: _handleAccept,
+              onDecline: _handleDecline,
             ),
     );
   }
 }
 
+// ─── Layout constants ────────────────────────────────────────────────────────
+const int _kColumnsPerRow = 3;
+const double _kCellSpacing = 12;
+const double _kGridStickerSize = 86;
+
 // =======================
-// Контент коробки
+// Контент — Column без общего скролла
 // =======================
 
 class _BoxContent extends StatelessWidget {
@@ -104,48 +108,51 @@ class _BoxContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      children: [
-        // ─── Блок 1: Накопления ─────────────────────────
-        _SectionHeader(title: 'Накопления'),
-        const SizedBox(height: 8),
-        if (box.collection.isEmpty)
-          _EmptyHint(text: 'Принятых знаков пока нет')
-        else
-          _CollectionBlock(items: box.collection),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ─── Блок 1: Накопления ─────────────
+          const _SectionHeader(title: 'Накопления'),
+          const SizedBox(height: 8),
+          Expanded(
+            flex: 3,
+            child: box.collection.isEmpty
+                ? const _EmptyHint(text: 'Принятых знаков пока нет')
+                : _CollectionGrid(items: box.collection),
+          ),
 
-        const SizedBox(height: 20),
+          const SizedBox(height: 8),
 
-        // ─── Блок 2: На рассмотрении ────────────────────
-        _SectionHeader(title: 'На рассмотрении'),
-        const SizedBox(height: 8),
-        if (box.incoming.isEmpty)
-          _EmptyHint(text: 'Знаков внимания на рассмотрении нет')
-        else
-          ...box.incoming.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _IncomingSignCard(
-                  sign: s,
-                  onAccept: () => onAccept(s.submissionId),
-                  onDecline: () => onDecline(s.submissionId),
-                ),
-              )),
+          // ─── Блок 2: На рассмотрении ────────
+          const _SectionHeader(title: 'На рассмотрении'),
+          const SizedBox(height: 8),
+          Expanded(
+            flex: 3,
+            child: box.incoming.isEmpty
+                ? const _EmptyHint(text: 'Знаков внимания на рассмотрении нет')
+                : _IncomingGrid(
+                    items: box.incoming,
+                    onAccept: onAccept,
+                    onDecline: onDecline,
+                  ),
+          ),
 
-        const SizedBox(height: 20),
+          const SizedBox(height: 8),
 
-        // ─── Блок 3: Мой знак ───────────────────────────
-        _SectionHeader(title: 'Мой знак внимания'),
-        const SizedBox(height: 2),
-        if (box.mySign == null)
-          _EmptyHint(
-              text:
-                  'Сегодня свободных знаков не осталось. Ждите следующий знак.')
-        else
-          _MySignCard(sign: box.mySign!),
-
-        const SizedBox(height: 24),
-      ],
+          // ─── Блок 3: Мой знак ─
+          const _SectionHeader(title: 'Мой знак внимания'),
+          const SizedBox(height: 4),
+          Expanded(
+            flex: 4,
+            child: box.mySign == null
+                ? const _EmptyHint(
+                    text: 'Сегодня свободных знаков не осталось. Ждите следующий знак.')
+                : _MySignCard(sign: box.mySign!),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -176,43 +183,43 @@ class _EmptyHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withValues(alpha: 0.45)),
-      ),
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.45)),
     );
   }
 }
 
 // =======================
-// Блок накоплений
+// Блок накоплений — сетка 3 в ряд, внутренний скролл
 // =======================
 
-class _CollectionBlock extends StatelessWidget {
+class _CollectionGrid extends StatelessWidget {
   final List<CollectedAttentionSignDto> items;
-  const _CollectionBlock({required this.items});
+  const _CollectionGrid({required this.items});
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+    return LayoutBuilder(builder: (context, constraints) {
+      final cellW = (constraints.maxWidth - _kCellSpacing * (_kColumnsPerRow - 1)) / _kColumnsPerRow;
+      return SingleChildScrollView(
         child: Wrap(
-          spacing: 16,
-          runSpacing: 12,
-          children: items.map((item) => _CollectionItem(item: item)).toList(),
+          spacing: _kCellSpacing,
+          runSpacing: _kCellSpacing,
+          alignment: WrapAlignment.center,
+          children: items
+              .map((item) => SizedBox(
+                    width: cellW,
+                    child: _CollectionItem(item: item),
+                  ))
+              .toList(),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -225,10 +232,10 @@ class _CollectionItem extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SignSticker(url: item.stickerUrl, size: 56),
-        const SizedBox(height: 4),
+        _SignSticker(url: item.stickerUrl, size: _kGridStickerSize),
+        const SizedBox(height: 2),
         Text(
-          '×${item.count}',
+          '\u00d7${item.count}',
           style: Theme.of(context)
               .textTheme
               .labelMedium
@@ -240,15 +247,51 @@ class _CollectionItem extends StatelessWidget {
 }
 
 // =======================
-// Входящий знак
+// На рассмотрении — сетка 3 в ряд, внутренний скролл
 // =======================
 
-class _IncomingSignCard extends StatelessWidget {
+class _IncomingGrid extends StatelessWidget {
+  final List<IncomingAttentionSignDto> items;
+  final void Function(String) onAccept;
+  final void Function(String) onDecline;
+
+  const _IncomingGrid({
+    required this.items,
+    required this.onAccept,
+    required this.onDecline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final cellW = (constraints.maxWidth - _kCellSpacing * (_kColumnsPerRow - 1)) / _kColumnsPerRow;
+      return SingleChildScrollView(
+        child: Wrap(
+          spacing: _kCellSpacing,
+          runSpacing: _kCellSpacing,
+          alignment: WrapAlignment.center,
+          children: items
+              .map((s) => SizedBox(
+                    width: cellW,
+                    child: _IncomingItem(
+                      sign: s,
+                      onAccept: () => onAccept(s.submissionId),
+                      onDecline: () => onDecline(s.submissionId),
+                    ),
+                  ))
+              .toList(),
+        ),
+      );
+    });
+  }
+}
+
+class _IncomingItem extends StatelessWidget {
   final IncomingAttentionSignDto sign;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
-  const _IncomingSignCard({
+  const _IncomingItem({
     required this.sign,
     required this.onAccept,
     required this.onDecline,
@@ -256,67 +299,44 @@ class _IncomingSignCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-
-    return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            _SignSticker(url: sign.stickerUrl, size: 52),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    sign.fromNickname ?? '—',
-                    style:
-                        text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    'прислал(а) знак внимания',
-                    style: text.bodySmall?.copyWith(
-                        color: colors.onSurface.withValues(alpha: 0.5)),
-                  ),
-                ],
+    final nick = sign.fromNickname ?? '—';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          'От «$nick»',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 2),
+        _SignSticker(url: sign.stickerUrl, size: _kGridStickerSize),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: onAccept,
+              child: const Icon(Icons.check_circle, color: Colors.green, size: 32),
             ),
-            const SizedBox(width: 8),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextButton(
-                  onPressed: onAccept,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(72, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  child: const Text('Принять'),
-                ),
-                TextButton(
-                  onPressed: onDecline,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(72, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    foregroundColor: colors.onSurface.withValues(alpha: 0.5),
-                  ),
-                  child: const Text('Отклонить'),
-                ),
-              ],
+            const SizedBox(width: 24),
+            GestureDetector(
+              onTap: onDecline,
+              child: const Icon(Icons.cancel, color: Colors.red, size: 32),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
 
 // =======================
-// Мой знак
+// Мой знак — центрируется в оставшемся пространстве
 // =======================
 
 class _MySignCard extends StatelessWidget {
@@ -325,42 +345,42 @@ class _MySignCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Align(
-          alignment: Alignment.topCenter,
-          heightFactor: 0.72,
-          child: CachedNetworkImage(
-            imageUrl: sign.stickerUrl,
-            width: 224,
-            fit: BoxFit.fitWidth,
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: CachedNetworkImage(
+              imageUrl: sign.stickerUrl,
+              width: 200,
+              fit: BoxFit.fitWidth,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Знак внимания',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
+          const SizedBox(height: 8),
+          const Text(
+            'Знак внимания',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Пропадет в 00:00',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.45),
-            fontSize: 12,
+          const SizedBox(height: 4),
+          Text(
+            'Пропадет в 00:00',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.45),
+              fontSize: 12,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 // =======================
-// Стикер знака
+// Стикер знака (без фона, без рамки)
 // =======================
 
 class _SignSticker extends StatelessWidget {

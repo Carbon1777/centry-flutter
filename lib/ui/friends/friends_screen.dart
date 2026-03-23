@@ -641,7 +641,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final confirmed = await _confirm(
       context,
       title: 'Создать чат',
-      message: 'Создать чат с пользователем $nick?',
+      message: 'Создать чат с пользователем «$nick»?',
       confirmText: 'Создать',
       cancelText: 'Отмена',
     );
@@ -681,7 +681,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final confirmed = await _confirm(
       context,
       title: 'Заблокировать',
-      message: 'Заблокировать $nick? Дружба будет разорвана.',
+      message: 'Заблокировать «$nick»? Дружба будет разорвана.',
       confirmText: 'Заблокировать',
       cancelText: 'Отмена',
     );
@@ -739,7 +739,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Знак внимания'),
         content: Text(
-            'Вы действительно хотите отправить знак внимания пользователю $nick?'),
+            'Вы действительно хотите отправить знак внимания пользователю «$nick»?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),

@@ -736,6 +736,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     _fcmMessageSub?.cancel();
 
     _fcmMessageSub = FirebaseMessaging.onMessage.listen((m) async {
+      final msgType = (m.data['type'] ?? '').toString().trim();
+      debugPrint('[FCM-FG] received type=$msgType');
+
       // Existing working flows: keep unchanged.
       await PushNotifications.showInternalInvite(m);
       await PushNotifications.showFriendRequest(m);
@@ -746,13 +749,19 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
       // Знак внимания: приложение открыто — пуш не показываем,
       // только зажигаем красный кружок на Коробке и кнопке профиля.
-      final msgType = (m.data['type'] ?? '').toString().trim();
       if (msgType == 'ATTENTION_SIGN_RECEIVED') {
         AttentionSignsBus.instance.setHasIncoming(true);
       }
 
-      // New scheduled/voting notifications are routed in foreground only via
-      // canonical INBOX realtime path. No extra local notification here.
+      // ✅ Fallback: если Realtime INBOX ещё не доставил событие, FCM push
+      // сработает как backup-триггер для показа модалок из серверной очереди.
+      // Для chat-сообщений и знаков внимания модалки не нужны.
+      const chatTypes = {'PLAN_CHAT_MESSAGE', 'PRIVATE_CHAT_MESSAGE'};
+      if (msgType.isNotEmpty &&
+          !chatTypes.contains(msgType) &&
+          msgType != 'ATTENTION_SIGN_RECEIVED') {
+        _triggerCheckAndShowModalEvents();
+      }
     });
   }
 
@@ -2531,7 +2540,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
                 payloadType != 'FRIEND_REQUEST_RECEIVED' &&
                 payloadType != 'FRIEND_REQUEST_ACCEPTED' &&
                 payloadType != 'FRIEND_REQUEST_DECLINED' &&
-                payloadType != 'FRIEND_REMOVED') {
+                payloadType != 'FRIEND_REMOVED' &&
+                payloadType != 'ATTENTION_SIGN_ACCEPTED' &&
+                payloadType != 'ATTENTION_SIGN_DECLINED') {
               return;
             }
 
@@ -2625,6 +2636,14 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
             }
 
             if (payloadType == 'FRIEND_REMOVED') {
+              _triggerCheckAndShowModalEvents();
+              consumeIfReady();
+              return;
+            }
+
+            // ✅ Attention sign accept/decline → modal from queue
+            if (payloadType == 'ATTENTION_SIGN_ACCEPTED' ||
+                payloadType == 'ATTENTION_SIGN_DECLINED') {
               _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
@@ -3018,10 +3037,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
     debugPrint('[ModalEvents] _trigger: scheduling check for user=$userId');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        debugPrint('[ModalEvents] _trigger postFrame: NOT mounted');
-        return;
-      }
+      // Use the global navigator key context — it's always valid while the app is alive.
+      // Don't rely on State.mounted: Realtime callbacks may hold a stale State reference
+      // after hot-reload or auth-refresh rebuild.
       final ctx = App.navigatorKey.currentContext;
       if (ctx == null || !ctx.mounted) {
         debugPrint('[ModalEvents] _trigger postFrame: ctx=${ctx == null ? "NULL" : "unmounted"}');
@@ -3442,7 +3460,8 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     _homeVisibleAt ??= DateTime.now();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      // Use navigator key instead of State.mounted — robust against stale callbacks.
+      if (App.navigatorKey.currentContext == null) return;
       _schedulePendingPlanOpenIfReady();
       // Check modal event queue after shell is fully ready.
       _triggerCheckAndShowModalEvents();

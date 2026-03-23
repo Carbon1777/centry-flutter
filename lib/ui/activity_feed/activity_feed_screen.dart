@@ -338,8 +338,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
                           ),
                           if (hasIncoming)
                             const Positioned(
-                              right: 0,
-                              top: 0,
+                              right: 10,
+                              top: 6,
                               child: _UnreadDot(),
                             ),
                         ],

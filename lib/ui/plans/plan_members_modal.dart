@@ -337,7 +337,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       builder: (ctx) => AlertDialog(
         title: const Text('Знак внимания'),
         content: Text(
-            'Вы действительно хотите отправить знак внимания пользователю $nick?'),
+            'Вы действительно хотите отправить знак внимания пользователю «$nick»?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
