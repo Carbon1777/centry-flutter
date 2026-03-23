@@ -44,8 +44,8 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
   }
 
   Future<void> _handleAccept(String submissionId) async {
-    final ok =
-        await _repo.acceptSign(appUserId: widget.appUserId, submissionId: submissionId);
+    final ok = await _repo.acceptSign(
+        appUserId: widget.appUserId, submissionId: submissionId);
     if (!mounted) return;
     if (ok) {
       showCenterToast(context, message: 'Знак принят');
@@ -54,8 +54,8 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
   }
 
   Future<void> _handleDecline(String submissionId) async {
-    final ok =
-        await _repo.declineSign(appUserId: widget.appUserId, submissionId: submissionId);
+    final ok = await _repo.declineSign(
+        appUserId: widget.appUserId, submissionId: submissionId);
     if (!mounted) return;
     if (ok) {
       showCenterToast(context, message: 'Знак отклонён');
@@ -67,7 +67,7 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Коробка'),
+        title: const Text('Подарки'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -139,7 +139,8 @@ class _BoxContent extends StatelessWidget {
         const SizedBox(height: 2),
         if (box.mySign == null)
           _EmptyHint(
-              text: 'Сегодня свободных знаков не осталось. Ждите следующий знак.')
+              text:
+                  'Сегодня свободных знаков не осталось. Ждите следующий знак.')
         else
           _MySignCard(sign: box.mySign!),
 
@@ -208,9 +209,7 @@ class _CollectionBlock extends StatelessWidget {
         child: Wrap(
           spacing: 16,
           runSpacing: 12,
-          children: items
-              .map((item) => _CollectionItem(item: item))
-              .toList(),
+          children: items.map((item) => _CollectionItem(item: item)).toList(),
         ),
       ),
     );
@@ -275,8 +274,8 @@ class _IncomingSignCard extends StatelessWidget {
                 children: [
                   Text(
                     sign.fromNickname ?? '—',
-                    style: text.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style:
+                        text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   Text(
                     'прислал(а) знак внимания',
@@ -303,8 +302,7 @@ class _IncomingSignCard extends StatelessWidget {
                   style: TextButton.styleFrom(
                     minimumSize: const Size(72, 32),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    foregroundColor:
-                        colors.onSurface.withValues(alpha: 0.5),
+                    foregroundColor: colors.onSurface.withValues(alpha: 0.5),
                   ),
                   child: const Text('Отклонить'),
                 ),
@@ -383,10 +381,8 @@ class _SignSticker extends StatelessWidget {
         height: size,
         child: Icon(Icons.star_outline,
             size: size * 0.6,
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withValues(alpha: 0.3)),
+            color:
+                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)),
       ),
     );
   }
