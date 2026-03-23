@@ -23,4 +23,11 @@ abstract class AttentionSignsRepository {
     required String appUserId,
     required String submissionId,
   });
+
+  /// Атомарно: помечает право использованным + отправляет запрос в друзья.
+  /// Возвращает true если операция прошла успешно (включая ALREADY_FRIENDS/PENDING).
+  Future<bool> useFriendInviteRightAndRequest({
+    required String appUserId,
+    required String submissionId,
+  });
 }

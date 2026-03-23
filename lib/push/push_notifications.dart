@@ -266,6 +266,9 @@ class PushNotifications {
       String? title,
       String? body,
     })? onPlanScheduledNotificationOpen,
+
+    /// Callback invoked when user taps a PRIVATE_CHAT_MESSAGE push notification.
+    Future<void> Function()? onPrivateChatMessageOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -463,7 +466,11 @@ class PushNotifications {
 
       // Chat messages: tap just brings app to foreground, no navigation needed.
       if (kind == 'PLAN_CHAT_MESSAGE') return;
-      if (kind == 'PRIVATE_CHAT_MESSAGE') return;
+      if (kind == 'PRIVATE_CHAT_MESSAGE') {
+        final cb = onPrivateChatMessageOpen;
+        if (cb != null) await cb();
+        return;
+      }
 
       // Default: internal invite / owner-result.
       final inviteId = (map['invite_id'] ?? '').toString();
@@ -1321,7 +1328,7 @@ class PushNotifications {
 
     const title = 'Новое сообщение';
     const body =
-        'У вас новое личное сообщение. Откройте приложение, чтобы посмотреть.';
+        'У вас новое сообщение в приватном чате. Откройте приложение чтоб посмотреть.';
 
     final msgId = (m.messageId ?? '').toString();
     final idSeed = chatId.isNotEmpty
