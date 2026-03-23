@@ -208,6 +208,10 @@ function isPlanVotingOrEventReminder(payload: Record<string, unknown>): boolean 
     || t === "PLAN_EVENT_REMINDER_24H";
 }
 
+function isAttentionSignReceived(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "ATTENTION_SIGN_RECEIVED";
+}
+
 function safeShort(text: string, maxLen: number): string {
   const s = String(text ?? "");
   if (s.length <= maxLen) return s;
@@ -317,6 +321,7 @@ serve(async () => {
     const friendEvent = isFriendEvent(payload);
     const votingOrEventReminder = isPlanVotingOrEventReminder(payload);
     const planChatMessage = isPlanChatMessage(payload);
+    const attentionSign = isAttentionSignReceived(payload);
 
     // ✅ Canon (server-first UX):
     // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
@@ -335,7 +340,8 @@ serve(async () => {
         || planDeleted
         || friendEvent
         || votingOrEventReminder
-        || planChatMessage);
+        || planChatMessage
+        || attentionSign);
 
     let anyOk = false;
     let lastErr = "";
@@ -357,6 +363,7 @@ serve(async () => {
         title: String(payload["title"] ?? title),
         body: String(payload["body"] ?? body),
         plan_id: String(payload["plan_id"] ?? ""),
+        submission_id: String(payload["submission_id"] ?? ""),
       };
 
       const dataPayload: Record<string, string> = internalInvite

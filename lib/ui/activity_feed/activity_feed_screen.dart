@@ -14,6 +14,8 @@ import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/friends/friends_repository_impl.dart';
 import '../../data/private_chats/private_chats_repository_impl.dart';
+import '../../data/attention_signs/attention_signs_repository_impl.dart';
+import '../attention_signs/attention_signs_bus.dart';
 import '../places/places_screen.dart';
 import '../plans/plans_screen.dart';
 import '../plans/plan_details_screen.dart';
@@ -256,77 +258,94 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 8),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width / 2,
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    overlayColor: WidgetStateProperty.resolveWith<Color?>(
-                      (states) {
-                        if (states.contains(WidgetState.pressed)) {
-                          return accentBlue.withValues(alpha: 0.18);
-                        }
-                        if (states.contains(WidgetState.hovered) ||
-                            states.contains(WidgetState.focused)) {
-                          return accentBlue.withValues(alpha: 0.10);
-                        }
-                        return null;
-                      },
-                    ),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ProfileScreen(
-                            userId: widget.userId,
-                            nickname: user.nickname,
-                            publicId: user.publicId,
-                            email: user.email,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: AttentionSignsBus.instance.hasIncoming,
+                  builder: (context, hasIncoming, _) {
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width / 2,
                       ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: outlineWhite),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          Icon(
-                            Icons.person_outline,
-                            size: 22,
-                            color: accentBlue,
-                          ),
-                          const SizedBox(width: 7),
-                          Flexible(
-                            child: Text(
-                              user.nickname.isNotEmpty
-                                  ? user.nickname
-                                  : 'Профиль',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: textTheme.labelLarge?.copyWith(
-                                color: accentBlue,
-                                fontSize: 16,
+                          InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            overlayColor:
+                                WidgetStateProperty.resolveWith<Color?>(
+                              (states) {
+                                if (states.contains(WidgetState.pressed)) {
+                                  return accentBlue.withValues(alpha: 0.18);
+                                }
+                                if (states.contains(WidgetState.hovered) ||
+                                    states.contains(WidgetState.focused)) {
+                                  return accentBlue.withValues(alpha: 0.10);
+                                }
+                                return null;
+                              },
+                            ),
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ProfileScreen(
+                                    userId: widget.userId,
+                                    nickname: user.nickname,
+                                    publicId: user.publicId,
+                                    email: user.email,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: outlineWhite),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_outline,
+                                    size: 22,
+                                    color: accentBlue,
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Flexible(
+                                    child: Text(
+                                      user.nickname.isNotEmpty
+                                          ? user.nickname
+                                          : 'Профиль',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: textTheme.labelLarge?.copyWith(
+                                        color: accentBlue,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    size: 18,
+                                    color: accentBlue,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right,
-                            size: 18,
-                            color: accentBlue,
-                          ),
+                          if (hasIncoming)
+                            const Positioned(
+                              right: 0,
+                              top: 0,
+                              child: _UnreadDot(),
+                            ),
                         ],
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -560,6 +579,8 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
       PlansRepositoryImpl(Supabase.instance.client);
   final _privateChatsRepository =
       PrivateChatsRepositoryImpl(Supabase.instance.client);
+  final _attentionSignsRepository =
+      AttentionSignsRepositoryImpl(Supabase.instance.client);
 
   Timer? _refreshTimer;
   bool _hasUnreadPlanChats = false;
@@ -602,16 +623,20 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
         _privateChatsRepository.getPrivateChatBadges(
           appUserId: widget.appUserId,
         ),
+        _attentionSignsRepository.getMyBox(appUserId: widget.appUserId),
       ]);
 
       if (!mounted) return;
       final planBadges = results[0] as dynamic;
       final privateBadges = results[1] as dynamic;
+      final signBox = results[2] as dynamic;
       setState(() {
         _hasUnreadPlanChats =
             planBadges.hasAnyUnread || planBadges.unreadPlansCount > 0;
         _hasUnreadPrivateChats = privateBadges.hasUnread as bool;
       });
+      AttentionSignsBus.instance
+          .setHasIncoming((signBox.incoming as List).isNotEmpty);
     } catch (e) {
       // ignore
     } finally {

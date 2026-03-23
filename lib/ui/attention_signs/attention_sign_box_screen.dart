@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/attention_signs/attention_sign_dto.dart';
 import '../../data/attention_signs/attention_signs_repository_impl.dart';
 import '../../ui/common/center_toast.dart';
+import 'attention_signs_bus.dart';
 
 class AttentionSignBoxScreen extends StatefulWidget {
   final String appUserId;
@@ -24,6 +25,8 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
   @override
   void initState() {
     super.initState();
+    // Пользователь открыл Коробку — сбрасываем красные кружки немедленно.
+    AttentionSignsBus.instance.setHasIncoming(false);
     _load();
   }
 

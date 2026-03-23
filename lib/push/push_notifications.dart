@@ -269,6 +269,9 @@ class PushNotifications {
 
     /// Callback invoked when user taps a PRIVATE_CHAT_MESSAGE push notification.
     Future<void> Function()? onPrivateChatMessageOpen,
+
+    /// Callback invoked when user taps an ATTENTION_SIGN_RECEIVED push notification.
+    Future<void> Function()? onAttentionSignOpen,
   }) async {
     if (_initedUi) return;
     _initedUi = true;
@@ -468,6 +471,13 @@ class PushNotifications {
       if (kind == 'PLAN_CHAT_MESSAGE') return;
       if (kind == 'PRIVATE_CHAT_MESSAGE') {
         final cb = onPrivateChatMessageOpen;
+        if (cb != null) await cb();
+        return;
+      }
+
+      // Знак внимания: открыть Коробку.
+      if (kind == 'ATTENTION_SIGN_RECEIVED') {
+        final cb = onAttentionSignOpen;
         if (cb != null) await cb();
         return;
       }
@@ -1371,6 +1381,68 @@ class PushNotifications {
     await _local.show(id, title, body, details, payload: payload);
   }
 
+  static bool _isAttentionSignReceived(RemoteMessage m) {
+    return (m.data['type'] ?? '').toString().trim() == 'ATTENTION_SIGN_RECEIVED';
+  }
+
+  static Future<void> showAttentionSignReceived(RemoteMessage m) async {
+    if (!_isAttentionSignReceived(m)) return;
+
+    const title = 'Знак внимания';
+    const body = 'Вы получили знак внимания';
+
+    final submissionId = (m.data['submission_id'] ?? '').toString().trim();
+    final eventId =
+        (m.data['event_id'] ?? m.data['eventId'] ?? '').toString().trim();
+    final pushDeliveryId =
+        (m.data['push_delivery_id'] ?? m.data['pushDeliveryId'] ?? '')
+            .toString()
+            .trim();
+
+    final idSeed = submissionId.isNotEmpty
+        ? 'attention_sign:$submissionId'
+        : (eventId.isNotEmpty
+            ? 'attention_sign:$eventId'
+            : 'attention_sign:${m.messageId ?? ''}');
+    final id = idSeed.hashCode & 0x7fffffff;
+
+    final payload = jsonEncode({
+      ...m.data,
+      'kind': 'ATTENTION_SIGN_RECEIVED',
+      'type': 'ATTENTION_SIGN_RECEIVED',
+      if (submissionId.isNotEmpty) 'submission_id': submissionId,
+      if (eventId.isNotEmpty) 'event_id': eventId,
+      if (pushDeliveryId.isNotEmpty) 'push_delivery_id': pushDeliveryId,
+      'title': title,
+      'body': body,
+    });
+
+    await _local.cancel(id);
+
+    const android = AndroidNotificationDetails(
+      kInviteChannelId,
+      'Инвайты и приглашения',
+      channelDescription: 'Приглашения в планы и важные действия',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      fullScreenIntent: false,
+      ongoing: false,
+      autoCancel: true,
+    );
+
+    const ios = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    const details = NotificationDetails(android: android, iOS: ios);
+
+    await _local.show(id, title, body, details, payload: payload);
+  }
+
   static Future<void> showPlanChatMessage(RemoteMessage m) async {
     if (!isPlanChatMessage(m)) return;
 
@@ -1456,6 +1528,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await PushNotifications.showFriendRemoved(message);
     await PushNotifications.showPlanChatMessage(message);
     await PushNotifications.showPrivateChatMessage(message);
+    await PushNotifications.showAttentionSignReceived(message);
   } catch (e) {
     // ignore
   }
