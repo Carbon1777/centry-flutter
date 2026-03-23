@@ -33,6 +33,7 @@ import 'plan_deleted_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
 import 'plan_scheduled_notification_ui_coordinator.dart';
 import '../ui/private_chats/private_chats_list_screen.dart';
+import '../ui/common/modal_events_checker.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
@@ -80,8 +81,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       MethodChannel('centry/notification_intents');
 
   // UI strings (keep centralized to avoid drift)
-  static const String kInviteDialogDefaultTitle = 'Вас пригласили в план';
-  static const String kInviteAcceptedToast = 'Приглашение принято';
+static const String kInviteAcceptedToast = 'Приглашение принято';
   static const String kFriendRequestDefaultTitle = 'Запрос в друзья';
   static const String kFriendRequestAcceptedTitle = 'Запрос принят';
   static const String kFriendRequestDeclinedTitle = 'Запрос отклонён';
@@ -591,24 +591,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         String? title,
         String? body,
       }) async {
-        if (_restoring || !_appShellReady || (_userId ?? '').trim().isEmpty) {
-          _enqueueFriendOpenIntent(
-            type: type,
-            eventId: eventId,
-            requestId: requestId,
-            title: title,
-            body: body,
-          );
-          return;
-        }
-
-        await _handleFriendOpenFromLocalNotification(
-          type: type,
-          eventId: eventId,
-          requestId: requestId,
-          title: title,
-          body: body,
-        );
+        _triggerCheckAndShowModalEvents();
       },
       onPlanMemberLeftOpen: ({
         required String planId,
@@ -739,7 +722,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       // Existing working flows: keep unchanged.
       await PushNotifications.showInternalInvite(m);
       await PushNotifications.showFriendRequest(m);
-      _queueFriendRequestDialogFromRemoteMessage(m);
 
       // Chat messages (plan + private): при открытом приложении
       // push НЕ показываем — сигнализируем только красной точкой на иконках
@@ -1485,70 +1467,7 @@ class _BootstrapGateState extends State<BootstrapGate>
           if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
         };
 
-    PlanScheduledNotificationUiCoordinator.instance.enqueue(
-      PlanScheduledNotificationUiRequest(
-        type: (effective['type'] ?? trimmedType).toString().trim(),
-        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
-            .toString()
-            .trim(),
-        eventId: (effective['event_id'] ?? effective['eventId'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['event_id'] ?? effective['eventId'] ?? '')
-                .toString()
-                .trim(),
-        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim(),
-        eventAt: (effective['event_at'] ?? effective['eventAt'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['event_at'] ?? effective['eventAt'] ?? '')
-                .toString()
-                .trim(),
-        eventDatetimeLabel: (effective['event_datetime_label'] ??
-                    effective['eventDatetimeLabel'] ??
-                    '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['event_datetime_label'] ??
-                    effective['eventDatetimeLabel'] ??
-                    '')
-                .toString()
-                .trim(),
-        placeTitle: (effective['place_title'] ?? effective['placeTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['place_title'] ?? effective['placeTitle'] ?? '')
-                .toString()
-                .trim(),
-        title: (effective['title'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['title'] ?? '').toString().trim(),
-        body: (effective['body'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['body'] ?? '').toString().trim(),
-        source: openSource == 'local_notification' ||
-                openSource == 'intent_bridge' ||
-                openSource == 'pending_notification'
-            ? PlanScheduledNotificationUiSource.backgroundIntent
-            : PlanScheduledNotificationUiSource.foreground,
-      ),
-    );
-
+    _triggerCheckAndShowModalEvents();
     _scheduleConsumeInboxDeliveryIfPending(effective);
   }
 
@@ -1639,27 +1558,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         return;
       }
 
-      final resolvedTitleRaw = (resolved['title'] ?? '').toString();
-      final resolvedBody = (resolved['body'] ?? body ?? '').toString();
-      final resolvedActionToken = (resolved['action_token'] ??
-              resolved['actionToken'] ??
-              actionToken ??
-              '')
-          .toString()
-          .trim();
-
-      InviteUiCoordinator.instance.enqueue(
-        InviteUiRequest(
-          inviteId: trimmedInviteId,
-          planId: resolvedPlanId,
-          actionToken: resolvedActionToken.isEmpty ? null : resolvedActionToken,
-          title: resolvedTitleRaw.trim().isEmpty
-              ? kInviteDialogDefaultTitle
-              : resolvedTitleRaw,
-          body: resolvedBody,
-          source: InviteUiSource.backgroundIntent,
-        ),
-      );
+      _triggerCheckAndShowModalEvents();
       _scheduleConsumeInboxDeliveryIfPending(resolved);
       return;
     }
@@ -1701,20 +1600,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       return;
     }
 
-    InviteUiCoordinator.instance.enqueue(
-      InviteUiRequest(
-        inviteId: trimmedInviteId,
-        planId: trimmedPlanId,
-        actionToken: (actionToken ?? '').trim().isEmpty
-            ? null
-            : (actionToken ?? '').trim(),
-        title: normalizedTitle.isEmpty
-            ? kInviteDialogDefaultTitle
-            : normalizedTitle,
-        body: normalizedBody,
-        source: InviteUiSource.backgroundIntent,
-      ),
-    );
+    _triggerCheckAndShowModalEvents();
   }
 
   Future<void> _handlePlanMemberLeftOpenFromNotificationTap({
@@ -1765,70 +1651,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
 
-    final effective = resolved ??
-        <String, dynamic>{
-          'plan_id': trimmedPlanId,
-          'left_user_id': trimmedLeftUserId,
-          if ((leftNickname ?? '').trim().isNotEmpty)
-            'left_nickname': (leftNickname ?? '').trim(),
-          if ((planTitle ?? '').trim().isNotEmpty)
-            'plan_title': (planTitle ?? '').trim(),
-          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-        };
-
-    final cleanLeftNickname =
-        (effective['left_nickname'] ?? effective['leftNickname'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['left_nickname'] ?? effective['leftNickname'] ?? '')
-                .toString()
-                .trim();
-    final cleanPlanTitle =
-        (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim();
-    final cleanTitle = (effective['title'] ?? '').toString().trim().isEmpty
-        ? null
-        : (effective['title'] ?? '').toString().trim();
-    final effectiveBody = (effective['body'] ?? '').toString().trim();
-
-    PlanMemberLeftUiCoordinator.instance.enqueue(
-      PlanMemberLeftUiRequest(
-        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
-            .toString(),
-        leftUserId: (effective['left_user_id'] ??
-                effective['leftUserId'] ??
-                trimmedLeftUserId)
-            .toString(),
-        eventId: (effective['event_id'] ??
-                    effective['eventId'] ??
-                    eventId ??
-                    '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['event_id'] ?? effective['eventId'] ?? eventId ?? '')
-                .toString()
-                .trim(),
-        leftNickname: cleanLeftNickname,
-        planTitle: cleanPlanTitle,
-        title: cleanTitle,
-        body: (effectiveBody.isEmpty ||
-                effectiveBody == 'Один из участников покинул план.')
-            ? null
-            : effectiveBody,
-        source: PlanMemberLeftUiSource.backgroundIntent,
-      ),
-    );
+    _triggerCheckAndShowModalEvents();
 
     if (resolved != null) {
       _scheduleConsumeInboxDeliveryIfPending(resolved);
@@ -1892,58 +1715,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
 
-    final effective = resolved ??
-        <String, dynamic>{
-          'plan_id': trimmedPlanId,
-          'removed_user_id': trimmedRemovedUserId,
-          'owner_user_id': trimmedOwnerUserId,
-          if ((ownerNickname ?? '').trim().isNotEmpty)
-            'owner_nickname': (ownerNickname ?? '').trim(),
-          if ((planTitle ?? '').trim().isNotEmpty)
-            'plan_title': (planTitle ?? '').trim(),
-          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-        };
-
-    PlanMemberRemovedUiCoordinator.instance.enqueue(
-      PlanMemberRemovedUiRequest(
-        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
-            .toString(),
-        removedUserId: (effective['removed_user_id'] ??
-                effective['removedUserId'] ??
-                trimmedRemovedUserId)
-            .toString(),
-        ownerUserId: (effective['owner_user_id'] ??
-                effective['ownerUserId'] ??
-                trimmedOwnerUserId)
-            .toString(),
-        ownerNickname: (effective['owner_nickname'] ??
-                    effective['ownerNickname'] ??
-                    '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
-                .toString()
-                .trim(),
-        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim(),
-        title: (effective['title'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['title'] ?? '').toString().trim(),
-        body: (effective['body'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['body'] ?? '').toString().trim(),
-        source: PlanMemberRemovedUiSource.backgroundIntent,
-      ),
-    );
+    _triggerCheckAndShowModalEvents();
 
     if (resolved != null) {
       _scheduleConsumeInboxDeliveryIfPending(resolved);
@@ -1998,54 +1770,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
 
-    final effective = resolved ??
-        <String, dynamic>{
-          'plan_id': trimmedPlanId,
-          'joined_user_id': trimmedJoinedUserId,
-          if ((joinedNickname ?? '').trim().isNotEmpty)
-            'joined_nickname': (joinedNickname ?? '').trim(),
-          if ((planTitle ?? '').trim().isNotEmpty)
-            'plan_title': (planTitle ?? '').trim(),
-          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-        };
-
-    PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
-      PlanMemberJoinedByInviteUiRequest(
-        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
-            .toString(),
-        joinedUserId: (effective['joined_user_id'] ??
-                effective['joinedUserId'] ??
-                trimmedJoinedUserId)
-            .toString(),
-        joinedNickname:
-            (effective['joined_nickname'] ?? effective['joinedNickname'] ?? '')
-                    .toString()
-                    .trim()
-                    .isEmpty
-                ? null
-                : (effective['joined_nickname'] ??
-                        effective['joinedNickname'] ??
-                        '')
-                    .toString()
-                    .trim(),
-        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim(),
-        title: (effective['title'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['title'] ?? '').toString().trim(),
-        body: (effective['body'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['body'] ?? '').toString().trim(),
-        source: PlanMemberJoinedByInviteUiSource.backgroundIntent,
-      ),
-    );
+    _triggerCheckAndShowModalEvents();
 
     if (resolved != null) {
       _scheduleConsumeInboxDeliveryIfPending(resolved);
@@ -2100,54 +1825,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       eventId: eventId,
     );
 
-    final effective = resolved ??
-        <String, dynamic>{
-          'plan_id': trimmedPlanId,
-          'owner_app_user_id': trimmedOwnerUserId,
-          if ((ownerNickname ?? '').trim().isNotEmpty)
-            'owner_nickname': (ownerNickname ?? '').trim(),
-          if ((planTitle ?? '').trim().isNotEmpty)
-            'plan_title': (planTitle ?? '').trim(),
-          if ((title ?? '').trim().isNotEmpty) 'title': (title ?? '').trim(),
-          if ((body ?? '').trim().isNotEmpty) 'body': (body ?? '').trim(),
-        };
-
-    PlanDeletedUiCoordinator.instance.enqueue(
-      PlanDeletedUiRequest(
-        planId: (effective['plan_id'] ?? effective['planId'] ?? trimmedPlanId)
-            .toString(),
-        ownerUserId: (effective['owner_app_user_id'] ??
-                effective['owner_user_id'] ??
-                effective['ownerUserId'] ??
-                trimmedOwnerUserId)
-            .toString(),
-        ownerNickname: (effective['owner_nickname'] ??
-                    effective['ownerNickname'] ??
-                    '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['owner_nickname'] ?? effective['ownerNickname'] ?? '')
-                .toString()
-                .trim(),
-        planTitle: (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim()
-                .isEmpty
-            ? null
-            : (effective['plan_title'] ?? effective['planTitle'] ?? '')
-                .toString()
-                .trim(),
-        title: (effective['title'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['title'] ?? '').toString().trim(),
-        body: (effective['body'] ?? '').toString().trim().isEmpty
-            ? null
-            : (effective['body'] ?? '').toString().trim(),
-        source: PlanDeletedUiSource.backgroundIntent,
-      ),
-    );
+    _triggerCheckAndShowModalEvents();
 
     if (resolved != null) {
       _scheduleConsumeInboxDeliveryIfPending(resolved);
@@ -2894,276 +2572,35 @@ class _BootstrapGateState extends State<BootstrapGate>
                   .trim();
               if (planId.isEmpty) return;
 
-              final requestType = payloadType.trim();
-              final title = (payloadMap['title'] ?? '').toString().trim();
-              final body = (payloadMap['body'] ?? '').toString().trim();
-              final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString()
-                      .trim();
-              final eventId = (payloadMap['event_id'] ??
-                      payloadMap['eventId'] ??
-                      newRow['event_id'] ??
-                      newRow['eventId'] ??
-                      '')
-                  .toString()
-                  .trim();
-              final eventAt =
-                  (payloadMap['event_at'] ?? payloadMap['eventAt'] ?? '')
-                      .toString()
-                      .trim();
-              final eventDatetimeLabel =
-                  (payloadMap['event_datetime_label'] ??
-                          payloadMap['eventDatetimeLabel'] ??
-                          '')
-                      .toString()
-                      .trim();
-              final placeTitle =
-                  (payloadMap['place_title'] ?? payloadMap['placeTitle'] ?? '')
-                      .toString()
-                      .trim();
-
-              PlanScheduledNotificationUiCoordinator.instance.enqueue(
-                PlanScheduledNotificationUiRequest(
-                  type: requestType,
-                  planId: planId,
-                  eventId: eventId.isEmpty ? null : eventId,
-                  planTitle: planTitle.isEmpty ? null : planTitle,
-                  eventAt: eventAt.isEmpty ? null : eventAt,
-                  eventDatetimeLabel: eventDatetimeLabel.isEmpty
-                      ? null
-                      : eventDatetimeLabel,
-                  placeTitle: placeTitle.isEmpty ? null : placeTitle,
-                  title: title.isEmpty ? null : title,
-                  body: body.isEmpty ? null : body,
-                  source: PlanScheduledNotificationUiSource.foreground,
-                ),
-              );
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
 
-            // ✅ Separate layer: PLAN_MEMBER_LEFT -> in-app info modal (foreground).
+            // ✅ Separate layer: PLAN_MEMBER_LEFT -> handled via modal_event_queue.
             if (payloadType == 'PLAN_MEMBER_LEFT') {
-              final planId = (payloadMap['plan_id'] ??
-                      payloadMap['planId'] ??
-                      newRow['plan_id'] ??
-                      newRow['planId'] ??
-                      '')
-                  .toString();
-              final leftUserId = (payloadMap['left_user_id'] ??
-                      payloadMap['leftUserId'] ??
-                      payloadMap['left_userId'] ??
-                      '')
-                  .toString();
-              if (planId.isEmpty || leftUserId.isEmpty) return;
-
-              final title = (payloadMap['title'] ?? '').toString();
-              final body = (payloadMap['body'] ?? '').toString();
-              final leftNickname = (payloadMap['left_nickname'] ??
-                      payloadMap['leftNickname'] ??
-                      '')
-                  .toString();
-              final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString();
-
-              final cleanLeftNickname =
-                  leftNickname.trim().isEmpty ? null : leftNickname.trim();
-              final cleanPlanTitle =
-                  planTitle.trim().isEmpty ? null : planTitle.trim();
-              final cleanTitle = title.trim().isEmpty ? null : title.trim();
-
-              final bodyTrim = body.trim();
-              final cleanBody = (bodyTrim.isEmpty ||
-                      bodyTrim == 'Один из участников покинул план.')
-                  ? null
-                  : bodyTrim;
-
-              PlanMemberLeftUiCoordinator.instance.enqueue(
-                PlanMemberLeftUiRequest(
-                  planId: planId,
-                  leftUserId: leftUserId,
-                  eventId: (payloadMap['event_id'] ??
-                              payloadMap['eventId'] ??
-                              newRow['event_id'] ??
-                              newRow['eventId'] ??
-                              '')
-                          .toString()
-                          .trim()
-                          .isEmpty
-                      ? null
-                      : (payloadMap['event_id'] ??
-                              payloadMap['eventId'] ??
-                              newRow['event_id'] ??
-                              newRow['eventId'] ??
-                              '')
-                          .toString()
-                          .trim(),
-                  leftNickname: cleanLeftNickname,
-                  planTitle: cleanPlanTitle,
-                  title: cleanTitle,
-                  body: cleanBody,
-                  source: PlanMemberLeftUiSource.foreground,
-                ),
-              );
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
 
-// ✅ Separate layer: PLAN_MEMBER_JOINED_BY_INVITE -> in-app info modal (foreground).
+// ✅ Separate layer: PLAN_MEMBER_JOINED_BY_INVITE -> handled via modal_event_queue.
             if (payloadType == 'PLAN_MEMBER_JOINED_BY_INVITE') {
-              final planId = (payloadMap['plan_id'] ??
-                      payloadMap['planId'] ??
-                      newRow['plan_id'] ??
-                      newRow['planId'] ??
-                      '')
-                  .toString();
-              final joinedUserId = (payloadMap['joined_user_id'] ??
-                      payloadMap['joinedUserId'] ??
-                      payloadMap['joined_userId'] ??
-                      '')
-                  .toString();
-
-              if (planId.isEmpty || joinedUserId.isEmpty) return;
-
-              final title = (payloadMap['title'] ?? '').toString();
-              final body = (payloadMap['body'] ?? '').toString();
-              final joinedNickname = (payloadMap['joined_nickname'] ??
-                      payloadMap['joinedNickname'] ??
-                      '')
-                  .toString();
-              final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString();
-
-              final cleanJoinedNickname =
-                  joinedNickname.trim().isEmpty ? null : joinedNickname.trim();
-              final cleanPlanTitle =
-                  planTitle.trim().isEmpty ? null : planTitle.trim();
-              final cleanTitle = title.trim().isEmpty ? null : title.trim();
-
-              final bodyTrim = body.trim();
-              final cleanBody = bodyTrim.isEmpty ? null : bodyTrim;
-
-              PlanMemberJoinedByInviteUiCoordinator.instance.enqueue(
-                PlanMemberJoinedByInviteUiRequest(
-                  planId: planId,
-                  joinedUserId: joinedUserId,
-                  joinedNickname: cleanJoinedNickname,
-                  planTitle: cleanPlanTitle,
-                  title: cleanTitle,
-                  body: cleanBody,
-                  source: PlanMemberJoinedByInviteUiSource.foreground,
-                ),
-              );
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
 
-// ✅ Separate layer: PLAN_MEMBER_REMOVED -> in-app info modal (foreground).
+// ✅ Separate layer: PLAN_MEMBER_REMOVED -> handled via modal_event_queue.
             if (payloadType == 'PLAN_MEMBER_REMOVED') {
-              final planId = (payloadMap['plan_id'] ??
-                      payloadMap['planId'] ??
-                      newRow['plan_id'] ??
-                      newRow['planId'] ??
-                      '')
-                  .toString();
-              final removedUserId = (payloadMap['removed_user_id'] ??
-                      payloadMap['removedUserId'] ??
-                      payloadMap['removed_userId'] ??
-                      '')
-                  .toString();
-              final ownerUserId = (payloadMap['owner_user_id'] ??
-                      payloadMap['ownerUserId'] ??
-                      payloadMap['owner_userId'] ??
-                      '')
-                  .toString();
-              if (planId.isEmpty ||
-                  removedUserId.isEmpty ||
-                  ownerUserId.isEmpty) {
-                return;
-              }
-
-              final title = (payloadMap['title'] ?? '').toString();
-              final body = (payloadMap['body'] ?? '').toString();
-              final ownerNickname = (payloadMap['owner_nickname'] ??
-                      payloadMap['ownerNickname'] ??
-                      '')
-                  .toString();
-              final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString();
-
-              final cleanOwnerNickname =
-                  ownerNickname.trim().isEmpty ? null : ownerNickname.trim();
-              final cleanPlanTitle =
-                  planTitle.trim().isEmpty ? null : planTitle.trim();
-              final cleanTitle = title.trim().isEmpty ? null : title.trim();
-              final cleanBody = body.trim().isEmpty ? null : body.trim();
-
-              PlanMemberRemovedUiCoordinator.instance.enqueue(
-                PlanMemberRemovedUiRequest(
-                  planId: planId,
-                  removedUserId: removedUserId,
-                  ownerUserId: ownerUserId,
-                  ownerNickname: cleanOwnerNickname,
-                  planTitle: cleanPlanTitle,
-                  title: cleanTitle,
-                  body: cleanBody,
-                  source: PlanMemberRemovedUiSource.foreground,
-                ),
-              );
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
 
-            // ✅ Separate layer: PLAN_DELETED -> in-app info modal (foreground).
+            // ✅ Separate layer: PLAN_DELETED -> handled via modal_event_queue.
             if (payloadType == 'PLAN_DELETED') {
-              final planId = (payloadMap['plan_id'] ??
-                      payloadMap['planId'] ??
-                      newRow['plan_id'] ??
-                      newRow['planId'] ??
-                      '')
-                  .toString()
-                  .trim();
-
-              // ✅ Server canonical key is owner_app_user_id (see payloadKeys in logs).
-              // Keep fallbacks for any legacy variants.
-              final ownerUserId = (payloadMap['owner_app_user_id'] ??
-                      payloadMap['owner_user_id'] ??
-                      payloadMap['ownerUserId'] ??
-                      '')
-                  .toString()
-                  .trim();
-
-              if (planId.isEmpty || ownerUserId.isEmpty) return;
-
-              final title = (payloadMap['title'] ?? '').toString();
-              final body = (payloadMap['body'] ?? '').toString();
-              final ownerNickname = (payloadMap['owner_nickname'] ??
-                      payloadMap['ownerNickname'] ??
-                      '')
-                  .toString();
-              final planTitle =
-                  (payloadMap['plan_title'] ?? payloadMap['planTitle'] ?? '')
-                      .toString();
-
-              PlanDeletedUiCoordinator.instance.enqueue(
-                PlanDeletedUiRequest(
-                  planId: planId,
-                  ownerUserId: ownerUserId,
-                  ownerNickname: ownerNickname.trim().isEmpty
-                      ? null
-                      : ownerNickname.trim(),
-                  planTitle: planTitle.trim().isEmpty ? null : planTitle.trim(),
-                  title: title.trim().isEmpty ? null : title.trim(),
-                  body: body.trim().isEmpty ? null : body.trim(),
-                  source: PlanDeletedUiSource.foreground,
-                ),
-              );
-
-              // Keep same consume pattern as other plan-events in this router.
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
@@ -3199,14 +2636,14 @@ class _BootstrapGateState extends State<BootstrapGate>
             if (payloadType == 'FRIEND_REQUEST_RECEIVED' ||
                 payloadType == 'FRIEND_REQUEST_ACCEPTED' ||
                 payloadType == 'FRIEND_REQUEST_DECLINED') {
-              _enqueueFriendRequestUi(payloadMap);
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
 
             if (payloadType == 'FRIEND_REMOVED') {
-              // ✅ For FRIEND_REMOVED we must show modal first, then consume after close.
-              unawaited(_handleFriendDeliveryPayload(payloadMap));
+              _triggerCheckAndShowModalEvents();
+              consumeIfReady();
               return;
             }
 
@@ -3263,23 +2700,11 @@ class _BootstrapGateState extends State<BootstrapGate>
               return;
             }
 
-            // invitee-invite
+            // invitee-invite -> handled via modal_event_queue
             if (payloadMap.containsKey('action')) return;
 
-            final actionToken =
-                (payloadMap['action_token'] ?? payloadMap['actionToken'] ?? '')
-                    .toString();
-
-            InviteUiCoordinator.instance.enqueue(
-              InviteUiRequest(
-                inviteId: inviteId,
-                planId: planId,
-                title: title.isEmpty ? kInviteDialogDefaultTitle : title,
-                body: body,
-                actionToken: actionToken.isEmpty ? null : actionToken,
-                source: InviteUiSource.foreground,
-              ),
-            );
+            _triggerCheckAndShowModalEvents();
+            consumeIfReady();
           } catch (e) {
             // ignore handler errors
           }
@@ -3592,7 +3017,29 @@ class _BootstrapGateState extends State<BootstrapGate>
 
       // If user restored while app was backgrounded, flush pending invite UI/actions.
       _schedulePendingPlanOpenIfReady();
+
+      // Check modal event queue on resume (catches events received while app was backgrounded).
+      _triggerCheckAndShowModalEvents();
     }
+  }
+
+  /// Schedules a modal queue check in the next frame.
+  /// Safe to call from any context — guards against unready shell/user state.
+  void _triggerCheckAndShowModalEvents() {
+    final userId = (_userId ?? '').trim();
+    if (userId.isEmpty || !_appShellReady || _restoring) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = App.navigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      unawaited(checkAndShowModalEvents(
+        context: ctx,
+        appUserId: userId,
+        onOpenPlan: (planId) =>
+            _queuePendingPlanOpen(planId, toastMessage: 'Приглашение принято'),
+      ));
+    });
   }
 
   void _initAuthListener() {
@@ -3988,7 +3435,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     _appShellReady = true;
     InviteUiCoordinator.instance.setRootUiReady(true);
     _flushPendingConsumeInboxDeliveriesIfAny();
-    _flushPendingFriendRequestsIfAny();
     _flushPendingFriendOpenIntentsIfAny();
     _flushPendingNotificationOpenIntentsIfAny();
     PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
@@ -3997,7 +3443,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     PlanDeletedUiCoordinator.instance.setRootUiReady(true);
     PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
     PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(true);
-    _flushPendingFriendRequestsIfAny();
     _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();
@@ -4005,6 +3450,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _schedulePendingPlanOpenIfReady();
+      // Check modal event queue after shell is fully ready.
+      _triggerCheckAndShowModalEvents();
     });
   }
 
