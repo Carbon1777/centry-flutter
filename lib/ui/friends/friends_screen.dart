@@ -457,7 +457,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(title),
+          title: Text(title, textAlign: TextAlign.center),
           content: Text(message),
           actions: [
             TextButton(
@@ -483,7 +483,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(title),
+          title: Text(title, textAlign: TextAlign.center),
           content: Text(message),
           actions: [
             TextButton(
@@ -508,7 +508,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Ошибка'),
+          title: const Text('Ошибка', textAlign: TextAlign.center),
           content: Text(error.toString()),
           actions: [
             TextButton(
@@ -528,7 +528,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Удалить из друзей?'),
+          title: const Text('Удалить из друзей?', textAlign: TextAlign.center),
           content: Text('Удалить «$displayName» из друзей?'),
           actions: [
             TextButton(
@@ -559,7 +559,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Мой комментарий'),
+          title: const Text('Мой комментарий', textAlign: TextAlign.center),
           content: ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 280, maxWidth: 420),
             child: TextField(
@@ -737,7 +737,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Знак внимания'),
+        title: const Text('Знак внимания', textAlign: TextAlign.center),
         content: Text(
             'Вы действительно хотите отправить знак внимания пользователю «$nick»?'),
         actions: [

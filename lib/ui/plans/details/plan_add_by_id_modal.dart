@@ -72,13 +72,16 @@ class _PlanAddByIdModalState extends State<PlanAddByIdModal> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Добавить по ID',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 40),
+                    const Expanded(
+                      child: Text(
+                        'Добавить по ID',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     IconButton(

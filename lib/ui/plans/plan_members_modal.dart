@@ -335,7 +335,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       useRootNavigator: false,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: const Text('Знак внимания'),
+        title: const Text('Знак внимания', textAlign: TextAlign.center),
         content: Text(
             'Вы действительно хотите отправить знак внимания пользователю «$nick»?'),
         actions: [
@@ -400,7 +400,7 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       barrierDismissible: true,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Удалить участника?'),
+          title: const Text('Удалить участника?', textAlign: TextAlign.center),
           content: const Text('Участник будет удалён из плана.'),
           actions: [
             TextButton(
@@ -473,13 +473,16 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Участники',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(width: 40),
+                    const Expanded(
+                      child: Text(
+                        'Участники',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(

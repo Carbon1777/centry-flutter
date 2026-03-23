@@ -11,11 +11,12 @@ const PUSH_GRACE_CHAT_MS = 60_000;
 function shouldApplyGrace(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
   if (!t) return false;
-  return t.startsWith("PLAN_") || t.startsWith("FRIEND_");
+  return t.startsWith("PLAN_") || t.startsWith("FRIEND_") || t === "PRIVATE_CHAT_MESSAGE";
 }
 
 function graceMs(payload: Record<string, unknown>): number {
-  return String(payload["type"] ?? "") === "PLAN_CHAT_MESSAGE"
+  const t = String(payload["type"] ?? "");
+  return (t === "PLAN_CHAT_MESSAGE" || t === "PRIVATE_CHAT_MESSAGE")
     ? PUSH_GRACE_CHAT_MS
     : PUSH_GRACE_MS;
 }
@@ -197,6 +198,10 @@ function isPlanChatMessage(payload: Record<string, unknown>): boolean {
   return String(payload["type"] ?? "") === "PLAN_CHAT_MESSAGE";
 }
 
+function isPrivateChatMessage(payload: Record<string, unknown>): boolean {
+  return String(payload["type"] ?? "") === "PRIVATE_CHAT_MESSAGE";
+}
+
 function isPlanVotingOrEventReminder(payload: Record<string, unknown>): boolean {
   const t = String(payload["type"] ?? "");
   return t === "PLAN_VOTING_REMINDER_DATE"
@@ -324,6 +329,7 @@ serve(async () => {
     const friendEvent = isFriendEvent(payload);
     const votingOrEventReminder = isPlanVotingOrEventReminder(payload);
     const planChatMessage = isPlanChatMessage(payload);
+    const privateChatMessage = isPrivateChatMessage(payload);
     const attentionSign = isAttentionSignReceived(payload);
 
     // ✅ Canon (server-first UX):
@@ -334,6 +340,7 @@ serve(async () => {
     // - PLAN_VOTING_REMINDER_* / PLAN_OWNER_PRIORITY_* / PLAN_EVENT_REMINDER_24H: STRICT DATA-ONLY.
     // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
     // - PLAN_CHAT_MESSAGE: STRICT DATA-ONLY (app shows local notification; tap just opens app).
+    // - PRIVATE_CHAT_MESSAGE: STRICT DATA-ONLY (same as plan chat).
     // - Other notification types may include OS notification.
     const shouldIncludeNotification =
       !(internalInvite
@@ -344,6 +351,7 @@ serve(async () => {
         || friendEvent
         || votingOrEventReminder
         || planChatMessage
+        || privateChatMessage
         || attentionSign);
 
     let anyOk = false;
@@ -517,6 +525,7 @@ serve(async () => {
         friend_event: friendEvent,
         voting_or_event_reminder: votingOrEventReminder,
         plan_chat_message: planChatMessage,
+        private_chat_message: privateChatMessage,
         include_notification: shouldIncludeNotification,
       },
       attempts: debugAttempts,

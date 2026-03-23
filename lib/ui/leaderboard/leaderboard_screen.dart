@@ -8,6 +8,10 @@ const _kGold = Color(0xFFFFD700);
 const _kSilver = Color(0xFFB8C4CE);
 const _kBronze = Color(0xFFCD8B4A);
 
+// Цвета вкладок
+const _kActivityColor = Color(0xFFFF7043);
+const _kSympathyColor = Color(0xFF66BB6A);
+
 class LeaderboardScreen extends StatefulWidget {
   final LeaderboardRepository repository;
   final String appUserId;
@@ -23,46 +27,165 @@ class LeaderboardScreen extends StatefulWidget {
 }
 
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
-  late Future<LeaderboardSnapshotDto> _future;
+  int _tabIndex = 0; // 0 = Активность, 1 = Симпатии
+
+  late Future<LeaderboardSnapshotDto> _activityFuture;
+  Future<SympathyLeaderboardSnapshotDto>? _sympathyFuture;
 
   @override
   void initState() {
     super.initState();
-    _future = widget.repository.getSnapshot(appUserId: widget.appUserId);
+    _activityFuture =
+        widget.repository.getSnapshot(appUserId: widget.appUserId);
   }
 
-  void _reload() => setState(() {
-        _future = widget.repository.getSnapshot(appUserId: widget.appUserId);
+  void _reloadActivity() => setState(() {
+        _activityFuture =
+            widget.repository.getSnapshot(appUserId: widget.appUserId);
       });
+
+  void _reloadSympathy() => setState(() {
+        _sympathyFuture =
+            widget.repository.getSympathySnapshot(appUserId: widget.appUserId);
+      });
+
+  void _ensureSympathyLoaded() {
+    _sympathyFuture ??=
+        widget.repository.getSympathySnapshot(appUserId: widget.appUserId);
+  }
+
+  void _switchTab(int index) {
+    if (index == _tabIndex) return;
+    if (index == 1) _ensureSympathyLoaded();
+    setState(() => _tabIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Рейтинг')),
-      body: FutureBuilder<LeaderboardSnapshotDto>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError || !snap.hasData) {
-            return _ErrorState(onRetry: _reload);
-          }
-          return _LeaderboardBody(snapshot: snap.data!);
-        },
+      body: Column(
+        children: [
+          // ── Закладки ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _TabButton(
+                    label: 'Активность',
+                    color: _kActivityColor,
+                    isActive: _tabIndex == 0,
+                    onTap: () => _switchTab(0),
+                  ),
+                ),
+                Expanded(
+                  child: _TabButton(
+                    label: 'Симпатии',
+                    color: _kSympathyColor,
+                    isActive: _tabIndex == 1,
+                    onTap: () => _switchTab(1),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Контент ──
+          Expanded(
+            child: _tabIndex == 0
+                ? FutureBuilder<LeaderboardSnapshotDto>(
+                    future: _activityFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
+                      if (snap.hasError || !snap.hasData) {
+                        return _ErrorState(onRetry: _reloadActivity);
+                      }
+                      return _ActivityBody(snapshot: snap.data!);
+                    },
+                  )
+                : FutureBuilder<SympathyLeaderboardSnapshotDto>(
+                    future: _sympathyFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                            child: CircularProgressIndicator());
+                      }
+                      if (snap.hasError || !snap.hasData) {
+                        return _ErrorState(onRetry: _reloadSympathy);
+                      }
+                      return _SympathyBody(snapshot: snap.data!);
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
 }
 
 // =======================
-// Тело: 2 карточных блока
+// Закладка-таб
 // =======================
 
-class _LeaderboardBody extends StatelessWidget {
+class _TabButton extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _TabButton({
+    required this.label,
+    required this.color,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.symmetric(vertical: isActive ? 11 : 7),
+        margin: EdgeInsets.only(top: isActive ? 0 : 10),
+        decoration: BoxDecoration(
+          color: isActive
+              ? color.withValues(alpha: 0.7)
+              : color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: isActive
+              ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: isActive ? 14 : 13,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+            color: isActive
+                ? Colors.white
+                : color.withValues(alpha: 0.35),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Тело: Активность (Токены + Активность)
+// =======================
+
+class _ActivityBody extends StatelessWidget {
   final LeaderboardSnapshotDto snapshot;
 
-  const _LeaderboardBody({required this.snapshot});
+  const _ActivityBody({required this.snapshot});
 
   String _fmt(int score) {
     if (score >= 10000) return '${(score / 1000).toStringAsFixed(0)}k';
@@ -85,7 +208,8 @@ class _LeaderboardBody extends StatelessWidget {
                   Expanded(
                     child: _ColumnCard(
                       title: 'Токены',
-                      subtitle: 'Рейтинг по количеству заработанных токенов.',
+                      subtitle:
+                          'Рейтинг по количеству заработанных токенов.',
                       icon: Icons.monetization_on_outlined,
                       accentColor: const Color(0xFFFFD700),
                       column: snapshot.tokens,
@@ -96,10 +220,75 @@ class _LeaderboardBody extends StatelessWidget {
                   Expanded(
                     child: _ColumnCard(
                       title: 'Активность',
-                      subtitle: 'Рейтинг по количеству завершенных планов.',
+                      subtitle:
+                          'Рейтинг по количеству завершенных планов.',
                       icon: Icons.local_fire_department_outlined,
-                      accentColor: const Color(0xFFFF7043),
+                      accentColor: _kActivityColor,
                       column: snapshot.activity,
+                      scoreLabel: _fmt,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Expanded(
+            flex: 1,
+            child: Center(child: SpinningLogo()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =======================
+// Тело: Симпатии (Получено + Отправлено)
+// =======================
+
+class _SympathyBody extends StatelessWidget {
+  final SympathyLeaderboardSnapshotDto snapshot;
+
+  const _SympathyBody({required this.snapshot});
+
+  String _fmt(int score) {
+    if (score >= 10000) return '${(score / 1000).toStringAsFixed(0)}k';
+    return '$score';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _ColumnCard(
+                      title: 'Получено',
+                      subtitle:
+                          'Рейтинг полученных знаков симпатии.',
+                      icon: Icons.favorite_outline,
+                      accentColor: _kSympathyColor,
+                      column: snapshot.received,
+                      scoreLabel: _fmt,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _ColumnCard(
+                      title: 'Отправлено',
+                      subtitle:
+                          'Рейтинг отправленных знаков симпатии.',
+                      icon: Icons.send_outlined,
+                      accentColor: const Color(0xFF42A5F5),
+                      column: snapshot.sent,
                       scoreLabel: _fmt,
                     ),
                   ),
@@ -321,7 +510,7 @@ class _EntryRow extends StatelessWidget {
               ),
               const SizedBox(width: 4),
 
-              // Аватар — жёсткий SizedBox, фото не раздвигает строку
+              // Аватар
               SizedBox(
                 width: 28,
                 height: 28,

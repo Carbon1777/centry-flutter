@@ -206,7 +206,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
       final goRegister = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('Требуется регистрация'),
+          title: const Text('Требуется регистрация', textAlign: TextAlign.center),
           content: const Text(
             'Добавление в Мои места доступно только зарегистрированным пользователям.',
           ),
@@ -629,7 +629,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Подтверждение добавления в план'),
+        title: const Text('Подтверждение добавления в план', textAlign: TextAlign.center),
         content: Text(
           'Подтвердите, что хотите добавить место в план "$planTitle"',
         ),

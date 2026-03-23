@@ -70,3 +70,22 @@ class LeaderboardSnapshotDto {
     );
   }
 }
+
+class SympathyLeaderboardSnapshotDto {
+  final LeaderboardColumnDto received;
+  final LeaderboardColumnDto sent;
+
+  const SympathyLeaderboardSnapshotDto({
+    required this.received,
+    required this.sent,
+  });
+
+  factory SympathyLeaderboardSnapshotDto.fromMap(Map<String, dynamic> m) {
+    return SympathyLeaderboardSnapshotDto(
+      received: LeaderboardColumnDto.fromMap(
+          m['received'] as Map<String, dynamic>),
+      sent: LeaderboardColumnDto.fromMap(
+          m['sent'] as Map<String, dynamic>),
+    );
+  }
+}
