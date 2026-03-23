@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/attention_signs/attention_signs_repository_impl.dart';
 import '../../data/modal_events/modal_event_dto.dart';
 import '../../data/modal_events/modal_events_repository_impl.dart';
+import 'center_toast.dart';
 
 /// Проверяет очередь модальных событий и показывает их по одному (старые → новые).
 /// Вызывать из живого BuildContext (например, postFrameCallback).
@@ -48,7 +49,7 @@ Future<void> _showEventModal({
 
   final showInviteButton = isAccepted && !alreadyFriends && submissionId != null;
 
-  await showDialog<void>(
+  final result = await showDialog<String>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => _ModalEventDialog(
@@ -57,15 +58,7 @@ Future<void> _showEventModal({
       stickerUrl: event.stickerUrl,
       showInviteButton: showInviteButton,
       onInvite: showInviteButton
-          ? () async {
-              Navigator.of(ctx).pop();
-              try {
-                await attentionRepo.useFriendInviteRight(
-                  appUserId: appUserId,
-                  submissionId: submissionId,
-                );
-              } catch (_) {}
-            }
+          ? () => Navigator.of(ctx).pop('invite')
           : null,
       onClose: () => Navigator.of(ctx).pop(),
     ),
@@ -75,6 +68,19 @@ Future<void> _showEventModal({
   try {
     await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
   } catch (_) {}
+
+  // Если пользователь нажал "Пригласить в друзья" — отправляем запрос атомарно
+  if (result == 'invite' && submissionId != null && context.mounted) {
+    try {
+      final ok = await attentionRepo.useFriendInviteRightAndRequest(
+        appUserId: appUserId,
+        submissionId: submissionId,
+      );
+      if (ok && context.mounted) {
+        showCenterToast(context, message: 'Запрос в друзья отправлен');
+      }
+    } catch (_) {}
+  }
 }
 
 class _ModalEventDialog extends StatelessWidget {

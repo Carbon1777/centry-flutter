@@ -32,6 +32,7 @@ import 'plan_member_removed_ui_coordinator.dart';
 import 'plan_deleted_ui_coordinator.dart';
 import 'plan_member_joined_by_invite_ui_coordinator.dart';
 import 'plan_scheduled_notification_ui_coordinator.dart';
+import '../ui/private_chats/private_chats_list_screen.dart';
 
 /// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
 const BoxConstraints _kFriendDialogConstraints =
@@ -711,6 +712,21 @@ class _BootstrapGateState extends State<BootstrapGate>
           openSource: 'local_notification',
         );
       },
+      onPrivateChatMessageOpen: () async {
+        await _handlePrivateChatMessageOpen();
+      },
+    );
+  }
+
+  Future<void> _handlePrivateChatMessageOpen() async {
+    final userId = (_userId ?? '').trim();
+    if (userId.isEmpty) return;
+    final nav = App.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => PrivateChatsListScreen(appUserId: userId),
+      ),
     );
   }
 
@@ -724,8 +740,10 @@ class _BootstrapGateState extends State<BootstrapGate>
       await PushNotifications.showInternalInvite(m);
       await PushNotifications.showFriendRequest(m);
       _queueFriendRequestDialogFromRemoteMessage(m);
-      await PushNotifications.showPlanChatMessage(m);
-      await PushNotifications.showPrivateChatMessage(m);
+
+      // Chat messages (plan + private): при открытом приложении
+      // push НЕ показываем — сигнализируем только красной точкой на иконках
+      // (обновляется через polling в _BottomNavigationBar).
 
       // New scheduled/voting notifications are routed in foreground only via
       // canonical INBOX realtime path. No extra local notification here.
@@ -864,6 +882,11 @@ class _BootstrapGateState extends State<BootstrapGate>
             ? 'pending_notification'
             : (intent['open_source'] ?? '').toString().trim(),
       );
+      return;
+    }
+
+    if (type == 'PRIVATE_CHAT_MESSAGE') {
+      await _handlePrivateChatMessageOpen();
       return;
     }
 

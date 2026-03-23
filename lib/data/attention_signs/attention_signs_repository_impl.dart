@@ -79,4 +79,17 @@ class AttentionSignsRepositoryImpl implements AttentionSignsRepository {
     if (map['ok'] == true) return map['target_user_id'] as String?;
     return null;
   }
+
+  @override
+  Future<bool> useFriendInviteRightAndRequest({
+    required String appUserId,
+    required String submissionId,
+  }) async {
+    final response = await _client.rpc(
+      'use_friend_invite_right_and_request_v1',
+      params: {'p_user_id': appUserId, 'p_submission_id': submissionId},
+    );
+    final map = _asMap(response);
+    return map['ok'] == true;
+  }
 }
