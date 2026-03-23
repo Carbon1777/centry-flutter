@@ -3010,12 +3010,23 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   /// Safe to call from any context — guards against unready shell/user state.
   void _triggerCheckAndShowModalEvents() {
     final userId = (_userId ?? '').trim();
-    if (userId.isEmpty || !_appShellReady || _restoring) return;
+    if (userId.isEmpty || !_appShellReady || _restoring) {
+      debugPrint('[ModalEvents] _trigger BLOCKED: userId=${userId.isEmpty ? "EMPTY" : "ok"}, '
+          'shellReady=$_appShellReady, restoring=$_restoring');
+      return;
+    }
 
+    debugPrint('[ModalEvents] _trigger: scheduling check for user=$userId');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted) {
+        debugPrint('[ModalEvents] _trigger postFrame: NOT mounted');
+        return;
+      }
       final ctx = App.navigatorKey.currentContext;
-      if (ctx == null || !ctx.mounted) return;
+      if (ctx == null || !ctx.mounted) {
+        debugPrint('[ModalEvents] _trigger postFrame: ctx=${ctx == null ? "NULL" : "unmounted"}');
+        return;
+      }
       unawaited(checkAndShowModalEvents(
         context: ctx,
         appUserId: userId,

@@ -10,6 +10,9 @@ import 'center_toast.dart';
 
 enum _DialogResult { accept, decline }
 
+/// Guard: prevents concurrent runs of [checkAndShowModalEvents].
+bool _modalEventsCheckInProgress = false;
+
 /// Проверяет очередь модальных событий и показывает их по одному (старые → новые).
 /// Вызывать из живого BuildContext (например, postFrameCallback).
 ///
@@ -20,18 +23,48 @@ Future<void> checkAndShowModalEvents({
   required String appUserId,
   void Function(String planId)? onOpenPlan,
 }) async {
+  // Prevent re-entrant / concurrent runs — only one checker at a time.
+  if (_modalEventsCheckInProgress) {
+    debugPrint('[ModalEvents] checkAndShowModalEvents SKIPPED — already in progress');
+    return;
+  }
+  _modalEventsCheckInProgress = true;
+
+  try {
+    await _doCheckAndShow(
+      context: context,
+      appUserId: appUserId,
+      onOpenPlan: onOpenPlan,
+    );
+  } finally {
+    _modalEventsCheckInProgress = false;
+  }
+}
+
+Future<void> _doCheckAndShow({
+  required BuildContext context,
+  required String appUserId,
+  void Function(String planId)? onOpenPlan,
+}) async {
   final repo = ModalEventsRepositoryImpl(Supabase.instance.client);
   final attentionRepo = AttentionSignsRepositoryImpl(Supabase.instance.client);
 
   List<ModalEventDto> events;
   try {
     events = await repo.getPendingEvents(appUserId: appUserId);
-  } catch (_) {
+  } catch (e, st) {
+    debugPrint('[ModalEvents] getPendingEvents ERROR: $e\n$st');
     return;
   }
 
+  debugPrint('[ModalEvents] got ${events.length} pending events for user=$appUserId');
+
   for (final event in events) {
-    if (!context.mounted) return;
+    if (!context.mounted) {
+      debugPrint('[ModalEvents] context unmounted, stopping');
+      return;
+    }
+    debugPrint('[ModalEvents] showing modal for type=${event.eventType}, id=${event.eventId}');
     await _showEventModal(
       context: context,
       appUserId: appUserId,
