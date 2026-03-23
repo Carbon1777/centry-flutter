@@ -14,7 +14,6 @@ import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/friends/friends_repository_impl.dart';
 import '../../data/private_chats/private_chats_repository_impl.dart';
-import '../common/modal_events_checker.dart';
 import '../places/places_screen.dart';
 import '../plans/plans_screen.dart';
 import '../plans/plan_details_screen.dart';
@@ -575,9 +574,6 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_loadBadges());
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_checkModalEvents());
-    });
   }
 
   @override
@@ -591,16 +587,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadBadges());
-      unawaited(_checkModalEvents());
     }
-  }
-
-  Future<void> _checkModalEvents() async {
-    if (!mounted) return;
-    await checkAndShowModalEvents(
-      context: context,
-      appUserId: widget.appUserId,
-    );
   }
 
   Future<void> _loadBadges() async {

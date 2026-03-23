@@ -24,13 +24,19 @@ class ModalEventsRepositoryImpl implements ModalEventsRepository {
   }
 
   @override
-  Future<void> consumeEvent({
+  Future<bool> consumeEvent({
     required String appUserId,
     required String eventId,
   }) async {
-    await _client.rpc(
+    final response = await _client.rpc(
       'consume_modal_event_v1',
       params: {'p_user_id': appUserId, 'p_event_id': eventId},
     );
+    // Server returns jsonb {consumed: true, skip: true/false}.
+    // skip=true means the event should not be shown (e.g. invite expired).
+    if (response is Map) {
+      return response['skip'] == true;
+    }
+    return false;
   }
 }
