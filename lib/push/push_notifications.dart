@@ -1430,6 +1430,14 @@ class PushNotifications {
       fullScreenIntent: false,
       ongoing: false,
       autoCancel: true,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          kInviteActionOpen,
+          'Посмотреть',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
     );
 
     const ios = DarwinNotificationDetails(

@@ -160,11 +160,17 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
   String _userMessageForError(Object e) {
     if (e is PostgrestException) {
       final code = (e.code ?? '').toString().toUpperCase();
-      final msg = e.message.toString().toLowerCase();
+      final msg = e.message.toString();
       final details = (e.details ?? '').toString().toLowerCase();
 
-      final isAccessDenied = code == 'P0001' ||
-          msg.contains('access denied') ||
+      // P0001 = RAISE EXCEPTION в PL/pgSQL. Серверные сообщения уже на русском
+      // и предназначены для пользователя → показываем как есть.
+      if (code == 'P0001' && msg.trim().isNotEmpty) {
+        return msg.trim();
+      }
+
+      final isAccessDenied =
+          msg.toLowerCase().contains('access denied') ||
           details.contains('access denied');
 
       if (isAccessDenied) {

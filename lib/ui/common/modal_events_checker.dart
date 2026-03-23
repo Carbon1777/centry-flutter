@@ -669,8 +669,8 @@ class _ModalEventDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final title = isAccepted
-        ? '$nick принял ваш знак внимания!'
-        : '$nick отклонил ваш знак внимания';
+        ? '«$nick» принял ваш знак внимания!'
+        : '«$nick» отклонил ваш знак внимания';
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
