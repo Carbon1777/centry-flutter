@@ -761,7 +761,7 @@ class _NavItem extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Icon(icon, size: 23),
+                Icon(icon, size: 27),
                 if (showDot)
                   const Positioned(
                     right: -2,
@@ -774,7 +774,7 @@ class _NavItem extends StatelessWidget {
             Text(
               label,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontSize: 11,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
             ),

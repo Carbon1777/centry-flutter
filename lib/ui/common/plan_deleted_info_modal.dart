@@ -27,7 +27,7 @@ class PlanDeletedInfoModal extends StatelessWidget {
       titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
       contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      title: Text(t, style: titleStyle),
+      title: Text(t, style: titleStyle, textAlign: TextAlign.center),
       content: b.isNotEmpty
           ? ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),

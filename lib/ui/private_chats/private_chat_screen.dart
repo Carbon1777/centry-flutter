@@ -171,28 +171,25 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
   }
 
   Future<void> _handleDeleteChat() async {
-    final ok = await _repo.deletePrivateChat(
+    _refreshTimer?.cancel();
+    await _repo.deletePrivateChat(
       appUserId: widget.appUserId,
       chatId: widget.chatId,
     );
     if (!mounted) return;
-    if (ok) {
-      showCenterToast(context, message: 'Чат удален');
-      Navigator.of(context).pop();
-    }
+    Navigator.of(context).pop();
+    showCenterToast(context, message: 'Чат удален');
   }
 
   Future<void> _handleDeleteChatAndBlock() async {
-    final ok = await _repo.deletePrivateChatAndBlock(
+    _refreshTimer?.cancel();
+    await _repo.deletePrivateChatAndBlock(
       appUserId: widget.appUserId,
       chatId: widget.chatId,
     );
     if (!mounted) return;
-    if (ok) {
-      showCenterToast(context,
-          message: 'Пользователь заблокирован, чат удален');
-      Navigator.of(context).pop();
-    }
+    Navigator.of(context).pop();
+    showCenterToast(context, message: 'Пользователь заблокирован, чат удален');
   }
 
   Future<void> _handleEditMessage(String messageId, String text) async {
@@ -789,7 +786,7 @@ class _PrivateChatViewState extends State<_PrivateChatView>
           ),
           TextButton(
             onPressed: () {
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(); // закрыть диалог
               widget.onDeleteChat();
             },
             child: const Text('Удалить',
@@ -946,7 +943,12 @@ class _PrivateChatViewState extends State<_PrivateChatView>
     final totalCount =
         messages.length + (unreadInsertIndex != null ? 1 : 0);
 
-    return ListView.builder(
+    return GestureDetector(
+      onTap: () {
+        _composerFocusNode.unfocus();
+        FocusScope.of(context).unfocus();
+      },
+      child: ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -968,6 +970,7 @@ class _PrivateChatViewState extends State<_PrivateChatView>
 
         return _buildMessageRow(msg);
       },
+    ),
     );
   }
 

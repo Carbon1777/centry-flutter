@@ -19,4 +19,16 @@ class LeaderboardRepositoryImpl implements LeaderboardRepository {
       (res as Map).cast<String, dynamic>(),
     );
   }
+
+  @override
+  Future<SympathyLeaderboardSnapshotDto> getSympathySnapshot({required String appUserId}) async {
+    final res = await _client.rpc(
+      'get_sympathy_leaderboard_snapshot_v1',
+      params: {'p_app_user_id': appUserId},
+    );
+    if (res == null) throw StateError('get_sympathy_leaderboard_snapshot_v1 returned null');
+    return SympathyLeaderboardSnapshotDto.fromMap(
+      (res as Map).cast<String, dynamic>(),
+    );
+  }
 }

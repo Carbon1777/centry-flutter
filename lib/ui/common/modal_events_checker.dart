@@ -465,6 +465,7 @@ Future<void> _showInfoDialog({
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
       title: Text(
         title,
+        textAlign: TextAlign.center,
         style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
               color: titleColor,
@@ -509,7 +510,7 @@ Future<_DialogResult?> _showChoiceDialog({
       titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
       contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      title: Text(title),
+      title: Text(title, textAlign: TextAlign.center),
       content: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
         child: Text(
@@ -550,7 +551,7 @@ Future<_DialogResult?> _showFriendRequestDialog({
       titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
       contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      title: const Text('Запрос в друзья'),
+      title: const Text('Запрос в друзья', textAlign: TextAlign.center),
       content: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
         child: Column(
@@ -616,6 +617,7 @@ Future<String?> _showAttentionSignDialog({
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
       title: Text(
         title,
+        textAlign: TextAlign.center,
         style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
               color: titleColor,
@@ -685,6 +687,7 @@ Future<_DialogResult?> _showScheduledDialog({
       actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
       title: Text(
         title.isNotEmpty ? title : 'Уведомление',
+        textAlign: TextAlign.center,
         style: Theme.of(ctx)
             .textTheme
             .titleLarge
