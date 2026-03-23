@@ -13,10 +13,13 @@ import '../../data/places/places_repository_impl.dart' as places_impl;
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/friends/friends_repository_impl.dart';
+import '../../data/private_chats/private_chats_repository_impl.dart';
+import '../common/modal_events_checker.dart';
 import '../places/places_screen.dart';
 import '../plans/plans_screen.dart';
 import '../plans/plan_details_screen.dart';
 import '../friends/friends_screen.dart';
+import '../private_chats/private_chats_list_screen.dart';
 import '../profile/profile_screen.dart';
 import 'widgets/feed_geo_dialog.dart';
 import 'widgets/feed_place_card.dart';
@@ -556,9 +559,12 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
     with WidgetsBindingObserver {
   final PlansRepository _plansRepository =
       PlansRepositoryImpl(Supabase.instance.client);
+  final _privateChatsRepository =
+      PrivateChatsRepositoryImpl(Supabase.instance.client);
 
   Timer? _refreshTimer;
   bool _hasUnreadPlanChats = false;
+  bool _hasUnreadPrivateChats = false;
   bool _loading = false;
 
   @override
@@ -568,6 +574,9 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
     _loadBadges();
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_loadBadges());
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_checkModalEvents());
     });
   }
 
@@ -582,22 +591,39 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadBadges());
+      unawaited(_checkModalEvents());
     }
+  }
+
+  Future<void> _checkModalEvents() async {
+    if (!mounted) return;
+    await checkAndShowModalEvents(
+      context: context,
+      appUserId: widget.appUserId,
+    );
   }
 
   Future<void> _loadBadges() async {
     if (!mounted || _loading) return;
     _loading = true;
     try {
-      final badges = await _plansRepository.getMyPlanChatBadges(
-        appUserId: widget.appUserId,
-        includeArchived: true,
-      );
+      final results = await Future.wait([
+        _plansRepository.getMyPlanChatBadges(
+          appUserId: widget.appUserId,
+          includeArchived: true,
+        ),
+        _privateChatsRepository.getPrivateChatBadges(
+          appUserId: widget.appUserId,
+        ),
+      ]);
 
       if (!mounted) return;
+      final planBadges = results[0] as dynamic;
+      final privateBadges = results[1] as dynamic;
       setState(() {
         _hasUnreadPlanChats =
-            badges.hasAnyUnread || badges.unreadPlansCount > 0;
+            planBadges.hasAnyUnread || planBadges.unreadPlansCount > 0;
+        _hasUnreadPrivateChats = privateBadges.hasUnread as bool;
       });
     } catch (e) {
       // ignore
@@ -623,7 +649,7 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                 width: 1,
               ),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               mainAxisSize: MainAxisSize.max,
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -671,6 +697,23 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                     ).then((_) => widget.onNavigatedBack());
                   },
                 ),
+                _NavItem(
+                  icon: Icons.chat_bubble_outline,
+                  label: 'Чаты',
+                  showDot: _hasUnreadPrivateChats,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PrivateChatsListScreen(
+                          appUserId: widget.appUserId,
+                        ),
+                      ),
+                    ).then((_) {
+                      unawaited(_loadBadges());
+                      widget.onNavigatedBack();
+                    });
+                  },
+                ),
               ],
             ),
           ),
@@ -696,17 +739,17 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Icon(icon, size: 27),
+                Icon(icon, size: 23),
                 if (showDot)
                   const Positioned(
                     right: -2,
@@ -715,11 +758,11 @@ class _NavItem extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 5),
+            const SizedBox(height: 3),
             Text(
               label,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
             ),

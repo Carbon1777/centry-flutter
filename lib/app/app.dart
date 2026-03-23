@@ -725,6 +725,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       await PushNotifications.showFriendRequest(m);
       _queueFriendRequestDialogFromRemoteMessage(m);
       await PushNotifications.showPlanChatMessage(m);
+      await PushNotifications.showPrivateChatMessage(m);
 
       // New scheduled/voting notifications are routed in foreground only via
       // canonical INBOX realtime path. No extra local notification here.
