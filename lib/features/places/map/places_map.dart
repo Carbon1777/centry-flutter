@@ -60,8 +60,8 @@ class _PlacesMapState extends State<PlacesMap> {
   static const double _labelZoomThreshold = 15.8;
   static const int _maxLabeledPlaces = 12;
 
-  static const double _labelMaxWidth = 140;
-  static const double _markerHeight = 110;
+  static const double _labelMaxWidth = 100;
+  static const double _iconMarkerSize = 40;
 
   static const double _focusZoom = 17.0;
   static const double _userZoom = 16.0;
@@ -317,61 +317,60 @@ class _PlacesMapState extends State<PlacesMap> {
     );
   }
 
-  String _emojiForType(String type) {
-    switch (type) {
-      case 'restaurant': return '🍷';
-      case 'bar':        return '🍺';
-      case 'nightclub':  return '💃';
-      case 'cinema':     return '🎬';
-      case 'theatre':    return '🎭';
-      case 'karaoke':    return '🎤';
-      case 'hookah':     return '💨';
-      case 'bathhouse':  return '🧖';
-      default:           return '📍';
-    }
-  }
+  static const _markerAssets = <String, String>{
+    'restaurant': 'assets/images/map_markers/restaurant.png',
+    'bar':        'assets/images/map_markers/bar.png',
+    'nightclub':  'assets/images/map_markers/nightclub.png',
+    'cinema':     'assets/images/map_markers/cinema.png',
+    'theatre':    'assets/images/map_markers/theatre.png',
+    'karaoke':    'assets/images/map_markers/karaoke.png',
+    'hookah':     'assets/images/map_markers/hookah.png',
+    'bathhouse':  'assets/images/map_markers/bathhouse.png',
+  };
 
-  double _emojiScale() {
+  static const _defaultMarkerAsset = 'assets/images/map_markers/restaurant.png';
+
+  String _assetForType(String type) =>
+      _markerAssets[type] ?? _defaultMarkerAsset;
+
+  double _iconScale() {
     final t = ((_currentZoom - 13) / 5).clamp(0.0, 1.0);
-    return lerpDouble(1.0, 1.35, t) ?? 1.1; // увеличили чуть диапазон
+    return lerpDouble(1.0, 1.35, t) ?? 1.1;
   }
 
-  Widget _markerIcon(String emoji) {
-    // Transform.scale на Text внутри flutter_map маркеров ломает Impeller (iOS).
-    // Решение: считаем размер шрифта напрямую без Transform.
-    final fontSize = 22.0 * _emojiScale();
-
-    return Text(
-      emoji,
-      textDirection: TextDirection.ltr,
-      style: TextStyle(fontSize: fontSize),
+  Widget _markerIcon(String assetPath) {
+    final size = 28.0 * _iconScale();
+    return Image.asset(
+      assetPath,
+      width: size,
+      height: size,
+      filterQuality: FilterQuality.medium,
     );
   }
 
+  /// Иконка-маркер места — компактный бокс, center-aligned, без дрейфа.
   Marker _buildMarker(BuildContext context, PlaceDto place) {
-    final showLabel =
-        _labelsAllowedByZoom && _visibleLabelIds.contains(place.id);
+    return Marker(
+      width: _iconMarkerSize,
+      height: _iconMarkerSize,
+      alignment: Alignment.center,
+      point: LatLng(place.lat, place.lng),
+      child: IgnorePointer(
+        child: _markerIcon(_assetForType(
+          place.categories.isNotEmpty ? place.categories.first : place.type,
+        )),
+      ),
+    );
+  }
 
+  /// Лейбл места — отдельный маркер над иконкой.
+  Marker _buildLabelMarker(BuildContext context, PlaceDto place) {
     return Marker(
       width: _labelMaxWidth,
-      height: _markerHeight,
-      alignment: Alignment.bottomCenter,
+      height: 90,
+      alignment: const Alignment(0, 2.2),
       point: LatLng(place.lat, place.lng),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showLabel) _label(context, place),
-            const SizedBox(height: 4),
-            IgnorePointer(
-              child: _markerIcon(_emojiForType(
-                place.categories.isNotEmpty ? place.categories.first : place.type,
-              )),
-            ),
-          ],
-        ),
-      ),
+      child: _label(context, place),
     );
   }
 
@@ -431,7 +430,7 @@ class _PlacesMapState extends State<PlacesMap> {
       },
       child: Container(
         constraints: const BoxConstraints(maxWidth: _labelMaxWidth),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(8),
@@ -495,6 +494,14 @@ class _PlacesMapState extends State<PlacesMap> {
 
     final placeMarkers = _items.map((p) => _buildMarker(context, p)).toList();
 
+    // Лейблы — отдельный слой над кластерами, только для видимых мест
+    final labelMarkers = _labelsAllowedByZoom
+        ? _items
+            .where((p) => _visibleLabelIds.contains(p.id))
+            .map((p) => _buildLabelMarker(context, p))
+            .toList()
+        : <Marker>[];
+
     return Stack(
       children: [
         FlutterMap(
@@ -503,7 +510,7 @@ class _PlacesMapState extends State<PlacesMap> {
             initialCenter: initialCenter,
             initialZoom: geo != null ? 14 : 11,
             minZoom: 3,
-            maxZoom: 19.0,
+            maxZoom: 22.0,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
@@ -588,7 +595,7 @@ class _PlacesMapState extends State<PlacesMap> {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.centry.app',
               maxNativeZoom: 19,
-              maxZoom: 19,
+              maxZoom: 22,
             ),
             if (userPos != null)
               MarkerLayer(
@@ -620,6 +627,8 @@ class _PlacesMapState extends State<PlacesMap> {
                 },
               ),
             ),
+            if (labelMarkers.isNotEmpty)
+              MarkerLayer(markers: labelMarkers),
           ],
         ),
         if (userPos != null)
