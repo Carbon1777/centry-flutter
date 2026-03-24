@@ -329,7 +329,7 @@ class _PlacesMapState extends State<PlacesMap> {
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: borderW),
+          border: Border.all(color: Colors.red, width: borderW),
           boxShadow: const [
             BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
           ],
