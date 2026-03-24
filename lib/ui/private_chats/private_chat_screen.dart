@@ -342,6 +342,30 @@ class _PrivateChatView extends StatefulWidget {
   State<_PrivateChatView> createState() => _PrivateChatViewState();
 }
 
+// ---------------------------------------------------------------------------
+// Статус онлайн-активности
+// ---------------------------------------------------------------------------
+
+class OnlineStatus {
+  final Color color;
+  final String label;
+  const OnlineStatus(this.color, this.label);
+}
+
+OnlineStatus buildOnlineStatus(DateTime? lastActiveAt) {
+  if (lastActiveAt == null) {
+    return const OnlineStatus(Color(0xFFFF445A), 'Был давно');
+  }
+  final diff = DateTime.now().toUtc().difference(lastActiveAt.toUtc());
+  if (diff.inMinutes <= 5) {
+    return const OnlineStatus(Color(0xFF4CAF50), 'В сети');
+  } else if (diff.inDays < 7) {
+    return const OnlineStatus(Color(0xFFFFC107), 'Был недавно');
+  } else {
+    return const OnlineStatus(Color(0xFFFF445A), 'Был давно');
+  }
+}
+
 class _PrivateChatViewState extends State<_PrivateChatView>
     with WidgetsBindingObserver {
   static const double _kBottomAutoScrollThreshold = 72;
@@ -367,10 +391,18 @@ class _PrivateChatViewState extends State<_PrivateChatView>
   int? _unreadDividerInsertIndex;
   Timer? _unreadDividerTimer;
 
+  // Периодическое обновление профиля партнёра (для статуса онлайн)
+  UserMiniProfile? _livePartnerProfile;
+  Timer? _profileRefreshTimer;
+  bool _profileRefreshedOnce = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _livePartnerProfile = widget.partnerProfile;
+    _profileRefreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _refreshPartnerProfile());
   }
 
   @override
@@ -383,10 +415,28 @@ class _PrivateChatViewState extends State<_PrivateChatView>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _unreadDividerTimer?.cancel();
+    _profileRefreshTimer?.cancel();
     _scrollController.dispose();
     _composerController.dispose();
     _composerFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshPartnerProfile() async {
+    final snapshot = widget.snapshot;
+    if (snapshot == null) return;
+    try {
+      final profiles = await loadUserMiniProfiles(
+        userIds: [snapshot.partnerUserId],
+        context: 'friends',
+      );
+      if (!mounted) return;
+      _profileRefreshedOnce = true;
+      final updated = profiles[snapshot.partnerUserId];
+      if (updated != null) {
+        setState(() => _livePartnerProfile = updated);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -453,6 +503,11 @@ class _PrivateChatViewState extends State<_PrivateChatView>
     final oldSnap = oldWidget.snapshot;
     final newSnap = widget.snapshot;
     if (oldSnap == newSnap || newSnap == null) return;
+
+    // При первом snapshot — загрузить актуальный профиль партнёра
+    if (oldSnap == null && !_profileRefreshedOnce) {
+      _refreshPartnerProfile();
+    }
 
     if (!_initialScrollDone) {
       _initialScrollDone = true;
@@ -827,10 +882,12 @@ class _PrivateChatViewState extends State<_PrivateChatView>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final profile = widget.partnerProfile;
+    final profile = _livePartnerProfile ?? widget.partnerProfile;
     final nickname = profile?.nickname ?? '...';
-    final name = profile?.name;
     final messages = widget.snapshot?.messages ?? [];
+
+    // Статус активности партнёра
+    final statusInfo = buildOnlineStatus(profile?.lastActiveAt);
 
     return Scaffold(
       appBar: AppBar(
@@ -842,25 +899,40 @@ class _PrivateChatViewState extends State<_PrivateChatView>
           children: [
             UserAvatarWidget(profile: profile, size: 36),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  nickname,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                if (name != null && name.isNotEmpty)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    name,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: colors.onSurface.withValues(alpha: 0.55),
-                    ),
+                    nickname,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
                   ),
-              ],
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: statusInfo.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusInfo.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: colors.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

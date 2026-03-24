@@ -3016,6 +3016,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshGeoAndSync());
       unawaited(_ensureDeviceTokenRegistered());
+      unawaited(_sendHeartbeat());
 
       // If user restored while app was backgrounded, flush pending invite UI/actions.
       _schedulePendingPlanOpenIfReady();
@@ -3224,6 +3225,14 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         _runPostIdentityFlows();
       }
     }
+  }
+
+  Future<void> _sendHeartbeat() async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+    try {
+      await _supabase.rpc('heartbeat_v1', params: {'p_user_id': userId});
+    } catch (_) {}
   }
 
   Future<void> _refreshGeoAndSync() async {
@@ -3458,6 +3467,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     _ensureInboxInvitesRealtimeSubscribed();
 
     _homeVisibleAt ??= DateTime.now();
+    unawaited(_sendHeartbeat());
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Use navigator key instead of State.mounted — robust against stale callbacks.
