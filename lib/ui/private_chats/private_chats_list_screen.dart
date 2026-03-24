@@ -144,10 +144,10 @@ class _ChatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
 
     final nickname = profile?.nickname ?? '...';
     final name = profile?.name;
+    final status = buildOnlineStatus(profile?.lastActiveAt);
 
     return Material(
       color: colors.surface,
@@ -162,35 +162,73 @@ class _ChatCard extends StatelessWidget {
               // Аватар
               UserAvatarWidget(profile: profile, size: 48),
               const SizedBox(width: 12),
-              // Ник + имя
+              // Ник + имя + превью
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      nickname,
-                      style: text.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    // Ник + статус онлайн справа
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            nickname,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: status.color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
                     ),
                     if (name != null && name.isNotEmpty)
                       Text(
                         name,
-                        style: text.bodySmall?.copyWith(
-                          color: colors.onSurface.withValues(alpha: 0.55),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          color: colors.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
+                    if (chat.lastMessageText != null &&
+                        chat.lastMessageText!.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        chat.lastMessageIsMine
+                            ? 'Вы: ${chat.lastMessageText!}'
+                            : chat.lastMessageText!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors.onSurface.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
               // Красный кружок если есть непрочитанные
               if (chat.hasUnread)
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFF445A),
-                    shape: BoxShape.circle,
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFF445A),
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
             ],

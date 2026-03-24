@@ -11,6 +11,8 @@ class PrivateChatListItemDto {
   final int unreadCount;
   final bool hasUnread;
   final DateTime createdAt;
+  final String? lastMessageText;
+  final bool lastMessageIsMine;
 
   const PrivateChatListItemDto({
     required this.chatId,
@@ -21,6 +23,8 @@ class PrivateChatListItemDto {
     required this.unreadCount,
     required this.hasUnread,
     required this.createdAt,
+    this.lastMessageText,
+    this.lastMessageIsMine = false,
   });
 
   factory PrivateChatListItemDto.fromJson(Map<String, dynamic> j) =>
@@ -35,6 +39,8 @@ class PrivateChatListItemDto {
         unreadCount: (j['unread_count'] as num).toInt(),
         hasUnread: j['has_unread'] as bool,
         createdAt: DateTime.parse(j['created_at'] as String),
+        lastMessageText: j['last_message_text'] as String?,
+        lastMessageIsMine: j['last_message_is_mine'] as bool? ?? false,
       );
 }
 

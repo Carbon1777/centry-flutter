@@ -18,6 +18,7 @@ class UserMiniProfile {
   final String? nickname;
   final String? avatarUrl;
   final String? name;
+  final DateTime? lastActiveAt;
 
   const UserMiniProfile({
     required this.userId,
@@ -25,6 +26,7 @@ class UserMiniProfile {
     this.nickname,
     this.avatarUrl,
     this.name,
+    this.lastActiveAt,
   });
 
   factory UserMiniProfile.fromMap(String userId, Map<String, dynamic> m) {
@@ -34,6 +36,9 @@ class UserMiniProfile {
       nickname: m['nickname'] as String?,
       avatarUrl: m['avatar_url'] as String?,
       name: m['name'] as String?,
+      lastActiveAt: m['last_active_at'] != null
+          ? DateTime.parse(m['last_active_at'] as String)
+          : null,
     );
   }
 }
