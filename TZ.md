@@ -755,4 +755,5 @@ unauthorized access
 OpenRouter API key - готов предоставить по запросу
 База знаний находится в BZ.md
 Правила поведения оператора в чате в Pravila_chat.md 
+Support FAQ и сценарии эскалации Centry находятся в файле SupportFAQ.md
 Можешь их использовать и загружать.
