@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'delete_account_modal.dart';
+import 'app_version_label.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -342,24 +343,33 @@ class _DeleteAccountFooter extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => DeleteAccountModal(onAccountDeleted: () {}),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Center(
-              child: Text(
-                'Удалить аккаунт',
-                style: text.bodySmall?.copyWith(
-                  color: colors.error.withValues(alpha: 0.7),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: AppVersionLabel(),
+            ),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => showDialog<void>(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => DeleteAccountModal(onAccountDeleted: () {}),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: Text(
+                    'Удалить аккаунт',
+                    style: text.bodySmall?.copyWith(
+                      color: colors.error.withValues(alpha: 0.7),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );

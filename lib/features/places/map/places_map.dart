@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/geo/geo_service.dart';
 import '../../../data/places/place_dto.dart';
@@ -54,6 +56,8 @@ class _PlacesMapState extends State<PlacesMap> {
   double _currentZoom = 14.0;
   LatLng? _currentCenter;
 
+  String? _userAvatarUrl;
+
   /// 🔴 Live invalidation subscription
   late final StreamSubscription<void> _repoInvalidationSub;
 
@@ -87,9 +91,21 @@ class _PlacesMapState extends State<PlacesMap> {
       }
     });
 
+    _loadUserAvatar();
     widget.filtersController.addListener(_onFiltersChanged);
     widget.focusPlace?.addListener(_onExternalFocusRequested);
     _pendingFocusPlace = widget.focusPlace?.value;
+  }
+
+  Future<void> _loadUserAvatar() async {
+    try {
+      final res = await Supabase.instance.client.rpc('current_user');
+      if (!mounted || res is! Map) return;
+      final url = res['avatar_url'] as String?;
+      if (url != null && url.isNotEmpty) {
+        setState(() => _userAvatarUrl = url);
+      }
+    } catch (_) {}
   }
 
   void _onFiltersChanged() {
@@ -302,18 +318,44 @@ class _PlacesMapState extends State<PlacesMap> {
   }
 
   Marker _buildUserMarker(LatLng pos) {
+    const double size = 40;
+    const double borderW = 3;
+
     return Marker(
-      width: 36,
-      height: 36,
+      width: size,
+      height: size,
       point: pos,
       alignment: Alignment.center,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.blueAccent,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
+          border: Border.all(color: Colors.white, width: borderW),
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+          ],
+        ),
+        child: ClipOval(
+          child: _userAvatarUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: _userAvatarUrl!,
+                  width: size - borderW * 2,
+                  height: size - borderW * 2,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => _defaultUserIcon(size - borderW * 2),
+                  errorWidget: (_, __, ___) => _defaultUserIcon(size - borderW * 2),
+                )
+              : _defaultUserIcon(size - borderW * 2),
         ),
       ),
+    );
+  }
+
+  Widget _defaultUserIcon(double s) {
+    return Image.asset(
+      'assets/images/map_markers/default.png',
+      width: s,
+      height: s,
+      fit: BoxFit.cover,
     );
   }
 
@@ -364,28 +406,32 @@ class _PlacesMapState extends State<PlacesMap> {
   }
 
   /// Лейбл места — отдельный маркер над иконкой.
+  /// Geo-точка ниже виджета: нижний край лейбла ~30px выше geo-точки (зазор ~10px от иконки).
+  /// offset_bottom = 0.5 * H * (1 - y) → 0.5 * 60 * (1 - 2.0) = -30px (выше geo-точки).
   Marker _buildLabelMarker(BuildContext context, PlaceDto place) {
     return Marker(
-      width: _labelMaxWidth,
-      height: 90,
-      alignment: const Alignment(0, 2.2),
+      width: 120,
+      height: 60,
+      alignment: const Alignment(0, -1.7),
       point: LatLng(place.lat, place.lng),
       child: _label(context, place),
     );
   }
 
   Widget _label(BuildContext context, PlaceDto place) {
-    final titleStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          height: 1.1,
-        );
+    const titleStyle = TextStyle(
+      fontSize: 11,
+      color: Colors.white,
+      fontWeight: FontWeight.w700,
+      height: 1.1,
+    );
 
-    final secondaryStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Colors.white70,
-          fontWeight: FontWeight.w600,
-          height: 1.1,
-        );
+    const secondaryStyle = TextStyle(
+      fontSize: 10,
+      color: Colors.white70,
+      fontWeight: FontWeight.w600,
+      height: 1.1,
+    );
 
     final double effectiveRating = place.rating ?? 3.0;
     final isAlreadyInCurrentPlan = widget.currentPlanPlaceIds.contains(place.id);
@@ -428,44 +474,49 @@ class _PlacesMapState extends State<PlacesMap> {
           await widget.onPlaceDialogResult!(result);
         }
       },
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: _labelMaxWidth),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.72),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              place.categoriesDisplay?.join(' · ') ?? _typeLabel(place.type),
-              style: secondaryStyle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _labelMaxWidth),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(6),
             ),
-            const SizedBox(height: 1),
-            Text(
-              place.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: titleStyle,
-            ),
-            const SizedBox(height: 2),
-            Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.star, size: 12, color: Colors.amber),
-                const SizedBox(width: 2),
                 Text(
-                  effectiveRating.toStringAsFixed(1),
+                  place.categoriesDisplay?.join(' · ') ?? _typeLabel(place.type),
                   style: secondaryStyle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  place.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: titleStyle,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star, size: 11, color: Colors.amber),
+                    const SizedBox(width: 2),
+                    Text(
+                      effectiveRating.toStringAsFixed(1),
+                      style: secondaryStyle,
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
