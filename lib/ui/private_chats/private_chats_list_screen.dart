@@ -181,13 +181,26 @@ class _ChatCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: status.color,
-                            shape: BoxShape.circle,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: status.color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              status.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.onSurface.withValues(alpha: 0.55),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

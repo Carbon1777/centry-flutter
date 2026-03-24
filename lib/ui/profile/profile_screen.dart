@@ -354,11 +354,15 @@ class _ProfileContent extends StatelessWidget {
             Column(
               children: [
                 Expanded(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 92),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                 // Stack: левый контент на всю высоту + правая колонка Positioned
                 // Stack сам становится высотой левого контента → Positioned внутри bounds → нет конфликтов тапов
@@ -461,7 +465,7 @@ class _ProfileContent extends StatelessWidget {
                   ],
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 4),
 
                 // Секция "Стиль отдыха" — нижняя часть профиля
                 _LeisureSection(
@@ -474,18 +478,20 @@ class _ProfileContent extends StatelessWidget {
                   shortBio: profile.shortBio,
                   onReload: onReload,
                 ),
-              ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
 
-        // Версия сборки — прибита к низу экрана
-        const Padding(
-          padding: EdgeInsets.only(bottom: 20),
-          child: _AppVersionLabel(),
+            // Версия сборки — прибита к низу экрана
+            const Padding(
+              padding: EdgeInsets.only(bottom: 20),
+              child: _AppVersionLabel(),
+            ),
+          ],
         ),
-      ],
-    ),
             _ProfileMediaSheet(
               availableHeight: constraints.maxHeight,
               userId: userId,
@@ -1534,7 +1540,8 @@ class _LeisureSectionState extends State<_LeisureSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 8),
+        const Divider(height: 1),
+        const SizedBox(height: 6),
         Row(
           children: [
             Text(
