@@ -233,7 +233,34 @@ class _MessageBubble extends StatelessWidget {
 // Typing indicator
 // ---------------------------------------------------------------------------
 
-class _TypingIndicator extends StatelessWidget {
+class _TypingIndicator extends StatefulWidget {
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -247,23 +274,14 @@ class _TypingIndicator extends StatelessWidget {
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: theme.primaryColor,
-              ),
+        child: FadeTransition(
+          opacity: _opacity,
+          child: Text(
+            'Печатает...',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.primaryColor,
             ),
-            const SizedBox(width: 10),
-            Text(
-              'Думаю...',
-              style: theme.textTheme.labelMedium,
-            ),
-          ],
+          ),
         ),
       ),
     );
