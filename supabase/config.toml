@@ -393,3 +393,15 @@ entrypoint = "./functions/push_worker/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/push_worker/*.html" ]
+
+[functions.support-send-question]
+enabled = true
+verify_jwt = true
+import_map = "./functions/support-send-question/deno.json"
+entrypoint = "./functions/support-send-question/index.ts"
+
+[functions.kb-ingest]
+enabled = true
+verify_jwt = true
+import_map = "./functions/kb-ingest/deno.json"
+entrypoint = "./functions/kb-ingest/index.ts"

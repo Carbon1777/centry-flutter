@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'delete_account_modal.dart';
 import 'app_version_label.dart';
+import '../../ui/support/support_direction_screen.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -51,6 +55,34 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   }
 
   bool _get(String ctx, String field) => _settings?['$ctx.$field'] ?? true;
+
+  Future<void> _openSupport() async {
+    try {
+      const storage = FlutterSecureStorage();
+      final raw = await storage.read(key: 'user_snapshot');
+      String? appUserId;
+      if (raw != null && raw.isNotEmpty) {
+        final j = jsonDecode(raw) as Map<String, dynamic>;
+        appUserId = j['id']?.toString();
+      }
+      if (appUserId == null || appUserId.isEmpty) {
+        final authUid = Supabase.instance.client.auth.currentUser?.id;
+        if (authUid == null) return;
+        final row = await Supabase.instance.client
+            .from('app_users')
+            .select('id')
+            .eq('auth_user_id', authUid)
+            .maybeSingle();
+        appUserId = row?['id']?.toString();
+      }
+      if (!mounted || appUserId == null) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SupportDirectionScreen(appUserId: appUserId!),
+        ),
+      );
+    } catch (_) {}
+  }
 
   Future<void> _toggle(String ctx, String field, bool value) async {
     final key = '$ctx.$field';
@@ -122,13 +154,15 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       ],
     );
 
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Где видны мои профили', style: text.titleMedium),
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Где видны мои профили', style: text.titleMedium),
           const SizedBox(height: 20),
 
           // ── Мини профиль ──
@@ -193,6 +227,14 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           ),
         ],
       ),
+    ),
+    // Иконка поддержки — правый верхний угол контента
+    Positioned(
+      top: 6,
+      right: 12,
+      child: _SupportButton(onTap: _openSupport),
+    ),
+      ],
     );
   }
 
@@ -323,6 +365,72 @@ class _EyeSwitch extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// =======================
+// Delete account footer
+// =======================
+
+// =======================
+// Кнопка поддержки с эффектом нажатия
+// =======================
+
+class _SupportButton extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _SupportButton({required this.onTap});
+
+  @override
+  State<_SupportButton> createState() => _SupportButtonState();
+}
+
+class _SupportButtonState extends State<_SupportButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onTapDown(TapDownDetails _) => _ctrl.forward();
+  void _onTapUp(TapUpDetails _) {
+    _ctrl.reverse();
+    widget.onTap();
+  }
+
+  void _onTapCancel() => _ctrl.reverse();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Image.asset(
+          'assets/images/support.png',
+          width: 84,
+          height: 84,
         ),
       ),
     );
