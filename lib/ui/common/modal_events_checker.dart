@@ -111,7 +111,9 @@ Future<void> _showEventModal({
 
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(ATTENTION_SIGN) error: $e');
+    }
 
     if (result == 'invite' && submissionId != null && context.mounted) {
       try {
@@ -122,7 +124,9 @@ Future<void> _showEventModal({
         if (ok && context.mounted) {
           showCenterToast(context, message: 'Запрос в друзья отправлен');
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[ModalEvents] useFriendInviteRightAndRequest error: $e');
+      }
     }
     return;
   }
@@ -137,7 +141,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(FRIEND_REQUEST_RECEIVED) error: $e');
+    }
     if (!context.mounted) return;
     if (result == _DialogResult.accept && requestId.isNotEmpty) {
       try {
@@ -147,7 +153,9 @@ Future<void> _showEventModal({
         );
         FriendsRefreshBus.ping();
         if (context.mounted) showCenterToast(context, message: 'Запрос принят');
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[ModalEvents] accept_friend_request_v2 error: $e');
+      }
     } else if (result == _DialogResult.decline && requestId.isNotEmpty) {
       try {
         await Supabase.instance.client.rpc(
@@ -155,7 +163,9 @@ Future<void> _showEventModal({
           params: {'p_user_id': appUserId, 'p_request_id': requestId},
         );
         FriendsRefreshBus.ping();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[ModalEvents] decline_friend_request_v2 error: $e');
+      }
     }
     return;
   }
@@ -170,7 +180,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(FRIEND_REQUEST_ACCEPTED) error: $e');
+    }
     FriendsRefreshBus.ping();
     return;
   }
@@ -185,7 +197,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(FRIEND_REQUEST_DECLINED) error: $e');
+    }
     return;
   }
 
@@ -199,7 +213,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(FRIEND_REMOVED) error: $e');
+    }
     FriendsRefreshBus.ping();
     return;
   }
@@ -215,7 +231,9 @@ Future<void> _showEventModal({
     bool skip = false;
     try {
       skip = await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_INTERNAL_INVITE) error: $e');
+    }
     if (skip || !context.mounted) return;
 
     final body = planTitle.isNotEmpty
@@ -274,7 +292,9 @@ Future<void> _showEventModal({
     await _showInfoDialog(context: context, title: 'План удалён', body: body);
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_DELETED) error: $e');
+    }
     return;
   }
 
@@ -291,7 +311,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_MEMBER_LEFT) error: $e');
+    }
     return;
   }
 
@@ -309,7 +331,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_MEMBER_REMOVED) error: $e');
+    }
     return;
   }
 
@@ -322,7 +346,9 @@ Future<void> _showEventModal({
     await _showInfoDialog(context: context, title: 'Новый участник', body: body);
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_MEMBER_JOINED_BY_INVITE) error: $e');
+    }
     return;
   }
 
@@ -344,7 +370,9 @@ Future<void> _showEventModal({
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent($type) error: $e');
+    }
     if (result == _DialogResult.accept && planId.isNotEmpty && context.mounted) {
       onOpenPlan?.call(planId);
     }
@@ -358,14 +386,18 @@ Future<void> _showEventModal({
     await _showInfoDialog(context: context, title: title, body: body);
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_EVENT_REMINDER_24H) error: $e');
+    }
     return;
   }
 
   // ── Неизвестный тип — consume без показа ──────────────────────────────────
   try {
     await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('[ModalEvents] consumeEvent(unknown=$type) error: $e');
+  }
 }
 
 // ── Helpers: scheduled notification text ───────────────────────────────────

@@ -154,8 +154,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   void _maybeOpenInitialPlanAfterBuild() {
-    // ignore: avoid_print
-    print(
+    debugPrint(
       'INVITE NAV: initialPlanIdToOpen="${widget.initialPlanIdToOpen}" handled=$_handledInitialPlanNav',
     );
 

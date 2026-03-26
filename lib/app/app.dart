@@ -3232,7 +3232,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     if (userId == null || userId.isEmpty) return;
     try {
       await _supabase.rpc('heartbeat_v1', params: {'p_user_id': userId});
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[App] heartbeat_v1 error: $e');
+    }
   }
 
   Future<void> _refreshGeoAndSync() async {

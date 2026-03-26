@@ -32,7 +32,7 @@ Future<void> main() async {
         );
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       } catch (e) {
-        // ignore
+        debugPrint('[Main] Firebase init failed (push notifications disabled): $e');
       }
     }
 
