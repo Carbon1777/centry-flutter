@@ -52,11 +52,17 @@ class _EmailScreenState extends State<EmailScreen> {
     _authSub = auth.onAuthStateChange.listen((data) async {
       if (data.session != null && mounted) {
         try {
+          final publicId = widget.bootstrapResult['public_id'] as String?;
+          final nickname = widget.bootstrapResult['nickname'] as String?;
+          if (publicId == null || nickname == null) {
+            debugPrint('[EmailScreen] bootstrap missing public_id or nickname');
+            return;
+          }
           await UserSnapshotStorage().save(
             UserSnapshot(
               id: _userId,
-              publicId: widget.bootstrapResult['public_id'] as String,
-              nickname: widget.bootstrapResult['nickname'] as String,
+              publicId: publicId,
+              nickname: nickname,
               state: 'USER',
             ),
           );
@@ -83,11 +89,17 @@ class _EmailScreenState extends State<EmailScreen> {
         if (!mounted) return;
 
         try {
+          final publicId = widget.bootstrapResult['public_id'] as String?;
+          final nickname = widget.bootstrapResult['nickname'] as String?;
+          if (publicId == null || nickname == null) {
+            debugPrint('[EmailScreen] bootstrap missing public_id or nickname (postFrame)');
+            return;
+          }
           await UserSnapshotStorage().save(
             UserSnapshot(
               id: _userId,
-              publicId: widget.bootstrapResult['public_id'] as String,
-              nickname: widget.bootstrapResult['nickname'] as String,
+              publicId: publicId,
+              nickname: nickname,
               state: 'USER',
             ),
           );
@@ -99,7 +111,9 @@ class _EmailScreenState extends State<EmailScreen> {
 
           if (!mounted) return;
           Navigator.of(context).popUntil((route) => route.isFirst);
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[EmailScreen] onAuthStateChange handler error: $e');
+        }
       });
     }
   }

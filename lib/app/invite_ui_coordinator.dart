@@ -502,7 +502,9 @@ class InviteUiCoordinator {
     if (onError == null) return;
     try {
       await onError(error, stackTrace);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[InviteUiCoordinator] safeOnError swallowed: $e');
+    }
   }
 
   Future<void> _showOwnerResultDialogFor(OwnerResultUiRequest request) async {

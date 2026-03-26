@@ -61,7 +61,9 @@ class ModalEventsRepositoryImpl implements ModalEventsRepository {
       try {
         final decoded = jsonDecode(response);
         if (decoded is Map) return decoded['skip'] == true;
-      } catch (_) {}
+      } catch (_) {
+        // non-critical: response string parse fallback
+      }
     }
     return false;
   }

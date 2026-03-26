@@ -91,7 +91,9 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
       if (!mounted || snapshot == null) return;
       setState(() => _snapshot = snapshot);
       _markReadIfNeeded();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] loadSnapshot error: $e');
+    }
   }
 
   void _queueRefresh() {
@@ -113,7 +115,8 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
       if (!mounted || snapshot == null) return;
       setState(() => _snapshot = snapshot);
       _markReadIfNeeded();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[PrivateChat] doRefresh error: $e');
     } finally {
       _refreshInFlight = false;
       if (_refreshQueued) {
@@ -142,7 +145,8 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
         readThroughSeq: seq,
       );
       _lastMarkedReadSeq = seq;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[PrivateChat] markRead error: $e');
     } finally {
       _readInFlight = false;
     }
@@ -164,7 +168,8 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
       if (result.isSuccess) {
         _queueRefresh();
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[PrivateChat] sendMessage error: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -201,7 +206,9 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
         text: text,
       );
       _queueRefresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] editMessage error: $e');
+    }
   }
 
   Future<void> _handleDeleteMessageForAll(String messageId) async {
@@ -212,7 +219,9 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
         messageId: messageId,
       );
       _queueRefresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] deleteMessageForAll error: $e');
+    }
   }
 
   Future<void> _handleDeleteMessageForMe(String messageId) async {
@@ -223,7 +232,9 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
         messageId: messageId,
       );
       _queueRefresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] deleteMessageForMe error: $e');
+    }
   }
 
   Future<void> _handleDeleteMessagesBulk(
@@ -236,7 +247,9 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
         mode: mode,
       );
       _queueRefresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] deleteMessagesBulk error: $e');
+    }
   }
 
   @override
@@ -436,7 +449,9 @@ class _PrivateChatViewState extends State<_PrivateChatView>
       if (updated != null) {
         setState(() => _livePartnerProfile = updated);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivateChat] refreshPartnerProfile error: $e');
+    }
   }
 
   @override

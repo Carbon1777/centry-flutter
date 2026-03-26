@@ -81,7 +81,9 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           builder: (_) => SupportDirectionScreen(appUserId: appUserId!),
         ),
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PrivacySettings] openSupport error: $e');
+    }
   }
 
   Future<void> _toggle(String ctx, String field, bool value) async {
@@ -111,12 +113,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text('Ошибка: $_error'))
-              : Column(
-                  children: [
-                    Expanded(child: _buildContent(context)),
-                    _DeleteAccountFooter(),
-                  ],
-                ),
+              : _buildContent(context),
     );
   }
 
@@ -154,87 +151,155 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       ],
     );
 
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Где видны мои профили', style: text.titleMedium),
-          const SizedBox(height: 20),
-
-          // ── Мини профиль ──
-          Text(
-            'Мини профиль',
-            style: text.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colors.outline,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Table(
-            columnWidths: columnWidths,
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              headerRow,
-              ..._buildRows(_miniFields, _miniFieldLabels, text, colors),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // ── Полный профиль ──
-          Text(
-            'Полный профиль',
-            style: text.bodySmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colors.outline,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Table(
-            columnWidths: columnWidths,
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              headerRow,
-              ..._buildRows(_fullFields, _fullFieldLabels, text, colors),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // ── Пометка про друзей ──
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
+    return SafeArea(
+      top: false,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('* ', style: text.bodySmall?.copyWith(color: colors.outline)),
-                Expanded(
-                  child: Text(
-                    'Настройки приватности не распространяются на ваших друзей — для них мини профиль и полный профиль всегда открыты.',
-                    style: text.bodySmall?.copyWith(color: colors.outline),
+                Text('Где видны мои профили', style: text.titleMedium),
+                const SizedBox(height: 14),
+
+                // ── Мини профиль ──
+                Text(
+                  'Мини профиль',
+                  style: text.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colors.outline,
                   ),
                 ),
+                const SizedBox(height: 6),
+                Table(
+                  columnWidths: columnWidths,
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  children: [
+                    headerRow,
+                    ..._buildRows(_miniFields, _miniFieldLabels, text, colors),
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Полный профиль ──
+                Text(
+                  'Полный профиль',
+                  style: text.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colors.outline,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Table(
+                  columnWidths: columnWidths,
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  children: [
+                    headerRow,
+                    ..._buildRows(_fullFields, _fullFieldLabels, text, colors),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Пометка про друзей ──
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '* Настройки приватности не распространяются на ваших друзей — для них мини профиль и полный профиль всегда открыты.',
+                    style: text.bodySmall?.copyWith(color: colors.outline, fontSize: 12),
+                  ),
+                ),
+
+                const Spacer(),
+
+                // ── Контакты + версия + удаление ──
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 16,
+                        runSpacing: 4,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.mail_outline, size: 13, color: colors.outline.withValues(alpha: 0.6)),
+                              const SizedBox(width: 5),
+                              Text('support@centryweb.ru', style: TextStyle(fontSize: 12, color: colors.outline.withValues(alpha: 0.7))),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.mail_outline, size: 13, color: colors.outline.withValues(alpha: 0.6)),
+                              const SizedBox(width: 5),
+                              Text('partners@centryweb.ru', style: TextStyle(fontSize: 12, color: colors.outline.withValues(alpha: 0.7))),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.mail_outline, size: 13, color: colors.outline.withValues(alpha: 0.6)),
+                              const SizedBox(width: 5),
+                              Text('privacy@centryweb.ru', style: TextStyle(fontSize: 12, color: colors.outline.withValues(alpha: 0.7))),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.language, size: 13, color: colors.outline.withValues(alpha: 0.6)),
+                          const SizedBox(width: 5),
+                          Text('centryweb.ru', style: TextStyle(fontSize: 12, color: colors.outline.withValues(alpha: 0.7))),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const AppVersionLabel(),
+                      const SizedBox(height: 6),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => DeleteAccountModal(onAccountDeleted: () {}),
+                        ),
+                        child: Text(
+                          'Удалить аккаунт',
+                          style: text.bodySmall?.copyWith(
+                            color: colors.error.withValues(alpha: 0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
+          // Иконка поддержки — правый верхний угол контента
+          Positioned(
+            top: 4,
+            right: 12,
+            child: _SupportButton(onTap: _openSupport),
+          ),
         ],
       ),
-    ),
-    // Иконка поддержки — правый верхний угол контента
-    Positioned(
-      top: 6,
-      right: 12,
-      child: _SupportButton(onTap: _openSupport),
-    ),
-      ],
     );
   }
 
@@ -441,45 +506,4 @@ class _SupportButtonState extends State<_SupportButton>
 // Delete account footer
 // =======================
 
-class _DeleteAccountFooter extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: AppVersionLabel(),
-            ),
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () => showDialog<void>(
-                context: context,
-                barrierDismissible: false,
-                builder: (_) => DeleteAccountModal(onAccountDeleted: () {}),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Center(
-                  child: Text(
-                    'Удалить аккаунт',
-                    style: text.bodySmall?.copyWith(
-                      color: colors.error.withValues(alpha: 0.7),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

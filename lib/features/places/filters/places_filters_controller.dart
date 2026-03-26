@@ -222,7 +222,9 @@ class PlacesFiltersController extends ChangeNotifier {
           'type_titles': _typeTitles,
         };
         prefs.setString(_kPrefsKey, jsonEncode(data));
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[PlacesFilters] persist error: $e');
+      }
     });
   }
 

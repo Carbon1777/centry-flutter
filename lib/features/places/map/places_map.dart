@@ -105,7 +105,9 @@ class _PlacesMapState extends State<PlacesMap> {
       if (url != null && url.isNotEmpty) {
         setState(() => _userAvatarUrl = url);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[PlacesMap] loadUserAvatar error: $e');
+    }
   }
 
   void _onFiltersChanged() {

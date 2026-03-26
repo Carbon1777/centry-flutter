@@ -143,7 +143,9 @@ class _AddFriendToPlanSheetState extends State<_AddFriendToPlanSheet>
               if (channel != 'INBOX') return;
 
               _scheduleRefresh();
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[AddFriendToPlan] realtime callback error: $e');
+            }
           },
         )
         .subscribe();

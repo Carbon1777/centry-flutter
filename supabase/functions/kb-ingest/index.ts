@@ -142,6 +142,10 @@ serve(async (req: Request) => {
     const versionRes = await sbFetch(
       `/rest/v1/kb_document_versions?document_id=eq.${documentId}&is_active=eq.true&select=id,content_markdown,version_no&limit=1`
     );
+    if (!versionRes.ok) {
+      const errText = await versionRes.text();
+      throw new Error(`Failed to fetch document version: ${versionRes.status} ${errText}`);
+    }
     const versions = await versionRes.json();
     if (!versions?.length) {
       return jsonResponse({ error: "No active version found for this document" }, 404);
@@ -149,10 +153,14 @@ serve(async (req: Request) => {
     const version = versions[0];
 
     // 2. Delete existing chunks for this document+version
-    await sbFetch(
+    const deleteRes = await sbFetch(
       `/rest/v1/kb_chunks?document_id=eq.${documentId}&document_version_id=eq.${version.id}`,
       { method: "DELETE" }
     );
+    if (!deleteRes.ok) {
+      const errText = await deleteRes.text();
+      throw new Error(`Failed to delete old chunks: ${deleteRes.status} ${errText}`);
+    }
 
     // 3. Chunk the content
     const chunks = chunkText(version.content_markdown);
