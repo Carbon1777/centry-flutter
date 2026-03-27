@@ -22,6 +22,7 @@ import '../data/local/user_snapshot_storage.dart';
 import '../data/legal/legal_repository_impl.dart';
 import '../features/home/home_screen.dart';
 import '../features/legal/legal_agreement_screen.dart';
+import '../features/onboarding/intro_video_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
@@ -150,6 +151,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   // Legal acceptance check for returning users.
   bool _legalNeedsAcceptance = false;
   bool _legalCheckInProgress = false;
+
+  // Intro video (показывается один раз при первом запуске).
+  bool _showIntroVideo = false;
 
   // ✅ Push token registration guards (UI-only, no business logic)
   bool _registeringDeviceToken = false;
@@ -3395,11 +3399,14 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     // ===== ONBOARDING =====
     if (!mounted) return;
     await _disposeInboxInvitesRealtimeSubscription();
+    final showVideo = await IntroVideoScreen.shouldShow();
+    if (!mounted) return;
     setState(() {
       _userId = null;
       _nickname = null;
       _publicId = null;
       _email = null;
+      _showIntroVideo = showVideo;
       _restoring = false;
       _appShellReady = false;
       _homeVisibleAt = null;
@@ -3547,6 +3554,15 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         initialPlanIdToOpen: null,
         onInitialPlanOpened: _consumePendingOpenPlanId,
         onAppShellReady: _onAppShellReady,
+      );
+    }
+
+    if (_showIntroVideo) {
+      return IntroVideoScreen(
+        onDone: () {
+          if (!mounted) return;
+          setState(() => _showIntroVideo = false);
+        },
       );
     }
 

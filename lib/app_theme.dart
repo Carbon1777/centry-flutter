@@ -67,6 +67,7 @@ class AppTheme {
       // AppBar
       // =======================
       appBarTheme: const AppBarTheme(
+        centerTitle: false,
         backgroundColor: background,
         elevation: 0,
         scrolledUnderElevation: 0,

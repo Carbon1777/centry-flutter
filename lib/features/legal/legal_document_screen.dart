@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../../data/legal/legal_document_dto.dart';
 
@@ -16,9 +17,9 @@ class LegalDocumentScreen extends StatelessWidget {
       body: SingleChildScrollView(
         physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
-        child: SelectableText(
+        child: HtmlWidget(
           document.content,
-          style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+          textStyle: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
         ),
       ),
     );
