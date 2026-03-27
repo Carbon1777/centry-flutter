@@ -1027,42 +1027,57 @@ class _FullProfileMediaSheetState extends State<_FullProfileMediaSheet> {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 3,
-            mainAxisSpacing: 3,
-          ),
-          itemCount: _photos.length,
-          itemBuilder: (ctx, i) => GestureDetector(
-            onTap: () => _openFullscreen(i),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(
-                imageUrl: _photos[i].publicUrl,
-                fit: BoxFit.cover,
-                placeholder: (_, __) => ColoredBox(
-                  color: colors.surfaceContainerHighest,
-                  child: Center(
-                    child: Icon(Icons.image_outlined,
-                        color: colors.onSurface.withValues(alpha: 0.3)),
-                  ),
-                ),
-                errorWidget: (_, __, ___) => ColoredBox(
-                  color: colors.surfaceContainerHighest,
-                  child: Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        color: colors.onSurface.withValues(alpha: 0.3)),
+      child: Column(
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 3,
+                mainAxisSpacing: 3,
+              ),
+              itemCount: _photos.length,
+              itemBuilder: (ctx, i) => GestureDetector(
+                onTap: () => _openFullscreen(i),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: CachedNetworkImage(
+                    imageUrl: _photos[i].publicUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => ColoredBox(
+                      color: colors.surfaceContainerHighest,
+                      child: Center(
+                        child: Icon(Icons.image_outlined,
+                            color: colors.onSurface.withValues(alpha: 0.3)),
+                      ),
+                    ),
+                    errorWidget: (_, __, ___) => ColoredBox(
+                      color: colors.surfaceContainerHighest,
+                      child: Center(
+                        child: Icon(Icons.broken_image_outlined,
+                            color: colors.onSurface.withValues(alpha: 0.3)),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 20),
+          Text(
+            'Во время бета-тестирования можно добавить до 9 фото. '
+            'С релизом проекта появится возможность загружать '
+            'больше фото и видео.',
+            textAlign: TextAlign.center,
+            style: textTheme.bodySmall?.copyWith(
+              color: colors.onSurface.withValues(alpha: 0.55),
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
