@@ -79,11 +79,18 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _BoxContent(
-              box: _box!,
-              onAccept: _handleAccept,
-              onDecline: _handleDecline,
-            ),
+          : _box == null
+              ? const Center(
+                  child: Text(
+                    'Не удалось загрузить данные',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                )
+              : _BoxContent(
+                  box: _box!,
+                  onAccept: _handleAccept,
+                  onDecline: _handleDecline,
+                ),
     );
   }
 }

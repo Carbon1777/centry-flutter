@@ -50,7 +50,7 @@ class PlansRepositoryImpl implements PlansRepository {
     required String planId,
   }) async {
     final response = await _client.rpc(
-      'get_plan_details_v1',
+      'get_plan_details_v2',
       params: {
         'p_app_user_id': appUserId,
         'p_plan_id': planId,
