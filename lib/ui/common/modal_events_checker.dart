@@ -337,6 +337,34 @@ Future<void> _showEventModal({
     return;
   }
 
+  // ── PLAN_INVITE_RESULT_FOR_OWNER ──────────────────────────────────────────
+  if (type == 'PLAN_INVITE_RESULT_FOR_OWNER') {
+    final action = (p['action'] ?? '').toString().toUpperCase();
+    final planTitle = (p['plan_title'] ?? '').toString();
+    final inviteeNick = (p['invitee_nickname'] ?? nick).toString();
+    final accepted = action == 'ACCEPT';
+    final title = accepted ? 'Приглашение принято' : 'Приглашение отклонено';
+    final body = planTitle.isNotEmpty
+        ? accepted
+            ? '«$inviteeNick» принял приглашение в план «$planTitle».'
+            : '«$inviteeNick» отклонил приглашение в план «$planTitle».'
+        : accepted
+            ? '«$inviteeNick» принял ваше приглашение.'
+            : '«$inviteeNick» отклонил ваше приглашение.';
+    await _showInfoDialog(
+      context: context,
+      title: title,
+      body: body,
+      titleColor: accepted ? null : Colors.red,
+    );
+    try {
+      await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
+    } catch (e) {
+      debugPrint('[ModalEvents] consumeEvent(PLAN_INVITE_RESULT_FOR_OWNER) error: $e');
+    }
+    return;
+  }
+
   // ── PLAN_MEMBER_JOINED_BY_INVITE ───────────────────────────────────────────
   if (type == 'PLAN_MEMBER_JOINED_BY_INVITE') {
     final planTitle = (p['plan_title'] ?? '').toString();
