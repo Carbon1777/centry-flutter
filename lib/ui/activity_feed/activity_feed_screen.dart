@@ -42,12 +42,17 @@ class ActivityFeedScreen extends StatefulWidget {
   // Called once when Feed is actually visible and ready (app shell ready).
   final VoidCallback? onAppShellReady;
 
+  // Incremented by parent on each _restore() so the shell-ready flag resets
+  // and the modal event queue is re-checked after a token refresh resume.
+  final int shellGeneration;
+
   const ActivityFeedScreen({
     super.key,
     required this.userId,
     required this.nickname,
     required this.publicId,
     required this.email,
+    required this.shellGeneration,
     this.initialPlanIdToOpen,
     this.onInitialPlanOpened,
     this.onAppShellReady,
@@ -80,6 +85,17 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         });
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(ActivityFeedScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Parent increments shellGeneration on each _restore() (e.g. token refresh).
+    // Reset the flag so _notifyAppShellReadyAfterBuild() fires again, which
+    // triggers _onAppShellReady() and the modal event queue check.
+    if (oldWidget.shellGeneration != widget.shellGeneration) {
+      _appShellReadyNotified = false;
+    }
   }
 
   @override

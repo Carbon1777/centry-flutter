@@ -143,6 +143,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   DateTime? _homeVisibleAt;
   Timer? _pendingPlanOpenTimer;
   bool _appShellReady = false;
+  int _shellGeneration = 0;
 
   // Post-identity pipeline guards (avoid reentry/loops).
   bool _postIdentityFlowsRunning = false;
@@ -3356,6 +3357,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
           _email = row['email'] as String?;
           _restoring = false;
           _appShellReady = false;
+          _shellGeneration++;
           _homeVisibleAt = null;
           _postIdentityFlowsRerunRequested = false;
         });
@@ -3385,6 +3387,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         _email = null;
         _restoring = false;
         _appShellReady = false;
+        _shellGeneration++;
         _homeVisibleAt = null;
         _postIdentityFlowsRerunRequested = false;
       });
@@ -3409,6 +3412,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       _showIntroVideo = showVideo;
       _restoring = false;
       _appShellReady = false;
+      _shellGeneration++;
       _homeVisibleAt = null;
       _postIdentityFlowsRerunRequested = false;
     });
@@ -3551,6 +3555,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         nickname: _nickname ?? '',
         publicId: _publicId!,
         email: _email,
+        shellGeneration: _shellGeneration,
         initialPlanIdToOpen: null,
         onInitialPlanOpened: _consumePendingOpenPlanId,
         onAppShellReady: _onAppShellReady,

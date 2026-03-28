@@ -19,12 +19,16 @@ class HomeScreen extends StatefulWidget {
   // Called when the real working screen (Feed) is ready.
   final VoidCallback? onAppShellReady;
 
+  // Incremented by parent on each _restore() so Feed resets its shell-ready flag.
+  final int shellGeneration;
+
   const HomeScreen({
     super.key,
     required this.userId,
     required this.nickname,
     required this.publicId,
     required this.email,
+    required this.shellGeneration,
     this.initialPlanIdToOpen,
     this.onInitialPlanOpened,
     this.onAppShellReady,
@@ -257,6 +261,7 @@ class _HomeScreenState extends State<HomeScreen>
           nickname: widget.nickname,
           publicId: widget.publicId,
           email: widget.email,
+          shellGeneration: widget.shellGeneration,
           initialPlanIdToOpen: initialPlanIdToOpen,
           onInitialPlanOpened: widget.onInitialPlanOpened,
           onAppShellReady: widget.onAppShellReady,
