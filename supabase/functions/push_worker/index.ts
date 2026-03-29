@@ -332,27 +332,13 @@ serve(async () => {
     const privateChatMessage = isPrivateChatMessage(payload);
     const attentionSign = isAttentionSignReceived(payload);
 
-    // ✅ Canon (server-first UX):
-    // - PLAN_INTERNAL_INVITE (invitee invite OR owner result): STRICT DATA-ONLY.
-    // - PLAN_MEMBER_LEFT: STRICT DATA-ONLY (app shows local notification with action button).
-    // - PLAN_MEMBER_REMOVED: STRICT DATA-ONLY.
-    // - PLAN_MEMBER_JOINED_BY_INVITE: STRICT DATA-ONLY.
-    // - PLAN_VOTING_REMINDER_* / PLAN_OWNER_PRIORITY_* / PLAN_EVENT_REMINDER_24H: STRICT DATA-ONLY.
-    // - FRIEND_*: STRICT DATA-ONLY (app must control UI; avoid OS auto-notification).
-    // - PLAN_CHAT_MESSAGE: STRICT DATA-ONLY (app shows local notification; tap just opens app).
-    // - PRIVATE_CHAT_MESSAGE: STRICT DATA-ONLY (same as plan chat).
-    // - Other notification types may include OS notification.
-    const shouldIncludeNotification =
-      !(internalInvite
-        || memberLeft
-        || memberRemoved
-        || memberJoinedByInvite
-        || planDeleted
-        || friendEvent
-        || votingOrEventReminder
-        || planChatMessage
-        || privateChatMessage
-        || attentionSign);
+    // ✅ ALL push types include notification payload for reliable delivery.
+    // Data-only pushes are unreliable in background/killed on Android (OEM battery optimization).
+    // With notification payload:
+    //   - Foreground: Android does NOT auto-show OS notification (onMessage fires instead).
+    //   - Background/killed: OS auto-shows notification. Tap opens app → modal via modal_event_queue.
+    // No double notifications: onBackgroundMessage does NOT fire for notification+data messages.
+    const shouldIncludeNotification = true;
 
     let anyOk = false;
     let lastErr = "";

@@ -23,12 +23,14 @@ Future<void> checkAndShowModalEvents({
   required String appUserId,
   void Function(String planId)? onOpenPlan,
 }) async {
+  final ts = DateTime.now().toIso8601String();
   // Prevent re-entrant / concurrent runs — only one checker at a time.
   if (_modalEventsCheckInProgress) {
-    debugPrint('[ModalEvents] checkAndShowModalEvents SKIPPED — already in progress');
+    debugPrint('[ModalEvents][$ts] checkAndShowModalEvents SKIPPED — already in progress');
     return;
   }
   _modalEventsCheckInProgress = true;
+  debugPrint('[ModalEvents][$ts] checkAndShowModalEvents START for user=$appUserId');
 
   try {
     await _doCheckAndShow(
@@ -53,18 +55,18 @@ Future<void> _doCheckAndShow({
   try {
     events = await repo.getPendingEvents(appUserId: appUserId);
   } catch (e, st) {
-    debugPrint('[ModalEvents] getPendingEvents ERROR: $e\n$st');
+    debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] getPendingEvents ERROR: $e\n$st');
     return;
   }
 
-  debugPrint('[ModalEvents] got ${events.length} pending events for user=$appUserId');
+  debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] got ${events.length} pending events for user=$appUserId');
 
   for (final event in events) {
     if (!context.mounted) {
-      debugPrint('[ModalEvents] context unmounted, stopping');
+      debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] context unmounted, stopping');
       return;
     }
-    debugPrint('[ModalEvents] showing modal for type=${event.eventType}, id=${event.eventId}');
+    debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] showing modal for type=${event.eventType}, id=${event.eventId}');
     await _showEventModal(
       context: context,
       appUserId: appUserId,
@@ -227,14 +229,27 @@ Future<void> _showEventModal({
     final planTitle = (p['plan_title'] ?? '').toString();
 
     // Consume FIRST — server checks if invite is still PENDING.
-    // Returns skip=true if invite is expired or cancelled → don't show dialog.
+    // Returns skip=true if invite is expired or cancelled.
     bool skip = false;
     try {
       skip = await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
     } catch (e) {
       debugPrint('[ModalEvents] consumeEvent(PLAN_INTERNAL_INVITE) error: $e');
     }
-    if (skip || !context.mounted) return;
+    if (!context.mounted) return;
+    if (skip) {
+      // Инвайт уже обработан (другое устройство, таймаут, отмена).
+      // Показываем информационное сообщение вместо тихого пропуска.
+      final infoBody = planTitle.isNotEmpty
+          ? 'Приглашение в план «$planTitle» уже обработано.'
+          : 'Приглашение в план уже обработано.';
+      await _showInfoDialog(
+        context: context,
+        title: 'Приглашение обработано',
+        body: infoBody,
+      );
+      return;
+    }
 
     final body = planTitle.isNotEmpty
         ? '«$nick» приглашает вас в план «$planTitle».'

@@ -2,36 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../ui/activity_feed/activity_feed_screen.dart';
-
 class HomeScreen extends StatefulWidget {
-  final String userId;
   final String nickname;
-  final String publicId;
-  final String? email;
 
-  // If not null: open plan details after welcome (deep link UX).
-  final String? initialPlanIdToOpen;
-
-  // Called when HomeScreen/Feed starts opening the initial plan to avoid re-opening on rebuild.
-  final VoidCallback? onInitialPlanOpened;
-
-  // Called when the real working screen (Feed) is ready.
-  final VoidCallback? onAppShellReady;
-
-  // Incremented by parent on each _restore() so Feed resets its shell-ready flag.
-  final int shellGeneration;
+  /// Вызывается когда welcome-анимация завершена и можно показывать Feed.
+  final VoidCallback? onWelcomeCompleted;
 
   const HomeScreen({
     super.key,
-    required this.userId,
     required this.nickname,
-    required this.publicId,
-    required this.email,
-    required this.shellGeneration,
-    this.initialPlanIdToOpen,
-    this.onInitialPlanOpened,
-    this.onAppShellReady,
+    this.onWelcomeCompleted,
   });
 
   @override
@@ -54,11 +34,7 @@ class _HomeScreenState extends State<HomeScreen>
   late final List<Animation<double>> _letterOpacities;
   late final List<Animation<double>> _letterScales;
 
-  // Plan to open (invite flow). May arrive after initState via didUpdateWidget.
-  String? _pendingInvitePlanId;
-
-  bool _welcomeCompleted = false;
-  bool _navigationCommitted = false;
+  bool _committed = false;
 
   // Окно анимации ника: 0.46 – 0.68
   static const double _nickStart = 0.46;
@@ -69,8 +45,6 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-
-    _pendingInvitePlanId = _normalizePlanId(widget.initialPlanIdToOpen);
 
     _controller = AnimationController(
       vsync: this,
@@ -151,8 +125,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        _welcomeCompleted = true;
-        unawaited(_commitNavigationAfterWelcome());
+        unawaited(_commitAfterWelcome());
       }
     });
 
@@ -209,65 +182,15 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  @override
-  void didUpdateWidget(covariant HomeScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    final newId = _normalizePlanId(widget.initialPlanIdToOpen);
-    final oldId = _normalizePlanId(oldWidget.initialPlanIdToOpen);
-
-    // Invite plan id may arrive after initState; keep it.
-    if (newId != null && newId.isNotEmpty && newId != oldId) {
-      _pendingInvitePlanId = newId;
-
-      // If welcome already finished and we haven't navigated yet, commit now.
-      if (_welcomeCompleted && !_navigationCommitted) {
-        unawaited(_commitNavigationAfterWelcome());
-      }
-    }
-  }
-
-  String? _normalizePlanId(String? value) {
-    final v = value?.trim();
-    if (v == null || v.isEmpty) return null;
-    return v;
-  }
-
-  Future<void> _commitNavigationAfterWelcome() async {
-    if (_navigationCommitted || !mounted) return;
-    _navigationCommitted = true;
+  Future<void> _commitAfterWelcome() async {
+    if (_committed || !mounted) return;
+    _committed = true;
 
     // Даём фразе 500мс для фиксации в сознании
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
-    // ✅ Канон:
-    // - HomeScreen (Welcome) НИКОГДА не строит сложную цепочку.
-    // - Он просто заменяет себя на Feed.
-    // - Если есть инвайт planId — прокидываем его в Feed, и уже Feed строит:
-    //   Feed -> Plans -> PlanDetails.
-    final planId = _pendingInvitePlanId;
-
-    await _replaceWithFeed(initialPlanIdToOpen: planId);
-  }
-
-  Future<void> _replaceWithFeed({required String? initialPlanIdToOpen}) async {
-    if (!mounted) return;
-
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => ActivityFeedScreen(
-          userId: widget.userId,
-          nickname: widget.nickname,
-          publicId: widget.publicId,
-          email: widget.email,
-          shellGeneration: widget.shellGeneration,
-          initialPlanIdToOpen: initialPlanIdToOpen,
-          onInitialPlanOpened: widget.onInitialPlanOpened,
-          onAppShellReady: widget.onAppShellReady,
-        ),
-      ),
-    );
+    widget.onWelcomeCompleted?.call();
   }
 
   @override

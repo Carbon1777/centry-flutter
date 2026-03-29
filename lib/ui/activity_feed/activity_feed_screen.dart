@@ -125,9 +125,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   Future<_FeedUserState> _loadFromServer() async {
-    final res = Supabase.instance.client.rpc('current_user');
-
-    final resolved = await res;
+    final resolved = await Supabase.instance.client
+        .rpc('current_user')
+        .timeout(const Duration(seconds: 15));
 
     if (resolved is! Map) {
       throw StateError('current_user must return Map, got: $resolved');
@@ -453,10 +453,12 @@ class _FeedBodyState extends State<_FeedBody> {
       await GeoService.instance.ensureInitialized();
       final geo = GeoService.instance.current.value;
 
-      final places = await _feedRepo.getFeedNearby(
-        lat: geo?.lat,
-        lng: geo?.lng,
-      );
+      final places = await _feedRepo
+          .getFeedNearby(
+            lat: geo?.lat,
+            lng: geo?.lng,
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
       setState(() {

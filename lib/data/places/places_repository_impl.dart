@@ -26,63 +26,28 @@ class PlacesRepositoryImpl implements PlacesRepository {
   Future<Map<String, dynamic>?> _fetchDomainUserByAuthUserId(
     String authUserId,
   ) async {
-    // Важно: param-name у функции на сервере может отличаться.
-    // Поэтому пробуем несколько вариантов строго последовательно.
-    final candidates = <Map<String, dynamic>>[
-      {'p_auth_user_id': authUserId},
-      {'auth_user_id': authUserId},
-      {'p_user_id': authUserId},
-      {'user_id': authUserId},
-      {'p_id': authUserId},
-      {'id': authUserId},
-      {'input': authUserId},
-    ];
+    try {
+      final raw = await _client.rpc(
+        'get_domain_user_by_auth_user_id',
+        params: {'p_auth_user_id': authUserId},
+      );
 
-    for (final params in candidates) {
-      try {
-        final raw = await _client.rpc(
-          'get_domain_user_by_auth_user_id',
-          params: params,
-        );
+      if (raw == null) return null;
 
-        if (raw == null) return null;
-
-        // Вариант A: функция возвращает json-объект напрямую
-        if (raw is Map) {
-          final map = Map<String, dynamic>.from(raw);
-
-          // иногда Supabase оборачивает в ключ с именем функции
-          final inner = map['get_domain_user_by_auth_user_id'];
-          if (inner is Map) {
-            return Map<String, dynamic>.from(inner);
-          }
-
-          if (map.containsKey('id')) return map;
-        }
-
-        // Вариант B: функция/вызов возвращает list из одной строки
-        if (raw is List && raw.isNotEmpty) {
-          final first = raw.first;
-          if (first is Map) {
-            final map = Map<String, dynamic>.from(first);
-
-            final inner = map['get_domain_user_by_auth_user_id'];
-            if (inner is Map) {
-              return Map<String, dynamic>.from(inner);
-            }
-
-            if (map.containsKey('id')) return map;
-          }
-        }
-
-        // Ничего не распарсили — считаем как "не найдено"
-        return null;
-      } catch (_) {
-        // try next param variant
+      if (raw is Map) {
+        final map = Map<String, dynamic>.from(raw);
+        if (map.containsKey('id')) return map;
       }
-    }
 
-    return null;
+      if (raw is List && raw.isNotEmpty && raw.first is Map) {
+        final map = Map<String, dynamic>.from(raw.first as Map);
+        if (map.containsKey('id')) return map;
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String> _resolveDomainUserId() async {

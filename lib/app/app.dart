@@ -21,6 +21,7 @@ import '../core/geo/geo_service.dart';
 import '../data/local/user_snapshot_storage.dart';
 import '../data/legal/legal_repository_impl.dart';
 import '../features/home/home_screen.dart';
+import '../ui/activity_feed/activity_feed_screen.dart';
 import '../features/legal/legal_agreement_screen.dart';
 import '../features/onboarding/intro_video_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
@@ -155,6 +156,10 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
   // Intro video (показывается один раз при первом запуске).
   bool _showIntroVideo = false;
+
+  // Welcome animation completed — переключает build() с HomeScreen на ActivityFeedScreen.
+  // НЕ сбрасывается при token refresh (_restore с тем же userId).
+  bool _welcomeCompleted = false;
 
   // ✅ Push token registration guards (UI-only, no business logic)
   bool _registeringDeviceToken = false;
@@ -3028,6 +3033,13 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
       // Check modal event queue on resume (catches events received while app was backgrounded).
       _triggerCheckAndShowModalEvents();
+
+      // Delayed retry: Supabase token may be stale after background, causing the
+      // initial getPendingEvents RPC to fail with 401. By the time this fires,
+      // the token will have been refreshed automatically.
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) _triggerCheckAndShowModalEvents();
+      });
     }
   }
 
@@ -3035,20 +3047,21 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   /// Safe to call from any context — guards against unready shell/user state.
   void _triggerCheckAndShowModalEvents() {
     final userId = (_userId ?? '').trim();
+    final ts = DateTime.now().toIso8601String();
     if (userId.isEmpty || !_appShellReady || _restoring) {
-      debugPrint('[ModalEvents] _trigger BLOCKED: userId=${userId.isEmpty ? "EMPTY" : "ok"}, '
+      debugPrint('[ModalEvents][$ts] _trigger BLOCKED: userId=${userId.isEmpty ? "EMPTY" : "ok"}, '
           'shellReady=$_appShellReady, restoring=$_restoring');
       return;
     }
 
-    debugPrint('[ModalEvents] _trigger: scheduling check for user=$userId');
+    debugPrint('[ModalEvents][$ts] _trigger: scheduling check for user=$userId');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Use the global navigator key context — it's always valid while the app is alive.
       // Don't rely on State.mounted: Realtime callbacks may hold a stale State reference
       // after hot-reload or auth-refresh rebuild.
       final ctx = App.navigatorKey.currentContext;
       if (ctx == null || !ctx.mounted) {
-        debugPrint('[ModalEvents] _trigger postFrame: ctx=${ctx == null ? "NULL" : "unmounted"}');
+        debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] _trigger postFrame: ctx=${ctx == null ? "NULL" : "unmounted"}');
         return;
       }
       unawaited(checkAndShowModalEvents(
@@ -3414,6 +3427,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       _appShellReady = false;
       _shellGeneration++;
       _homeVisibleAt = null;
+      _welcomeCompleted = false;
       _postIdentityFlowsRerunRequested = false;
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
@@ -3455,6 +3469,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       _nickname = snapshot.nickname;
       _email = null;
       _appShellReady = false;
+      _welcomeCompleted = false;
       _homeVisibleAt = null;
     });
     InviteUiCoordinator.instance.setRootUiReady(false);
@@ -3464,24 +3479,34 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     _runPostIdentityFlows();
   }
 
+  void _onWelcomeCompleted() {
+    if (!mounted) return;
+    setState(() {
+      _welcomeCompleted = true;
+    });
+  }
+
   void _onAppShellReady() {
-    if (_appShellReady) return;
-    _appShellReady = true;
-    InviteUiCoordinator.instance.setRootUiReady(true);
-    _flushPendingConsumeInboxDeliveriesIfAny();
-    _flushPendingFriendOpenIntentsIfAny();
-    _flushPendingNotificationOpenIntentsIfAny();
-    PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
+    // Инициализационные действия — только один раз (при первом вызове).
+    if (!_appShellReady) {
+      _appShellReady = true;
+      InviteUiCoordinator.instance.setRootUiReady(true);
+      _flushPendingConsumeInboxDeliveriesIfAny();
+      _flushPendingFriendOpenIntentsIfAny();
+      _flushPendingNotificationOpenIntentsIfAny();
+      PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
-    PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
-    PlanDeletedUiCoordinator.instance.setRootUiReady(true);
-    PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
-    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(true);
-    _ensureInboxInvitesRealtimeSubscribed();
+      PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
+      PlanDeletedUiCoordinator.instance.setRootUiReady(true);
+      PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
+      PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(true);
+      _ensureInboxInvitesRealtimeSubscribed();
 
-    _homeVisibleAt ??= DateTime.now();
-    unawaited(_sendHeartbeat());
+      _homeVisibleAt ??= DateTime.now();
+      unawaited(_sendHeartbeat());
+    }
 
+    // Modal check — ВСЕГДА, даже при повторных вызовах.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Use navigator key instead of State.mounted — robust against stale callbacks.
       if (App.navigatorKey.currentContext == null) return;
@@ -3550,7 +3575,14 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         _schedulePendingPlanOpenIfReady();
       });
 
-      return HomeScreen(
+      if (!_welcomeCompleted) {
+        return HomeScreen(
+          nickname: _nickname ?? '',
+          onWelcomeCompleted: _onWelcomeCompleted,
+        );
+      }
+
+      return ActivityFeedScreen(
         userId: _userId!,
         nickname: _nickname ?? '',
         publicId: _publicId!,

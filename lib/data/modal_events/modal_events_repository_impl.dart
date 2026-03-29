@@ -29,7 +29,7 @@ class ModalEventsRepositoryImpl implements ModalEventsRepository {
     final response = await _client.rpc(
       'get_pending_modal_events_v1',
       params: {'p_user_id': appUserId},
-    );
+    ).timeout(const Duration(seconds: 15));
     debugPrint('[ModalEvents] getPendingEvents response type=${response.runtimeType}, '
         'value=${response is List ? '(List len=${response.length})' : '$response'}');
     final list = _parseArrayResponse(response);
@@ -49,7 +49,7 @@ class ModalEventsRepositoryImpl implements ModalEventsRepository {
     final response = await _client.rpc(
       'consume_modal_event_v1',
       params: {'p_user_id': appUserId, 'p_event_id': eventId},
-    );
+    ).timeout(const Duration(seconds: 15));
     debugPrint('[ModalEvents] consumeEvent response type=${response.runtimeType}, value=$response');
     // Server returns jsonb {consumed: true, skip: true/false}.
     // skip=true means the event should not be shown (e.g. invite expired).
