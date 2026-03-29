@@ -167,6 +167,10 @@ class _PrivateChatBlockState extends State<PrivateChatBlock>
       if (!mounted) return;
       if (result.isSuccess) {
         _queueRefresh();
+      } else if (result.error == 'BLOCKED') {
+        showCenterToast(context,
+            message: 'Коммуникация невозможна — действует блокировка',
+            isError: true);
       }
     } catch (e) {
       debugPrint('[PrivateChat] sendMessage error: $e');

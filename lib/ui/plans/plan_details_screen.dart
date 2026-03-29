@@ -166,6 +166,9 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       // P0001 = RAISE EXCEPTION в PL/pgSQL. Серверные сообщения уже на русском
       // и предназначены для пользователя → показываем как есть.
       if (code == 'P0001' && msg.trim().isNotEmpty) {
+        if (msg.trim() == 'BLOCKED') {
+          return 'Коммуникация невозможна — действует блокировка';
+        }
         return msg.trim();
       }
 

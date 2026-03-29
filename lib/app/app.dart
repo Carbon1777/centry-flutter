@@ -225,6 +225,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     // ✅ Setup FCM listeners (mobile only)
     _initFcmTokenRefresh();
     _initFcmForegroundMessages();
+    _initFcmMessageOpenHandlers();
 
     _restore();
   }
@@ -564,6 +565,31 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
               return;
             }
           }
+
+          if (effectiveType == 'ATTENTION_SIGN_RECEIVED') {
+            await _handleAttentionSignOpen();
+            return;
+          }
+
+          if (effectiveType.startsWith('FRIEND_')) {
+            _triggerCheckAndShowModalEvents();
+            return;
+          }
+
+          if (effectiveType == 'PRIVATE_CHAT_MESSAGE') {
+            await _handlePrivateChatMessageOpen();
+            return;
+          }
+
+          if (effectiveType == 'ATTENTION_SIGN_ACCEPTED' ||
+              effectiveType == 'ATTENTION_SIGN_DECLINED') {
+            _triggerCheckAndShowModalEvents();
+            return;
+          }
+
+          if (effectiveType == 'PLAN_CHAT_MESSAGE') {
+            return;
+          }
         }
       } catch (e) {
         // ignore handler errors
@@ -775,6 +801,45 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     });
   }
 
+  void _initFcmMessageOpenHandlers() {
+    if (kIsWeb) return;
+
+    // Tap on system FCM notification while app was in background.
+    FirebaseMessaging.onMessageOpenedApp.listen((m) {
+      _handleFcmMessageOpen(m.data);
+    });
+
+    // Tap on system FCM notification that launched the app from terminated state.
+    FirebaseMessaging.instance.getInitialMessage().then((m) {
+      if (m != null) _handleFcmMessageOpen(m.data);
+    });
+  }
+
+  void _handleFcmMessageOpen(Map<String, dynamic> data) {
+    final type = (data['type'] ?? data['kind'] ?? '').toString().trim();
+    if (type.isEmpty) return;
+
+    if (type == 'ATTENTION_SIGN_RECEIVED') {
+      if (_canResolveNotificationOpenFromInbox()) {
+        unawaited(_handleAttentionSignOpen());
+      } else {
+        _enqueueNotificationOpenIntent(<String, dynamic>{
+          ...data,
+          'type': type,
+        });
+      }
+      return;
+    }
+
+    // Other types: route through the pending intent system.
+    if (_canResolveNotificationOpenFromInbox()) {
+      unawaited(_handlePendingNotificationOpenIntent(
+          Map<String, dynamic>.from(data)));
+    } else {
+      _enqueueNotificationOpenIntent(Map<String, dynamic>.from(data));
+    }
+  }
+
   bool _canResolveNotificationOpenFromInbox() {
     return !_restoring && _appShellReady && (_userId ?? '').trim().isNotEmpty;
   }
@@ -912,6 +977,26 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
     if (type == 'PRIVATE_CHAT_MESSAGE') {
       await _handlePrivateChatMessageOpen();
+      return;
+    }
+
+    if (type == 'ATTENTION_SIGN_RECEIVED') {
+      await _handleAttentionSignOpen();
+      return;
+    }
+
+    if (type.startsWith('FRIEND_')) {
+      _triggerCheckAndShowModalEvents();
+      return;
+    }
+
+    if (type == 'ATTENTION_SIGN_ACCEPTED' ||
+        type == 'ATTENTION_SIGN_DECLINED') {
+      _triggerCheckAndShowModalEvents();
+      return;
+    }
+
+    if (type == 'PLAN_CHAT_MESSAGE') {
       return;
     }
 
@@ -1561,85 +1646,8 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     );
 
     if (resolved != null) {
-      final resolvedPlanId =
-          (resolved['plan_id'] ?? resolved['planId'] ?? trimmedPlanId)
-              .toString();
-      if (_isOwnerResultPayload(resolved)) {
-        final resolvedAction = (resolved['action'] ??
-                resolved['owner_action'] ??
-                resolved['ownerAction'] ??
-                '')
-            .toString()
-            .trim()
-            .toUpperCase();
-        final effectiveAction =
-            resolvedAction == 'ACCEPT' || resolvedAction == 'DECLINE'
-                ? resolvedAction
-                : (((resolved['type'] ?? '').toString().trim() ==
-                        'PLAN_INTERNAL_INVITE_ACCEPTED')
-                    ? 'ACCEPT'
-                    : 'DECLINE');
-        final resolvedTitleRaw = (resolved['title'] ?? '').toString();
-        final resolvedTitle = resolvedTitleRaw.trim().isEmpty
-            ? (effectiveAction == 'ACCEPT'
-                ? 'Приглашение принято'
-                : 'Приглашение отклонено')
-            : resolvedTitleRaw;
-        final resolvedBody = (resolved['body'] ?? body ?? '').toString();
-
-        InviteUiCoordinator.instance.enqueueOwnerResult(
-          OwnerResultUiRequest(
-            inviteId: trimmedInviteId,
-            planId: resolvedPlanId,
-            action: effectiveAction,
-            title: resolvedTitle,
-            body: resolvedBody,
-            source: InviteUiSource.backgroundIntent,
-          ),
-        );
-        _scheduleConsumeInboxDeliveryIfPending(resolved);
-        return;
-      }
-
       _triggerCheckAndShowModalEvents();
       _scheduleConsumeInboxDeliveryIfPending(resolved);
-      return;
-    }
-
-    final normalizedTitle = (title ?? '').trim();
-    final normalizedBody = (body ?? '').trim();
-    final normalizedKindHint = (kindHint ?? '').trim().toUpperCase();
-    final normalizedActionHint = (actionHint ?? '').trim().toUpperCase();
-    final looksLikeOwnerResult = normalizedKindHint == 'OWNER_RESULT' ||
-        normalizedActionHint == 'ACCEPT' ||
-        normalizedActionHint == 'DECLINE' ||
-        normalizedTitle.toLowerCase().contains('приглашение принято') ||
-        normalizedTitle.toLowerCase().contains('приглашение отклонено') ||
-        normalizedBody.toLowerCase().contains('принял приглашение') ||
-        normalizedBody.toLowerCase().contains('отклонил приглашение') ||
-        normalizedBody.toLowerCase().contains('приглашение принято') ||
-        normalizedBody.toLowerCase().contains('приглашение отклонено');
-
-    if (looksLikeOwnerResult) {
-      final fallbackAction = normalizedActionHint == 'ACCEPT' ||
-              normalizedTitle.toLowerCase().contains('принято') ||
-              normalizedBody.toLowerCase().contains('принял')
-          ? 'ACCEPT'
-          : 'DECLINE';
-      InviteUiCoordinator.instance.enqueueOwnerResult(
-        OwnerResultUiRequest(
-          inviteId: trimmedInviteId,
-          planId: trimmedPlanId,
-          action: fallbackAction,
-          title: normalizedTitle.isEmpty
-              ? (fallbackAction == 'ACCEPT'
-                  ? 'Приглашение принято'
-                  : 'Приглашение отклонено')
-              : normalizedTitle,
-          body: normalizedBody,
-          source: InviteUiSource.backgroundIntent,
-        ),
-      );
       return;
     }
 
@@ -2611,28 +2619,7 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
             if (payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED' ||
                 payloadType == 'PLAN_INTERNAL_INVITE_DECLINED') {
-              final inviteId =
-                  (payloadMap['invite_id'] ?? payloadMap['inviteId'] ?? '')
-                      .toString();
-              final planId =
-                  (payloadMap['plan_id'] ?? payloadMap['planId'] ?? '')
-                      .toString();
-              final body = (payloadMap['body'] ?? '').toString();
-              final isAccept = payloadType == 'PLAN_INTERNAL_INVITE_ACCEPTED';
-
-              InviteUiCoordinator.instance.enqueueOwnerResult(
-                OwnerResultUiRequest(
-                  inviteId: inviteId,
-                  planId: planId,
-                  action: isAccept ? 'ACCEPT' : 'DECLINE',
-                  title: isAccept
-                      ? 'Приглашение принято'
-                      : 'Приглашение отклонено',
-                  body: body,
-                  source: InviteUiSource.foreground,
-                ),
-              );
-
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }
@@ -2690,24 +2677,8 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
 
             if (inviteId.isEmpty || planId.isEmpty) return;
 
-            final title = (payloadMap['title'] ?? '').toString();
-            final body = (payloadMap['body'] ?? '').toString();
-
             if (isOwnerResult) {
-              final computedTitle = ownerAction == 'ACCEPT'
-                  ? 'Приглашение принято'
-                  : 'Приглашение отклонено';
-
-              InviteUiCoordinator.instance.enqueueOwnerResult(
-                OwnerResultUiRequest(
-                  inviteId: inviteId,
-                  planId: planId,
-                  action: ownerAction,
-                  title: title.isEmpty ? computedTitle : title,
-                  body: body,
-                  source: InviteUiSource.foreground,
-                ),
-              );
+              _triggerCheckAndShowModalEvents();
               consumeIfReady();
               return;
             }

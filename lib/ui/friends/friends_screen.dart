@@ -384,6 +384,15 @@ class _FriendsScreenState extends State<FriendsScreen> {
 
       if (!mounted) return;
 
+      if (r.requestStatus == 'BLOCKED') {
+        if (!mounted) return;
+        // ignore: use_build_context_synchronously — guarded above, exclusive branch
+        await showCenterToast(context,
+            message: 'Коммуникация невозможна — действует блокировка',
+            isError: true);
+        return;
+      }
+
       if (r.requestStatus == 'ALREADY_FRIENDS') {
         if (!mounted) return;
         // ignore: use_build_context_synchronously — guarded above, exclusive branch
@@ -657,7 +666,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!context.mounted) return;
 
       if (!result.isSuccess) {
-        await _showError(context, result.error ?? 'Ошибка создания чата');
+        if (result.error == 'BLOCKED') {
+          await showCenterToast(context,
+              message: 'Коммуникация невозможна — действует блокировка',
+              isError: true);
+        } else {
+          await _showError(context, result.error ?? 'Ошибка создания чата');
+        }
         return;
       }
 
@@ -778,6 +793,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
       if (!context.mounted) return;
       if (result.isSuccess) {
         await showCenterToast(context, message: 'Знак внимания отправлен');
+      } else if (result.error == 'BLOCKED') {
+        await showCenterToast(
+          context,
+          message: 'Коммуникация невозможна — действует блокировка',
+          isError: true,
+        );
       } else {
         await showCenterToast(
           context,

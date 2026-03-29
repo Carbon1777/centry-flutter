@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/friends/friend_dto.dart';
 import '../../../features/profile/user_card_sheet.dart';
@@ -126,9 +127,14 @@ class _PlanFriendsPickerSheetState extends State<PlanFriendsPickerSheet> {
       if (widget.onAfterInvite != null) {
         unawaited(widget.onAfterInvite!.call());
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() => _pendingOptimistic.remove(f.friendUserId));
+      if (e is PostgrestException && e.message.contains('BLOCKED')) {
+        unawaited(showCenterToast(context,
+            message: 'Коммуникация невозможна — действует блокировка',
+            isError: true));
+      }
     } finally {
       if (mounted) setState(() => _inFlight.remove(f.friendUserId));
     }

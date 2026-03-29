@@ -30,7 +30,12 @@ class _PlanAddByIdModalState extends State<PlanAddByIdModal> {
   }
 
   String _humanizeError(Object e) {
-    if (e is PostgrestException) return e.message; // ✅ human server message
+    if (e is PostgrestException) {
+      if (e.message.trim() == 'BLOCKED') {
+        return 'Коммуникация невозможна — действует блокировка';
+      }
+      return e.message; // ✅ human server message
+    }
     return e.toString();
   }
 

@@ -358,19 +358,19 @@ Future<void> _showEventModal({
     final planTitle = (p['plan_title'] ?? '').toString();
     final inviteeNick = (p['invitee_nickname'] ?? nick).toString();
     final accepted = action == 'ACCEPT';
-    final title = accepted ? 'Приглашение принято' : 'Приглашение отклонено';
+    const title = 'Ответ на приглашение';
     final body = planTitle.isNotEmpty
         ? accepted
-            ? '«$inviteeNick» принял приглашение в план «$planTitle».'
-            : '«$inviteeNick» отклонил приглашение в план «$planTitle».'
+            ? 'Пользователь «$inviteeNick» принял приглашение в план «$planTitle».'
+            : 'Пользователь «$inviteeNick» отклонил приглашение в план «$planTitle».'
         : accepted
-            ? '«$inviteeNick» принял ваше приглашение.'
-            : '«$inviteeNick» отклонил ваше приглашение.';
+            ? 'Пользователь «$inviteeNick» принял ваше приглашение.'
+            : 'Пользователь «$inviteeNick» отклонил ваше приглашение.';
     await _showInfoDialog(
       context: context,
       title: title,
       body: body,
-      titleColor: accepted ? null : Colors.red,
+      titleColor: accepted ? const Color(0xFF4CAF50) : Colors.red,
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);

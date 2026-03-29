@@ -375,6 +375,12 @@ class _PlanMembersModalState extends State<PlanMembersModal> {
       if (!mounted) return;
       if (result.isSuccess) {
         await showCenterToast(context, message: 'Знак внимания отправлен');
+      } else if (result.error == 'BLOCKED') {
+        await showCenterToast(
+          context,
+          message: 'Коммуникация невозможна — действует блокировка',
+          isError: true,
+        );
       } else {
         await showCenterToast(
           context,

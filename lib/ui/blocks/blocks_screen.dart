@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/blocks/block_dto.dart';
 import '../../data/blocks/blocks_repository_impl.dart';
 import '../../features/profile/user_card_sheet.dart';
+import '../../ui/common/center_toast.dart';
 
 class BlocksScreen extends StatefulWidget {
   final String appUserId;
@@ -39,6 +40,50 @@ class _BlocksScreenState extends State<BlocksScreen> {
     }
   }
 
+  Future<void> _confirmUnblock(BlockedUserDto block) async {
+    final nickname = block.nickname ?? 'пользователя';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Разблокировать пользователя?'),
+        content: Text(
+          'Пользователь «$nickname» будет разблокирован. '
+          'Вы снова сможете получать от него сообщения и запросы в друзья.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Разблокировать'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final ok = await _repo.unblockUser(
+        appUserId: widget.appUserId,
+        blockedUserId: block.blockedUserId,
+      );
+      if (!mounted) return;
+      if (ok) {
+        setState(() {
+          _blocks.removeWhere((b) => b.blockId == block.blockId);
+        });
+        showCenterToast(context, message: 'Пользователь разблокирован');
+      }
+    } catch (_) {
+      if (mounted) {
+        showCenterToast(context,
+            message: 'Не удалось разблокировать', isError: true);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -63,13 +108,18 @@ class _BlocksScreenState extends State<BlocksScreen> {
                     textAlign: TextAlign.center,
                   ),
                 )
-              : ListView.separated(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  itemCount: _blocks.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) =>
-                      _BlockCard(block: _blocks[i]),
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    itemCount: _blocks.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) => _BlockCard(
+                      block: _blocks[i],
+                      onTap: () => _confirmUnblock(_blocks[i]),
+                    ),
+                  ),
                 ),
     );
   }
@@ -77,8 +127,9 @@ class _BlocksScreenState extends State<BlocksScreen> {
 
 class _BlockCard extends StatelessWidget {
   final BlockedUserDto block;
+  final VoidCallback onTap;
 
-  const _BlockCard({required this.block});
+  const _BlockCard({required this.block, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -97,31 +148,35 @@ class _BlockCard extends StatelessWidget {
     return Material(
       color: colors.surface,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            UserAvatarWidget(profile: profile, size: 44),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    block.nickname ?? '—',
-                    style: text.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Заблокирован $dateStr',
-                    style: text.bodySmall?.copyWith(
-                        color: colors.onSurface.withValues(alpha: 0.45)),
-                  ),
-                ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              UserAvatarWidget(profile: profile, size: 44),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      block.nickname ?? '—',
+                      style: text.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Заблокирован $dateStr',
+                      style: text.bodySmall?.copyWith(
+                          color: colors.onSurface.withValues(alpha: 0.45)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -1602,22 +1601,7 @@ class PushNotifications {
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    await Firebase.initializeApp();
-    await PushNotifications.initForBackground();
-    await PushNotifications.showInternalInvite(message);
-    await PushNotifications.showPlanMemberLeft(message);
-    await PushNotifications.showPlanMemberRemoved(message);
-    await PushNotifications.showPlanMemberJoinedByInvite(message);
-    await PushNotifications.showPlanDeleted(message);
-    await PushNotifications.showPlanScheduledNotification(message);
-    await PushNotifications.showFriendRequest(message);
-    await PushNotifications.showFriendRemoved(message);
-    await PushNotifications.showPlanChatMessage(message);
-    await PushNotifications.showPrivateChatMessage(message);
-    await PushNotifications.showAttentionSignReceived(message);
-    await PushNotifications.showAttentionSignAcceptedOrDeclined(message);
-  } catch (e) {
-    // ignore
-  }
+  // Все пуши теперь системные (FCM notification payload) —
+  // система показывает их автоматически в background/terminated.
+  // Локальные show* вызовы здесь не нужны, иначе будут дубли.
 }

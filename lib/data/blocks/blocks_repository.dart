@@ -7,4 +7,9 @@ abstract class BlocksRepository {
   });
 
   Future<List<BlockedUserDto>> getMyBlocks({required String appUserId});
+
+  Future<bool> unblockUser({
+    required String appUserId,
+    required String blockedUserId,
+  });
 }

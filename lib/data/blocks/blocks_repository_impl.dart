@@ -39,4 +39,17 @@ class BlocksRepositoryImpl implements BlocksRepository {
     }
     return [];
   }
+
+  @override
+  Future<bool> unblockUser({
+    required String appUserId,
+    required String blockedUserId,
+  }) async {
+    final response = await _client.rpc(
+      'unblock_user_v1',
+      params: {'p_user_id': appUserId, 'p_blocked_user_id': blockedUserId},
+    );
+    final data = _asMap(response);
+    return data['ok'] == true;
+  }
 }
