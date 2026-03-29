@@ -27,21 +27,10 @@ import '../features/onboarding/intro_video_screen.dart';
 import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
-import '../ui/friends/friends_refresh_bus.dart';
-import 'invite_ui_coordinator.dart';
-import 'plan_member_left_ui_coordinator.dart';
-import 'plan_member_removed_ui_coordinator.dart';
-import 'plan_deleted_ui_coordinator.dart';
-import 'plan_member_joined_by_invite_ui_coordinator.dart';
-import 'plan_scheduled_notification_ui_coordinator.dart';
 import '../ui/private_chats/private_chats_list_screen.dart';
 import '../ui/attention_signs/attention_sign_box_screen.dart';
 import '../ui/attention_signs/attention_signs_bus.dart';
 import '../ui/common/modal_events_checker.dart';
-
-/// Canonical width constraints for Friends modals (keep consistent across all FRIEND_* dialogs).
-const BoxConstraints _kFriendDialogConstraints =
-    BoxConstraints(minWidth: 280, maxWidth: 520);
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -84,12 +73,6 @@ class _BootstrapGateState extends State<BootstrapGate>
   static const MethodChannel _notificationIntentChannel =
       MethodChannel('centry/notification_intents');
 
-  // UI strings (keep centralized to avoid drift)
-static const String kInviteAcceptedToast = 'Приглашение принято';
-  static const String kFriendRequestDefaultTitle = 'Запрос в друзья';
-  static const String kFriendRequestAcceptedTitle = 'Запрос принят';
-  static const String kFriendRequestDeclinedTitle = 'Запрос отклонён';
-  static const String kInviteDeclinedToast = 'Приглашение отклонено';
 
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<Uri>? _linkSub;
@@ -128,12 +111,6 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   String? _pendingOpenPlanId;
   String? _pendingOpenPlanToastMessage;
 
-  // Pending friend request UI events (when app opens from notification before shell is ready)
-  final List<Map<String, dynamic>> _pendingFriendRequests =
-      <Map<String, dynamic>>[];
-  // Pending friend OPEN intents (Scenario B/C): resolve via INBOX once identity + shell are ready.
-  final List<Map<String, dynamic>> _pendingFriendOpenIntents =
-      <Map<String, dynamic>>[];
   // Pending push OPEN intents for invites/plan events until identity + shell are ready.
   final List<Map<String, dynamic>> _pendingNotificationOpenIntents =
       <Map<String, dynamic>>[];
@@ -166,52 +143,13 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
   bool _registerDeviceTokenRetryRequested = false;
   String? _lastRegisteredDeviceTokenKey;
 
-  // ✅ Prevent double-tap actions
-  bool _processingInviteAction = false;
-
   @override
   void initState() {
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
 
-    InviteUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
-    InviteUiCoordinator.instance.configure(
-      onAction: (request, decision) async {
-        await _handleInternalInviteAction(
-          inviteId: request.inviteId,
-          planId: request.planId,
-          action: decision == InviteUiDecision.accept ? 'ACCEPT' : 'DECLINE',
-          actionToken: request.actionToken,
-        );
-        // Existing app.dart flow already handles toast/navigation (server-first RPC -> UI reaction).
-        return const InviteUiActionResult.success();
-      },
-      onOpenPlan: (planId) async {},
-      onToast: (message) async {},
-      onError: (error, stackTrace) async {},
-    );
-    InviteUiCoordinator.instance.setRootUiReady(false);
-    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
 
-    // ✅ Separate layer: owner notifications about member leaving a plan.
-    PlanMemberLeftUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
-    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
-
-    PlanMemberRemovedUiCoordinator.instance
-        .attachNavigatorKey(App.navigatorKey);
-    PlanMemberRemovedUiCoordinator.instance.setRootUiReady(false);
-
-    PlanDeletedUiCoordinator.instance.attachNavigatorKey(App.navigatorKey);
-    PlanDeletedUiCoordinator.instance.setRootUiReady(false);
-
-    PlanMemberJoinedByInviteUiCoordinator.instance
-        .attachNavigatorKey(App.navigatorKey);
-    PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(false);
-
-    PlanScheduledNotificationUiCoordinator.instance
-        .attachNavigatorKey(App.navigatorKey);
-    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
 
     unawaited(_refreshGeoAndSync());
 
@@ -1883,505 +1821,12 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     }
   }
 
-  void _enqueueFriendRequestUi(Map<String, dynamic> payload) {
-    // Show immediately if shell is ready, otherwise stash and flush after UI ready.
-    if (_appShellReady) {
-      unawaited(_handleFriendDeliveryPayload(payload));
-      return;
-    }
-    _pendingFriendRequests.add(payload);
-  }
-
-  void _flushPendingFriendRequestsIfAny() {
-    if (!_appShellReady) return;
-    if (_pendingFriendRequests.isEmpty) return;
-    final items = List<Map<String, dynamic>>.from(_pendingFriendRequests);
-    _pendingFriendRequests.clear();
-    for (final p in items) {
-      unawaited(_handleFriendDeliveryPayload(p));
-    }
-  }
-
-  void _flushPendingFriendOpenIntentsIfAny() {
-    if (!_appShellReady) return;
-    if (_pendingFriendOpenIntents.isEmpty) return;
-
-    final intents = List<Map<String, dynamic>>.from(_pendingFriendOpenIntents);
-    _pendingFriendOpenIntents.clear();
-    for (final i in intents) {
-      final type = (i['type'] ?? '').toString().trim();
-      if (type.isEmpty) continue;
-      unawaited(
-        _handleFriendOpenFromLocalNotification(
-          type: type,
-          eventId: (i['event_id'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['event_id'] ?? '').toString().trim(),
-          requestId: (i['request_id'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['request_id'] ?? '').toString().trim(),
-          title: (i['title'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['title'] ?? '').toString().trim(),
-          body: (i['body'] ?? '').toString().trim().isEmpty
-              ? null
-              : (i['body'] ?? '').toString().trim(),
-        ),
-      );
-    }
-  }
-
   Map<String, dynamic> _asStringKeyedMap(Map raw) {
     final out = <String, dynamic>{};
     raw.forEach((k, v) {
       out[k.toString()] = v;
     });
     return out;
-  }
-
-  Future<Map<String, dynamic>?> _loadPendingFriendInboxDelivery({
-    required String type,
-    String? eventId,
-    String? requestId,
-  }) async {
-    final t = type.trim();
-    if (t.isEmpty || !t.startsWith('FRIEND_')) return null;
-
-    final eid = (eventId ?? '').trim();
-    final rid = (requestId ?? '').trim();
-
-    try {
-      if (eid.isNotEmpty) {
-        final resolved = await _loadInboxDeliveryByEventId(
-          eventId: eid,
-          expectedType: t,
-        );
-        if (resolved != null) {
-          return resolved;
-        }
-      }
-
-      final rows = await _loadRecentInboxDeliveryRows(limit: 80);
-      for (final payload in rows) {
-        final payloadType = (payload['type'] ?? '').toString().trim();
-        if (payloadType != t) continue;
-
-        if (rid.isNotEmpty) {
-          final payloadRequestId =
-              (payload['request_id'] ?? payload['requestId'] ?? '')
-                  .toString()
-                  .trim();
-          if (payloadRequestId != rid) continue;
-        }
-
-        return payload;
-      }
-    } catch (_) {
-      // ignore
-    }
-
-    return null;
-  }
-
-  Future<void> _handleFriendOpenFromLocalNotification({
-    required String type,
-    String? eventId,
-    String? requestId,
-    String? title,
-    String? body,
-  }) async {
-    // Canon: build UI from INBOX (source of truth).
-    final resolved = await _loadPendingFriendInboxDelivery(
-      type: type,
-      eventId: eventId,
-      requestId: requestId,
-    );
-
-    if (resolved != null) {
-      _enqueueFriendRequestUi(resolved);
-      _flushPendingFriendRequestsIfAny();
-      return;
-    }
-
-    // If we couldn't correlate, do NOT consume anything.
-
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) {
-      await showCenterToast(
-        ctx,
-        message: (title ?? '').trim().isNotEmpty
-            ? (title ?? '').trim()
-            : 'Откройте вкладку “Друзья”',
-        isError: false,
-      );
-    }
-    FriendsRefreshBus.ping();
-  }
-
-  String _quoteNick(String nick) {
-    final t = nick.trim();
-    if (t.isEmpty) return '';
-    // Avoid double quoting.
-    if (t.startsWith('«') && t.endsWith('»')) return t;
-    return '«$t»';
-  }
-
-  String _ensureNickQuotedInText(String text, String nick) {
-    final t = text.trim();
-    final n = nick.trim();
-    if (t.isEmpty || n.isEmpty) return t;
-    final quoted = _quoteNick(n);
-
-    // If already contains quoted nick, keep as is.
-    if (t.contains(quoted)) return t;
-
-    // Replace raw nick occurrences with quoted variant.
-    return t.replaceAll(n, quoted);
-  }
-
-  Future<void> _consumeInboxDeliveryIfPossibleFromPayload(
-      Map<String, dynamic> payload) async {
-    final status = (payload['delivery_status'] ?? payload['status'] ?? '')
-        .toString()
-        .trim()
-        .toUpperCase();
-    if (status.isNotEmpty && status != 'PENDING') {
-      return;
-    }
-
-    final deliveryId =
-        (payload['delivery_id'] ?? payload['deliveryId'] ?? payload['id'] ?? '')
-            .toString()
-            .trim();
-    if (deliveryId.isEmpty) return;
-    await _consumeInboxDelivery(deliveryId: deliveryId);
-  }
-
-  Future<void> _handleFriendDeliveryPayload(
-      Map<String, dynamic> payload) async {
-    final type = (payload['type'] ?? '').toString().trim();
-    if (type.isEmpty) return;
-
-    if (type == 'FRIEND_REQUEST_RECEIVED') {
-      final requestId = (payload['request_id'] ?? '').toString().trim();
-      final fromName =
-          (payload['from_display_name'] ?? payload['fromDisplayName'] ?? '')
-              .toString()
-              .trim();
-      final title = (payload['title'] ?? '').toString().trim();
-      final rawBody = (payload['body'] ?? '').toString().trim();
-
-      final computedBody = rawBody.isNotEmpty
-          ? (fromName.isNotEmpty
-              ? _ensureNickQuotedInText(rawBody, fromName)
-              : rawBody)
-          : (fromName.isNotEmpty
-              ? '${_quoteNick(fromName)} отправил запрос в друзья.'
-              : 'Новый запрос в друзья.');
-
-      await _showFriendRequestReceivedDialog(
-        title: title.isEmpty ? kFriendRequestDefaultTitle : title,
-        body: computedBody,
-        requestId: requestId,
-      );
-
-      // ✅ ACK/consume строго после реального UI (dialog shown and dismissed)
-      await _consumeInboxDeliveryIfPossibleFromPayload(payload);
-      return;
-    }
-
-    if (type == 'FRIEND_REQUEST_ACCEPTED' ||
-        type == 'FRIEND_REQUEST_DECLINED') {
-      final friendName =
-          (payload['friend_display_name'] ?? payload['friendDisplayName'] ?? '')
-              .toString()
-              .trim();
-      final title = (payload['title'] ?? '').toString().trim();
-      final rawBody = (payload['body'] ?? '').toString().trim();
-
-      final isAccepted = type == 'FRIEND_REQUEST_ACCEPTED';
-      final computedTitle = isAccepted
-          ? kFriendRequestAcceptedTitle
-          : kFriendRequestDeclinedTitle;
-
-      final fallbackBody = friendName.isNotEmpty
-          ? '${_quoteNick(friendName)} ${isAccepted ? 'принял' : 'отклонил'} запрос в друзья.'
-          : 'Откройте приложение, чтобы посмотреть.';
-
-      final computedBody = rawBody.isNotEmpty
-          ? (friendName.isNotEmpty
-              ? _ensureNickQuotedInText(rawBody, friendName)
-              : rawBody)
-          : fallbackBody;
-
-      await _showFriendOwnerResultDialog(
-        title: title.isEmpty ? computedTitle : title,
-        body: computedBody,
-        isAccepted: isAccepted,
-      );
-
-      // ✅ ACK/consume строго после реального UI
-      await _consumeInboxDeliveryIfPossibleFromPayload(payload);
-      return;
-    }
-
-    if (type == 'FRIEND_REMOVED') {
-      final title = (payload['title'] ?? '').toString().trim();
-      final rawBody = (payload['body'] ?? '').toString().trim();
-
-      await _showFriendRemovedDialog(
-        title: title.isEmpty ? 'Вас удалили из друзей' : title,
-        body: rawBody.isEmpty ? 'Вас удалили из списка друзей.' : rawBody,
-      );
-
-      // Refresh friends list after the user acknowledged the modal.
-      FriendsRefreshBus.ping();
-
-      // ✅ ACK/consume строго после реального UI
-      await _consumeInboxDeliveryIfPossibleFromPayload(payload);
-      return;
-    }
-  }
-
-  Future<void> _showInfoDialog(
-      {required String title, required String body}) async {
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx == null) return;
-
-    await showDialog<void>(
-      context: ctx,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          title: Text(title),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 280, maxWidth: 360),
-            child: Text(
-              body,
-              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    height: 1.3,
-                  ),
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showFriendRequestReceivedDialog({
-    required String title,
-    required String body,
-    required String requestId,
-  }) async {
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx == null) return;
-
-    await showDialog<void>(
-      context: ctx,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          title: Text(title),
-          content: ConstrainedBox(
-            constraints: _kFriendDialogConstraints,
-            child: Text(
-              body,
-              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    height: 1.3,
-                  ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                Navigator.of(dialogContext, rootNavigator: true).pop();
-                await _declineFriendRequest(requestId);
-              },
-              child: const Text('Отклонить'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.of(dialogContext, rootNavigator: true).pop();
-                await _acceptFriendRequest(requestId);
-              },
-              child: const Text('Принять'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showFriendOwnerResultDialog({
-    required String title,
-    required String body,
-    required bool isAccepted,
-  }) async {
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx == null) return;
-
-    await showDialog<void>(
-      context: ctx,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        final titleStyle =
-            Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
-                  color: isAccepted ? Colors.green : Colors.red,
-                  fontWeight: FontWeight.w700,
-                );
-
-        return AlertDialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          title: Text(title, style: titleStyle),
-          content: ConstrainedBox(
-            constraints: _kFriendDialogConstraints,
-            child: Text(
-              body,
-              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    height: 1.3,
-                  ),
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showFriendRemovedDialog({
-    required String title,
-    required String body,
-  }) async {
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx == null) return;
-
-    await showDialog<void>(
-      context: ctx,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        final titleStyle =
-            Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w700,
-                );
-
-        return AlertDialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
-          titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
-          contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
-          actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-          title: Text(title, style: titleStyle),
-          content: ConstrainedBox(
-            constraints: _kFriendDialogConstraints,
-            child: Text(
-              body,
-              style: Theme.of(dialogContext).textTheme.bodyLarge?.copyWith(
-                    fontSize: 16,
-                    height: 1.3,
-                  ),
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _acceptFriendRequest(String requestId) async {
-    final userId = _userId;
-    if (userId == null || userId.isEmpty) return;
-    if (requestId.isEmpty) return;
-
-    try {
-      await _supabase.rpc('accept_friend_request_v2', params: {
-        'p_user_id': userId,
-        'p_request_id': requestId,
-      });
-    } catch (e) {
-      await _showInfoDialog(title: 'Ошибка', body: e.toString());
-      return;
-    }
-
-    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
-    FriendsRefreshBus.ping();
-
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) {
-      await showCenterToast(
-        ctx,
-        message: 'Запрос принят',
-        isError: false,
-      );
-    }
-  }
-
-  Future<void> _declineFriendRequest(String requestId) async {
-    final userId = _userId;
-    if (userId == null || userId.isEmpty) return;
-    if (requestId.isEmpty) return;
-
-    try {
-      await _supabase.rpc('decline_friend_request_v2', params: {
-        'p_user_id': userId,
-        'p_request_id': requestId,
-      });
-    } catch (e) {
-      await _showInfoDialog(title: 'Ошибка', body: e.toString());
-      return;
-    }
-
-    // Trigger canonical friends screen refresh (invitee has no owner-result INBOX event).
-    FriendsRefreshBus.ping();
-
-    final ctx = App.navigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) {
-      await showCenterToast(
-        ctx,
-        message: 'Запрос отклонён',
-        isError: true,
-      );
-    }
   }
 
   Future<void> _ensureInboxInvitesRealtimeSubscribed() async {
@@ -2824,59 +2269,6 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       await _supabase.removeChannel(ch);
     } catch (_) {
       // ignore dispose errors
-    }
-  }
-
-  Future<void> _handleInternalInviteAction({
-    required String inviteId,
-    required String planId,
-    required String action,
-    String? actionToken,
-  }) async {
-    if (_processingInviteAction) {
-      return;
-    }
-
-    final userId = _userId;
-    if (userId == null || userId.isEmpty) {
-      return;
-    }
-
-    _processingInviteAction = true;
-    try {
-      await _supabase.rpc(
-        'respond_plan_internal_invite_v1',
-        params: {
-          'p_app_user_id': userId,
-          'p_invite_id': inviteId,
-          'p_action': action,
-        },
-      );
-
-      if (action == 'ACCEPT') {
-        _queuePendingPlanOpen(
-          planId,
-          toastMessage: kInviteAcceptedToast,
-        );
-      } else if (action == 'DECLINE') {
-        final toastCtx = App.navigatorKey.currentContext;
-        if (toastCtx != null && toastCtx.mounted) {
-          unawaited(showCenterToast(toastCtx, message: kInviteDeclinedToast));
-        }
-      }
-    } on PostgrestException catch (e) {
-      final toastCtx = App.navigatorKey.currentContext;
-      if (toastCtx != null && toastCtx.mounted) {
-        unawaited(showCenterToast(toastCtx, message: e.message, isError: true));
-      }
-    } catch (e) {
-      final toastCtx = App.navigatorKey.currentContext;
-      if (toastCtx != null && toastCtx.mounted) {
-        unawaited(
-            showCenterToast(toastCtx, message: 'Ошибка: $e', isError: true));
-      }
-    } finally {
-      _processingInviteAction = false;
     }
   }
 
@@ -3345,9 +2737,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
           _homeVisibleAt = null;
           _postIdentityFlowsRerunRequested = false;
         });
-        InviteUiCoordinator.instance.setRootUiReady(false);
-        PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
-        PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
+    
+    
+    
 
         unawaited(_checkLegalAcceptanceIfNeeded());
         return;
@@ -3375,9 +2767,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
         _homeVisibleAt = null;
         _postIdentityFlowsRerunRequested = false;
       });
-      InviteUiCoordinator.instance.setRootUiReady(false);
-      PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
-      PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
+  
+  
+  
 
       unawaited(_checkLegalAcceptanceIfNeeded());
       return;
@@ -3401,9 +2793,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       _welcomeCompleted = false;
       _postIdentityFlowsRerunRequested = false;
     });
-    InviteUiCoordinator.instance.setRootUiReady(false);
-    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
-    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
+
+
+
   }
 
   void _finishOnboarding(Map<String, dynamic> result) {
@@ -3443,9 +2835,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
       _welcomeCompleted = false;
       _homeVisibleAt = null;
     });
-    InviteUiCoordinator.instance.setRootUiReady(false);
-    PlanMemberLeftUiCoordinator.instance.setRootUiReady(false);
-    PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(false);
+
+
+
 
     _runPostIdentityFlows();
   }
@@ -3461,16 +2853,9 @@ static const String kInviteAcceptedToast = 'Приглашение принят�
     // Инициализационные действия — только один раз (при первом вызове).
     if (!_appShellReady) {
       _appShellReady = true;
-      InviteUiCoordinator.instance.setRootUiReady(true);
-      _flushPendingConsumeInboxDeliveriesIfAny();
-      _flushPendingFriendOpenIntentsIfAny();
-      _flushPendingNotificationOpenIntentsIfAny();
-      PlanMemberLeftUiCoordinator.instance.setRootUiReady(true);
 
-      PlanMemberRemovedUiCoordinator.instance.setRootUiReady(true);
-      PlanDeletedUiCoordinator.instance.setRootUiReady(true);
-      PlanMemberJoinedByInviteUiCoordinator.instance.setRootUiReady(true);
-      PlanScheduledNotificationUiCoordinator.instance.setRootUiReady(true);
+      _flushPendingConsumeInboxDeliveriesIfAny();
+      _flushPendingNotificationOpenIntentsIfAny();
       _ensureInboxInvitesRealtimeSubscribed();
 
       _homeVisibleAt ??= DateTime.now();

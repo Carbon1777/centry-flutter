@@ -705,7 +705,10 @@ class _BottomNavigationBarState extends State<_BottomNavigationBar>
                           appUserId: widget.appUserId,
                         ),
                       ),
-                    ).then((_) => widget.onNavigatedBack());
+                    ).then((_) {
+                      unawaited(_loadBadges());
+                      widget.onNavigatedBack();
+                    });
                   },
                 ),
                 _NavItem(
