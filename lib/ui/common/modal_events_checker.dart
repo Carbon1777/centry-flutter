@@ -468,11 +468,36 @@ String _resolveScheduledTitle(String type, Map<String, dynamic> p) {
   }
 }
 
+/// Форматирует ISO-timestamp (event_at) в локальное время устройства: DD/MM/YYYY HH:MM.
+/// Если парсинг не удался — возвращает серверный event_datetime_label как fallback.
+String _formatEventAtLocal(Map<String, dynamic> p) {
+  final raw = (p['event_at'] ?? '').toString().trim();
+  if (raw.isNotEmpty) {
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final dd = dt.day.toString().padLeft(2, '0');
+      final mm = dt.month.toString().padLeft(2, '0');
+      final hh = dt.hour.toString().padLeft(2, '0');
+      final mi = dt.minute.toString().padLeft(2, '0');
+      return '$dd/$mm/${dt.year} $hh:$mi';
+    } catch (_) {
+      // fallback ниже
+    }
+  }
+  return (p['event_datetime_label'] ?? '').toString().trim();
+}
+
 String _resolveScheduledBody(String type, Map<String, dynamic> p) {
-  final serverBody = (p['body'] ?? '').toString().trim();
-  if (serverBody.isNotEmpty) return serverBody;
+  // Для PLAN_EVENT_REMINDER_24H не используем серверный body —
+  // он содержит время в UTC. Формируем текст на клиенте с локальным временем.
+  if (type != 'PLAN_EVENT_REMINDER_24H') {
+    final serverBody = (p['body'] ?? '').toString().trim();
+    if (serverBody.isNotEmpty) return serverBody;
+  }
   final plan = (p['plan_title'] ?? '').toString().trim();
-  final eventDateTime = (p['event_datetime_label'] ?? '').toString().trim();
+  final eventDateTime = type == 'PLAN_EVENT_REMINDER_24H'
+      ? _formatEventAtLocal(p)
+      : (p['event_datetime_label'] ?? '').toString().trim();
   final place = (p['place_title'] ?? '').toString().trim();
   switch (type) {
     case 'PLAN_VOTING_REMINDER_DATE':
