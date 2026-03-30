@@ -1,4 +1,4 @@
-package com.example.centry
+package website.centry.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

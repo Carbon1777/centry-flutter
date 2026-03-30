@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1052430642596:android:33b702b2d9cda544392531",
+        "mobilesdk_app_id": "1:1052430642596:android:1b093d15b6f549bb392531",
         "android_client_info": {
-          "package_name": "com.example.centry"
+          "package_name": "website.centry.app"
         }
       },
       "oauth_client": [],

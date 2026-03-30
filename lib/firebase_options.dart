@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDCr0sZQsXTV1vYoP-DPR5ew7xEXIn2aOA',
-    appId: '1:1052430642596:android:33b702b2d9cda544392531',
+    appId: '1:1052430642596:android:1b093d15b6f549bb392531',
     messagingSenderId: '1052430642596',
     projectId: 'centry1777',
     storageBucket: 'centry1777.firebasestorage.app',
@@ -72,7 +72,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1052430642596',
     projectId: 'centry1777',
     storageBucket: 'centry1777.firebasestorage.app',
-    iosBundleId: 'com.example.centry',
+    iosBundleId: 'website.centry.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
