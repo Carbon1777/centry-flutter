@@ -261,35 +261,55 @@ def get_all_users():
 
 
 def assign_roles(users):
-    """Распределяет роли случайным образом."""
-    random.shuffle(users)
-    n = len(users)
+    """Определяет роли по СОДЕРЖИМОМУ папки. Не рандомит заново уже заполненных."""
+    # Сначала определяем роль по тому что уже лежит в папке
+    unassigned = []
+    for u in users:
+        files = [f for f in os.listdir(u['path']) if not f.startswith('.')]
+        has_avatar_jpg = any(f == 'avatar.jpg' for f in files)
+        has_avatar_webp = any(f.endswith('.webp') for f in files)
+        has_photos = any(f.startswith('photo_') for f in files)
+        photo_count = sum(1 for f in files if f.startswith('photo_') and f.endswith('.jpg'))
 
-    # 10% пустые
-    n_empty = round(n * 0.10)
-    # 10% системные аватарки
-    n_system = round(n * 0.10)
-    # 10% от оставшихся — только аватарка
-    n_remaining = n - n_empty - n_system
-    n_avatar_only = round(n_remaining * 0.10)
-    # остальные — аватарка + альбом
-    n_full = n_remaining - n_avatar_only
+        if has_avatar_jpg and has_photos:
+            u['role'] = 'full'
+            u['age'] = random.randint(25, 35)
+            u['album_count'] = max(photo_count, random.randint(2, 6))  # докинуть если мало
+        elif has_avatar_jpg and not has_photos:
+            u['role'] = 'avatar_only'
+            u['age'] = random.randint(25, 35)
+        elif has_avatar_webp:
+            u['role'] = 'system'
+        elif len(files) == 0:
+            # Пустая папка — нужно назначить роль
+            unassigned.append(u)
+        else:
+            unassigned.append(u)
+
+    # Пустые папки распределяем рандомно
+    random.shuffle(unassigned)
+    # Сколько нужно каждого типа (от общего количества 250)
+    n = len(users)
+    current_empty = sum(1 for u in users if u.get('role') == 'empty')
+    current_system = sum(1 for u in users if u.get('role') == 'system')
+    current_avatar = sum(1 for u in users if u.get('role') == 'avatar_only')
+    current_full = sum(1 for u in users if u.get('role') == 'full')
+
+    need_empty = max(0, round(n * 0.10) - current_empty)
+    need_system = max(0, round(n * 0.10) - current_system)
 
     idx = 0
-    for i in range(n_empty):
-        users[idx]['role'] = 'empty'
+    for i in range(min(need_empty, len(unassigned) - idx)):
+        unassigned[idx]['role'] = 'empty'
         idx += 1
-    for i in range(n_system):
-        users[idx]['role'] = 'system'
+    for i in range(min(need_system, len(unassigned) - idx)):
+        unassigned[idx]['role'] = 'system'
         idx += 1
-    for i in range(n_avatar_only):
-        users[idx]['role'] = 'avatar_only'
-        users[idx]['age'] = random.randint(25, 35)
-        idx += 1
-    for i in range(n_full):
-        users[idx]['role'] = 'full'
-        users[idx]['age'] = random.randint(25, 35)
-        users[idx]['album_count'] = random.randint(2, 6)
+    # Остальные пустые — делаем full
+    for i in range(idx, len(unassigned)):
+        unassigned[idx]['role'] = 'full'
+        unassigned[idx]['age'] = random.randint(25, 35)
+        unassigned[idx]['album_count'] = random.randint(2, 6)
         idx += 1
 
     return users
@@ -317,7 +337,7 @@ def replicate_predict(model, input_data, max_wait=120):
     url = f"https://api.replicate.com/v1/models/{model}/predictions"
     data = json.dumps({"input": input_data}).encode()
 
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             req = urllib.request.Request(url, data=data, headers={
                 "Authorization": f"Bearer {REPLICATE_TOKEN}",
@@ -333,9 +353,17 @@ def replicate_predict(model, input_data, max_wait=120):
                 print(f"  Rate limited, waiting {wait}s...")
                 time.sleep(wait)
                 continue
-            raise
+            elif e.code == 402:
+                print(f"  402 Payment Required — баланс пуст!")
+                return None
+            print(f"  HTTP {e.code}, retry {attempt+1}...")
+            time.sleep(5)
+        except (urllib.error.URLError, ConnectionError, OSError) as e:
+            print(f"  Network error: {e}, retry {attempt+1}...")
+            time.sleep(10)
     else:
-        raise RuntimeError("Failed after 3 attempts")
+        print("  Failed after 5 attempts")
+        return None
 
     # Поллинг
     get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
@@ -500,14 +528,14 @@ def main():
     # 3a. Пустые — просто чистим
     for u in users:
         if u['role'] == 'empty':
-            clean_user_folder(u['path'])
+            # НЕ чистим папку — сохраняем существующие файлы
             processed += 1
     print(f"\n[{processed}/{len(users)}] Пустые папки очищены")
 
     # 3b. Системные аватарки
     for u in users:
         if u['role'] == 'system':
-            clean_user_folder(u['path'])
+            # НЕ чистим папку — сохраняем существующие файлы
             num = copy_system_avatar(u)
             processed += 1
             print(f"  [{processed}] System avatar_{num:02d} -> {os.path.basename(u['path'])}")
@@ -521,7 +549,7 @@ def main():
                 processed += 1
                 print(f"  [{processed}] SKIP (already has avatar): {os.path.basename(u['path'])}")
                 continue
-            clean_user_folder(u['path'])
+            # НЕ чистим папку — сохраняем существующие файлы
             print(f"\n  [{processed+1}] Generating avatar for {os.path.basename(u['path'])} ({u['gender'].upper()}, {u['age']}yo)...")
             result = generate_avatar(u)
             processed += 1

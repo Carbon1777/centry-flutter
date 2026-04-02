@@ -614,10 +614,10 @@ class _PrivateChatViewState extends State<_PrivateChatView>
 
       // Шаг 3: точное позиционирование через ensureVisible (по центру)
       if (!mounted) return;
-      final dividerContext = _unreadDividerKey.currentContext;
-      if (dividerContext != null) {
+      final dividerCtx = _unreadDividerKey.currentContext;
+      if (dividerCtx != null && dividerCtx.mounted) {
         Scrollable.ensureVisible(
-          dividerContext,
+          dividerCtx,
           alignment: 0.4,
           duration: Duration.zero,
         );
