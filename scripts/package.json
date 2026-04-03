@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "dotenv": "^17.4.0",
     "playwright": "^1.52.0",
     "sharp": "^0.33.0"
   }

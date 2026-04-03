@@ -6,13 +6,16 @@ Cold Start 2 — генерация SQL для создания 250 пользо
 """
 
 import json, uuid, os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 BASE = "/Users/jcat/Documents/Doc/Projects/cold_start2"
 MANIFEST = os.path.join(BASE, "manifest.json")
 OUTPUT_DIR = os.path.join(BASE, "sql_batches")
 MAPPING_FILE = os.path.join(BASE, "user_mapping.json")
 
-SUPABASE_URL = "https://lqgzvolirohuettizkhx.supabase.co"
+SUPABASE_URL = os.environ["SUPABASE_URL"]
 EMAIL_START = 361  # cs_user_0361 and onwards
 
 

@@ -16,11 +16,14 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { fileURLToPath } from 'url';
+import { config } from 'dotenv';
 
 // ── Config ──────────────────────────────────────────────
-const SUPABASE_URL = 'https://lqgzvolirohuettizkhx.supabase.co';
-const SUPABASE_KEY =
-  'SUPABASE_SERVICE_KEY_REDACTED';
+const __filename2 = fileURLToPath(import.meta.url);
+config({ path: path.join(path.dirname(__filename2), '.env') });
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const PROVIDER = 'yandex_maps';
 
 const __filename = fileURLToPath(import.meta.url);

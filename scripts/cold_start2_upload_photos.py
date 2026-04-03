@@ -6,6 +6,9 @@ Cold Start 2 — загрузка фото в Supabase Storage.
 """
 
 import os, sys, json, urllib.request, urllib.error
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 BASE = "/Users/jcat/Documents/Doc/Projects/cold_start2"
 WEBP_DIR = os.path.join(BASE, "webp")
@@ -13,8 +16,8 @@ MAPPING_FILE = os.path.join(BASE, "user_mapping.json")
 MANIFEST_FILE = os.path.join(BASE, "manifest.json")
 PROGRESS_FILE = os.path.join(BASE, "upload_progress.json")
 
-SUPABASE_URL = "https://lqgzvolirohuettizkhx.supabase.co"
-SERVICE_KEY = "SUPABASE_SERVICE_KEY_REDACTED"
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
 
 def load_progress():

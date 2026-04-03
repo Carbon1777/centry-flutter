@@ -14,11 +14,14 @@ Cold Start 2 — полный pipeline генерации фото для 250 п
 """
 
 import os, random, json, time, base64, shutil, urllib.request, sys
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 # === КОНФИГ ===
 BASE = "/Users/jcat/Documents/Doc/Projects/cold_start2"
 SYSTEM_AVATARS_DIR = "/Users/jcat/Documents/Doc/media/avatars/webp_512"
-REPLICATE_TOKEN = "REPLICATE_TOKEN_REDACTED"
+REPLICATE_TOKEN = os.environ["REPLICATE_TOKEN"]
 DRY_RUN = "--dry-run" in sys.argv  # для тестового прогона без API
 
 # Системные аватарки по полу

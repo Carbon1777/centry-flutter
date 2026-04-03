@@ -8,6 +8,9 @@ Cold Start 2 — деплой 250 пользователей в Supabase.
 """
 
 import json, os, sys, time, urllib.request, urllib.error
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 BASE = "/Users/jcat/Documents/Doc/Projects/cold_start2"
 WEBP_DIR = os.path.join(BASE, "webp")
@@ -16,8 +19,8 @@ MAPPING_FILE = os.path.join(BASE, "user_mapping.json")
 SQL_DIR = os.path.join(BASE, "sql_batches")
 PROGRESS_FILE = os.path.join(BASE, "deploy_progress.json")
 
-SUPABASE_URL = "https://lqgzvolirohuettizkhx.supabase.co"
-SERVICE_KEY = "SUPABASE_SERVICE_KEY_REDACTED"
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
 
 def load_progress():

@@ -5,10 +5,13 @@
 """
 
 import os, sys, json, urllib.request, urllib.error
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 SQL_DIR = "/Users/jcat/Documents/Doc/Projects/cold_start2/sql_batches"
-SUPABASE_URL = "https://lqgzvolirohuettizkhx.supabase.co"
-SERVICE_KEY = "SUPABASE_SERVICE_KEY_REDACTED"
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
 
 def call_rpc(sql):

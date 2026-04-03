@@ -6,12 +6,16 @@ Results go ONLY to place_search_results_raw — no auto-enrichment.
 import json
 import time
 import sys
+import os
 import urllib.request
 import ssl
+from dotenv import load_dotenv
 
-SERPER_KEY = "c6076a7b160501ddee60db22666aab63f8031d84"
-SUPABASE_URL = "https://lqgzvolirohuettizkhx.supabase.co"
-SUPABASE_KEY = "SUPABASE_SERVICE_KEY_REDACTED"
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+
+SERPER_KEY = os.environ["SERPER_KEY"]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
 BATCH_LIMIT = 300
 ssl_ctx = ssl.create_default_context()

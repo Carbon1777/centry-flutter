@@ -2,8 +2,12 @@
 # Обновление KB документов на сервере и переиндексация
 set -e
 
-SUPABASE_URL="https://lqgzvolirohuettizkhx.supabase.co"
-SUPABASE_KEY="SUPABASE_SERVICE_KEY_REDACTED"
+SCRIPT_DIR_ENV="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR_ENV/.env" ]; then
+  export $(grep -v '^#' "$SCRIPT_DIR_ENV/.env" | xargs)
+fi
+SUPABASE_URL="${SUPABASE_URL}"
+SUPABASE_KEY="${SUPABASE_SERVICE_KEY}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
