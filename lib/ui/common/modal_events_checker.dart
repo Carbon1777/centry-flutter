@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/attention_signs/attention_signs_repository_impl.dart';
 import '../../data/modal_events/modal_event_dto.dart';
 import '../../data/modal_events/modal_events_repository_impl.dart';
+import '../../features/profile/user_card_sheet.dart';
 import '../../ui/friends/friends_refresh_bus.dart';
 import 'center_toast.dart';
 
@@ -136,10 +137,12 @@ Future<void> _showEventModal({
   // ── FRIEND_REQUEST_RECEIVED ────────────────────────────────────────────────
   if (type == 'FRIEND_REQUEST_RECEIVED') {
     final requestId = (p['request_id'] ?? '').toString();
+    final actorUserId = (p['from_user_id'] ?? '').toString();
     final result = await _showFriendRequestDialog(
       context: context,
       nick: nick,
       avatarUrl: event.actorAvatarUrl,
+      actorUserId: actorUserId,
     );
     try {
       await repo.consumeEvent(appUserId: appUserId, eventId: event.eventId);
@@ -641,6 +644,7 @@ Future<_DialogResult?> _showFriendRequestDialog({
   required BuildContext context,
   required String nick,
   String? avatarUrl,
+  required String actorUserId,
 }) {
   return showDialog<_DialogResult>(
     context: context,
@@ -680,16 +684,36 @@ Future<_DialogResult?> _showFriendRequestDialog({
           ],
         ),
       ),
+      actionsAlignment: MainAxisAlignment.spaceBetween,
       actions: [
-        TextButton(
-          onPressed: () =>
-              Navigator.of(ctx, rootNavigator: true).pop(_DialogResult.decline),
-          child: const Text('Отклонить'),
-        ),
-        FilledButton(
-          onPressed: () =>
-              Navigator.of(ctx, rootNavigator: true).pop(_DialogResult.accept),
-          child: const Text('Принять'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx, rootNavigator: true).pop(_DialogResult.decline),
+              child: const Text('Отклонить'),
+            ),
+            if (actorUserId.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  UserCardSheet.show(
+                    ctx,
+                    targetUserId: actorUserId,
+                    cardContext: 'friends',
+                  );
+                },
+                child: Text(
+                  'Профиль',
+                  style: TextStyle(color: Theme.of(ctx).colorScheme.primary),
+                ),
+              ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(ctx, rootNavigator: true).pop(_DialogResult.accept),
+              child: const Text('Принять'),
+            ),
+          ],
         ),
       ],
     ),
