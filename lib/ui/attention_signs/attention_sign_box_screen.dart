@@ -42,6 +42,7 @@ class _AttentionSignBoxScreenState extends State<AttentionSignBoxScreen> {
         _box = box;
         _loading = false;
       });
+      AttentionSignsBus.instance.setHasIncoming(box.incoming.isNotEmpty);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
