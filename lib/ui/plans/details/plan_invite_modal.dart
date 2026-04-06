@@ -95,7 +95,13 @@ class _PlanInviteModalState extends State<PlanInviteModal> {
     final t = _shareText;
     if (t == null || t.isEmpty) return;
 
-    await Share.share(t);
+    final box = context.findRenderObject() as RenderBox?;
+    await Share.share(
+      t,
+      sharePositionOrigin: box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : Rect.zero,
+    );
     if (!mounted) return;
 
     // Close this dialog after sharing to return to the previous modal.

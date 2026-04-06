@@ -493,12 +493,16 @@ class _ActionChip extends StatelessWidget {
               ? Border.all(color: Colors.amber.withValues(alpha: 0.65))
               : null,
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: enabled ? activeColor : disabledColor,
-            fontWeight: FontWeight.w700,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: enabled ? activeColor : disabledColor,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),

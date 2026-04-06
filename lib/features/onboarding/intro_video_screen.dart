@@ -27,7 +27,7 @@ class IntroVideoScreen extends StatefulWidget {
 
 class _IntroVideoScreenState extends State<IntroVideoScreen> {
   static const _videoUrl =
-      'https://lqgzvolirohuettizkhx.supabase.co/storage/v1/object/public/brand-media/intro.mp4';
+      'https://lqgzvolirohuettizkhx.supabase.co/storage/v1/object/public/brand-media/intro1.mp4';
 
   late final VideoPlayerController _controller;
   bool _done = false;
