@@ -434,12 +434,31 @@ serve(async () => {
             priority: "HIGH",
           };
 
+      const apnsConfig = shouldIncludeNotification
+        ? {
+            payload: {
+              aps: {
+                alert: { title, body },
+                sound: "default",
+                badge: 1,
+              },
+            },
+          }
+        : {
+            payload: {
+              aps: {
+                "content-available": 1,
+              },
+            },
+          };
+
       const message: Record<string, unknown> = {
         message: {
           token: t.token,
           ...(shouldIncludeNotification ? { notification: { title, body } } : {}),
           data: dataPayload,
           android: androidConfig,
+          apns: apnsConfig,
         },
       };
 

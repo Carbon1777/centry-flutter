@@ -43,6 +43,8 @@
 	<string>Нужно для съёмки аватара</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Нужно для рекомендаций мест поблизости</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Нужно для рекомендаций мест поблизости</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Нужно для записи видео</string>
 	<key>NSPhotoLibraryUsageDescription</key>
