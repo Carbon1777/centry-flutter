@@ -535,8 +535,12 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
   }
 
   Future<void> _openWebsite() async {
-    final url = _effectiveWebsiteUrl;
+    var url = _effectiveWebsiteUrl;
     if (url == null || url.trim().isEmpty) return;
+    url = url.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
     final uri = Uri.parse(url);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -792,21 +796,19 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    final outlinedActionStyle = OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      minimumSize: const Size(0, 36),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    );
-
     final screenHeight = MediaQuery.of(context).size.height;
     final dialogMaxHeight = screenHeight * 0.93 - MediaQuery.of(context).viewInsets.bottom;
-    final imageHeight = (screenHeight * 0.15).clamp(80.0, 130.0);
+    final imageHeight = (screenHeight * 0.30).clamp(160.0, 280.0);
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: colors.primary.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+      ),
       child: Stack(
         children: [
           if (_loading)
@@ -820,6 +822,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // ── ФОТО (большое, с gradient overlay) ──
                   ClipRRect(
                     borderRadius:
                         const BorderRadius.vertical(top: Radius.circular(20)),
@@ -864,10 +867,27 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                             }
                             return fallback();
                           }),
+                          // Gradient overlay снизу
+                          Positioned(
+                            left: 0, right: 0, bottom: 0,
+                            height: imageHeight * 0.4,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.55),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                           if (_effectivePreviewIsPlaceholder)
                             Positioned(
                               bottom: 8,
-                              right: 8,
+                              left: 12,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
@@ -878,7 +898,7 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Text(
-                                  'Плейсхолдер. Актуальные фото добавятся позже',
+                                  'Фото скоро появится',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Colors.white,
@@ -891,13 +911,17 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                       ),
                     ),
                   ),
+                  // ── КОНТЕНТ (компактный, Flexible на случай маленьких экранов) ──
                   Flexible(
-                    child: SingleChildScrollView(
-                      physics: const ClampingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Тип + рейтинг + лайки в одну строку
+                        Row(
+                          children: [
                             Text(
                               widget.typeLabel,
                               style: theme.textTheme.labelMedium?.copyWith(
@@ -905,258 +929,148 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    widget.title,
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                ),
-                                OutlinedButton(
-                                  onPressed: (_loading || _savingSaved)
-                                      ? null
-                                      : _onSavedPressed,
-                                  style: outlinedActionStyle,
-                                  child: _savingSaved
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : Text(
-                                          _savedByMe
-                                              ? 'Удалить из Моих мест'
-                                              : 'Добавить в Мои места',
-                                        ),
-                                ),
-                              ],
-                            ),
-                            // Feed-specific: сигналы + планы — сразу под названием
-                            if (widget.feedCountPlans != null) ...[
-                              const SizedBox(height: 4),
-                              const Divider(height: 1),
-                              const SizedBox(height: 4),
-                              _FeedSignalsRow(
-                                interestedCount: widget.feedInterestedCount ?? 0,
-                                plannedCount: widget.feedPlannedCount ?? 0,
-                                visitedCount: widget.feedVisitedCount ?? 0,
-                              ),
-                              const SizedBox(height: 4),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: widget.feedCountPlans! > 0 &&
-                                          widget.feedRepository != null
-                                      ? () {
-                                          showDialog<void>(
-                                            context: context,
-                                            builder: (_) =>
-                                                _FeedPlanShellsDialog(
-                                              placeId: widget.placeId,
-                                              feedRepository:
-                                                  widget.feedRepository!,
-                                            ),
-                                          );
-                                        }
-                                      : null,
-                                  icon: const Icon(Icons.event_note_outlined,
-                                      size: 18),
-                                  label: Text(
-                                      'Планов — ${widget.feedCountPlans}'),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Divider(height: 1),
-                            ],
-                            const SizedBox(height: 4),
-                            if (_effectiveCityName != null &&
-                                _effectiveCityName!.trim().isNotEmpty) ...[
+                            const Spacer(),
+                            // Рейтинг
+                            if (_rating != null) ...[
+                              Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade600),
+                              const SizedBox(width: 2),
                               Text(
-                                _effectiveCityName!,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 2),
-                            ],
-                            if (_effectiveAreaName != null &&
-                                _effectiveAreaName!.trim().isNotEmpty) ...[
-                              Text(
-                                _effectiveAreaName!,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 2),
-                            ],
-                            if (_effectiveMetroName != null &&
-                                _effectiveMetroName!.trim().isNotEmpty) ...[
-                              Text(
-                                'м. $_effectiveMetroName${_effectiveMetroDistanceM != null ? " · $_effectiveMetroDistanceM м" : ""}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 2),
-                            ],
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _effectiveAddress,
-                                    style: theme.textTheme.bodySmall,
-                                  ),
+                                _rating!.toStringAsFixed(1),
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
-                                IconButton(
-                                  icon:
-                                      const Icon(Icons.copy_rounded, size: 18),
-                                  onPressed: _copyAddress,
-                                ),
-                              ],
+                              ),
+                              const SizedBox(width: 10),
+                            ],
+                            // Лайки / дизлайки
+                            _Vote(
+                              icon: Icons.thumb_up_alt_rounded,
+                              count: _likes,
+                              active: _myVote == 1,
+                              activeColor: Colors.green,
+                              onTap: _canTapVote
+                                  ? () => _vote(_myVote == 1 ? 0 : 1)
+                                  : null,
                             ),
-                            if ((_effectiveWebsiteUrl != null &&
-                                    _effectiveWebsiteUrl!.trim().isNotEmpty) ||
-                                _effectivePhones.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: [
-                                  if (_effectiveWebsiteUrl != null &&
-                                      _effectiveWebsiteUrl!.trim().isNotEmpty)
-                                    OutlinedButton(
-                                      onPressed: _openWebsite,
-                                      child: const Text('Сайт'),
-                                    ),
-                                  for (final p in _effectivePhones)
-                                    OutlinedButton(
-                                      onPressed: () async {
-                                        final tel = p.trim();
-                                        if (tel.isEmpty) return;
-                                        final uri = Uri(
-                                          scheme: 'tel',
-                                          path: tel,
-                                        );
-                                        await launchUrl(
-                                          uri,
-                                          mode: LaunchMode.externalApplication,
-                                        );
-                                      },
-                                      child: Text(p),
-                                    ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Рейтинг',
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _rating != null
-                                            ? _rating!.toStringAsFixed(1)
-                                            : '—',
-                                        style: theme.textTheme.titleSmall,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          _Vote(
-                                            icon: Icons.thumb_up_alt_rounded,
-                                            count: _likes,
-                                            active: _myVote == 1,
-                                            activeColor: Colors.green,
-                                            onTap: _canTapVote
-                                                ? () =>
-                                                    _vote(_myVote == 1 ? 0 : 1)
-                                                : null,
-                                          ),
-                                          const SizedBox(width: 16),
-                                          _Vote(
-                                            icon: Icons.thumb_down_alt_rounded,
-                                            count: _dislikes,
-                                            active: _myVote == -1,
-                                            activeColor: Colors.redAccent,
-                                            onTap: _canTapVote
-                                                ? () => _vote(
-                                                      _myVote == -1 ? 0 : -1,
-                                                    )
-                                                : null,
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                OutlinedButton(
-                                  onPressed: _openOnMapInApp,
-                                  style: outlinedActionStyle,
-                                  child: const Text('Посмотреть на карте'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: (_loading || _addingToPlan)
-                                    ? null
-                                    : (_showRemoveFromPlanAction &&
-                                            widget.onRemoveFromCurrentPlan ==
-                                                null)
-                                        ? null
-                                        : _onAddToPlanPressed,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2DD4BF),
-                                  foregroundColor: Colors.black,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                child: _addingToPlan
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.black,
-                                        ),
-                                      )
-                                    : Text(
-                                        _planPrimaryButtonLabel,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: _openRoute,
-                                    child: const Text('Маршрут'),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(width: 10),
+                            _Vote(
+                              icon: Icons.thumb_down_alt_rounded,
+                              count: _dislikes,
+                              active: _myVote == -1,
+                              activeColor: Colors.redAccent,
+                              onTap: _canTapVote
+                                  ? () => _vote(_myVote == -1 ? 0 : -1)
+                                  : null,
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        // Название
+                        Text(
+                          widget.title,
+                          style: theme.textTheme.titleMedium,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        // Локация: город · район · метро — в одну-две строки
+                        _buildLocationLine(theme),
+                        // Feed-specific: сигналы
+                        if (widget.feedCountPlans != null) ...[
+                          const SizedBox(height: 6),
+                          const Divider(height: 1),
+                          const SizedBox(height: 6),
+                          _FeedSignalsRow(
+                            interestedCount: widget.feedInterestedCount ?? 0,
+                            plannedCount: widget.feedPlannedCount ?? 0,
+                            visitedCount: widget.feedVisitedCount ?? 0,
+                          ),
+                          if (widget.feedCountPlans! > 0) ...[
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: widget.feedRepository != null
+                                    ? () {
+                                        showDialog<void>(
+                                          context: context,
+                                          builder: (_) =>
+                                              _FeedPlanShellsDialog(
+                                            placeId: widget.placeId,
+                                            feedRepository:
+                                                widget.feedRepository!,
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.event_note_outlined, size: 18),
+                                label: Text('Планов — ${widget.feedCountPlans}'),
+                              ),
+                            ),
+                          ],
+                        ],
+                        const SizedBox(height: 10),
+                        // Кнопки: [Контакты] [···]
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showContactsModal(context),
+                                icon: const Icon(Icons.info_outline, size: 18),
+                                label: const Text('Контакты'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _showActionsModal(context),
+                                icon: const Icon(Icons.more_horiz, size: 18),
+                                label: const Text('Меню'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Главная кнопка — Добавить в план
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: (_loading || _addingToPlan)
+                                ? null
+                                : (_showRemoveFromPlanAction &&
+                                        widget.onRemoveFromCurrentPlan == null)
+                                    ? null
+                                    : _onAddToPlanPressed,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2DD4BF),
+                              foregroundColor: Colors.black,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _addingToPlan
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : Text(
+                                    _planPrimaryButtonLabel,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  ),
                 ],
               ),
             ),
@@ -1174,6 +1088,165 @@ class _PlaceDetailsDialogState extends State<PlaceDetailsDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Компактная строка локации ──
+  Widget _buildLocationLine(ThemeData theme) {
+    final parts = <String>[];
+    final city = _effectiveCityName;
+    if (city != null && city.trim().isNotEmpty) parts.add(city.trim());
+    final area = _effectiveAreaName;
+    if (area != null && area.trim().isNotEmpty) parts.add(area.trim());
+    final metro = _effectiveMetroName;
+    if (metro != null && metro.trim().isNotEmpty) {
+      final dist = _effectiveMetroDistanceM;
+      parts.add('м. $metro${dist != null ? " · $dist м" : ""}');
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(
+      parts.join(' · '),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  // ── Модалка «Контакты» ──
+  void _showContactsModal(BuildContext context) {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Контакты', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              // Адрес
+              Row(
+                children: [
+                  const Icon(Icons.location_on_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_effectiveAddress, style: theme.textTheme.bodyMedium),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    onPressed: () {
+                      _copyAddress();
+                      Navigator.of(ctx).pop();
+                    },
+                  ),
+                ],
+              ),
+              // Сайт
+              if (_effectiveWebsiteUrl != null &&
+                  _effectiveWebsiteUrl!.trim().isNotEmpty) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.language, size: 20),
+                  title: Text(
+                    _effectiveWebsiteUrl!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _openWebsite();
+                  },
+                ),
+              ],
+              // Телефоны
+              for (final p in _effectivePhones) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.phone_outlined, size: 20),
+                  title: Text(p, style: theme.textTheme.bodyMedium),
+                  contentPadding: EdgeInsets.zero,
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    final uri = Uri(scheme: 'tel', path: p.trim());
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Модалка «Действия» ──
+  void _showActionsModal(BuildContext context) {
+    final theme = Theme.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Действия', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              // Мои места
+              ListTile(
+                leading: Icon(
+                  _savedByMe ? Icons.bookmark : Icons.bookmark_border,
+                  size: 22,
+                ),
+                title: Text(_savedByMe ? 'Удалить из Моих мест' : 'Добавить в Мои места'),
+                contentPadding: EdgeInsets.zero,
+                onTap: (_loading || _savingSaved)
+                    ? null
+                    : () {
+                        Navigator.of(ctx).pop();
+                        _onSavedPressed();
+                      },
+              ),
+              const Divider(height: 1),
+              // На карте
+              ListTile(
+                leading: const Icon(Icons.map_outlined, size: 22),
+                title: const Text('Посмотреть на карте'),
+                contentPadding: EdgeInsets.zero,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _openOnMapInApp();
+                },
+              ),
+              const Divider(height: 1),
+              // Маршрут
+              ListTile(
+                leading: const Icon(Icons.directions_outlined, size: 22),
+                title: const Text('Маршрут'),
+                contentPadding: EdgeInsets.zero,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _openRoute();
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

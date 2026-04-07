@@ -281,6 +281,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
 
     final result = await showDialog<Object?>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.75),
       builder: (_) => PlaceDetailsDialog(
         repository: widget.repository,
         placeId: place.dto.id,
@@ -637,19 +638,19 @@ class _MyPlaceSubmissionCardState extends State<_MyPlaceSubmissionCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 72,
+                  width: 88,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 72,
-                        height: 72,
+                        width: 88,
+                        height: 88,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           child: Builder(builder: (_) {
                             final catUrl = categoryPlaceholderUrl(
                               widget.submission.type,

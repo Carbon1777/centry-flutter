@@ -46,6 +46,7 @@ Future<void> showFeedPlaceDetailSheet({
 
   await showDialog<void>(
     context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.75),
     builder: (_) => PlaceDetailsDialog(
       repository: placesRepository,
       placeId: place.placeId,

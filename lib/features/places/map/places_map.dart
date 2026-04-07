@@ -442,6 +442,7 @@ class _PlacesMapState extends State<PlacesMap> {
       onTap: () async {
         final result = await showDialog<Object?>(
           context: context,
+          barrierColor: Colors.black.withValues(alpha: 0.75),
           builder: (_) => PlaceDetailsDialog(
             repository: widget.repository,
             placeId: place.id,

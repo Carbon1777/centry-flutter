@@ -333,6 +333,7 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
 
     final result = await showDialog<Object?>(
       context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.75),
       builder: (_) {
         if (dto != null) {
           return PlaceDetailsDialog(

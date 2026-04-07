@@ -94,19 +94,19 @@ class FeedPlaceCard extends StatelessWidget {
                       children: [
                         // Фото + рейтинг
                         SizedBox(
-                          width: 72,
+                          width: 88,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 72,
-                                height: 72,
+                                width: 88,
+                                height: 88,
                                 decoration: BoxDecoration(
                                   color: Colors.grey.shade800,
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(14),
                                   child: _PlacePhoto(
                                     storageKey: place.photoStorageKey,
                                     category: place.category,
@@ -115,7 +115,7 @@ class FeedPlaceCard extends StatelessWidget {
                                 ),
                               ),
                               if (place.rating != null) ...[
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 5),
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -135,7 +135,7 @@ class FeedPlaceCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
 
                         // Текстовый блок
                         Expanded(
