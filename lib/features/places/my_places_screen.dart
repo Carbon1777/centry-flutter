@@ -59,6 +59,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
 
   final PlacesFiltersController _filtersController = PlacesFiltersController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final ScrollController _scrollController = ScrollController();
 
   bool get _isPlanFlow {
     final planId = widget.sourcePlanId?.trim();
@@ -160,6 +161,24 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
     setState(() {
       _loading = false;
     });
+  }
+
+  Future<void> _loadPreservingScroll() async {
+    final savedOffset = _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+
+    await _load();
+
+    if (savedOffset > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(
+            savedOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+          );
+        }
+      });
+    }
   }
 
   Future<void> _ackRejectedSubmissionSeen(
@@ -272,7 +291,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
       return;
     }
 
-    await _load();
+    await _loadPreservingScroll();
   }
 
   Future<void> _openDetails(PlaceUiModel place) async {
@@ -338,6 +357,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
   void dispose() {
     _sub?.cancel();
     _mapFocusPlace.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -393,6 +413,7 @@ class _MyPlacesScreenState extends State<MyPlacesScreen> {
                         ),
                       )
                     : ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.all(16),
                         physics: const ClampingScrollPhysics(),
                         itemCount: totalItems,

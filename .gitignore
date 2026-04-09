@@ -50,9 +50,11 @@ scripts/.env
 
 # Scraped data (local only, not for git)
 scraped_photos/
+scraped_photos_v2/
 scripts/sql_batch_*.sql
 scripts/update_batch_*.sql
 scripts/update_photos_*.sql
 scripts/upload_log.json
 scripts/photo_selection_results.json
 scripts/photo_selection_results.csv
+scripts/yandex_parse_*.json

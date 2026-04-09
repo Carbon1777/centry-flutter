@@ -367,12 +367,13 @@ class _PlacesListState extends State<_PlacesList> {
   int _loadGeneration = 0;
 
   bool _creatingPlaceSubmission = false;
+  bool _preserveScrollOnReload = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    widget.reloadSignal.addListener(_loadInitial);
+    widget.reloadSignal.addListener(_onReloadSignal);
 
     _searchController.addListener(_onSearchTextChanged);
     _searchFocus.addListener(() {
@@ -388,7 +389,7 @@ class _PlacesListState extends State<_PlacesList> {
 
   @override
   void dispose() {
-    widget.reloadSignal.removeListener(_loadInitial);
+    widget.reloadSignal.removeListener(_onReloadSignal);
     _scrollController.dispose();
 
     _searchDebounce?.cancel();
@@ -496,19 +497,46 @@ class _PlacesListState extends State<_PlacesList> {
     await _loadInitial();
   }
 
-  Future<void> _loadInitial() async {
+  void _onReloadSignal() {
+    final preserve = _preserveScrollOnReload;
+    _preserveScrollOnReload = false;
+    _loadInitial(preserveScroll: preserve);
+  }
+
+  Future<void> _loadInitial({bool preserveScroll = false}) async {
     // Инвалидируем предыдущий запрос: даже если он ещё в полёте,
     // его результат будет проигнорирован (_loadGeneration не совпадёт).
+    final savedOffset = preserveScroll && _scrollController.hasClients
+        ? _scrollController.offset
+        : 0.0;
+    final itemsToReload = preserveScroll ? _places.length : 0;
+
     _loadGeneration++;
     _places.clear();
     _offset = 0;
     _hasMore = true;
     _loading = false;
     setState(() {});
-    await _loadNext();
+
+    if (preserveScroll && itemsToReload > _pageSize) {
+      // Загружаем все страницы до прежней позиции за один запрос
+      await _loadNext(limit: itemsToReload);
+    } else {
+      await _loadNext();
+    }
+
+    if (preserveScroll && savedOffset > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(
+            savedOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+          );
+        }
+      });
+    }
   }
 
-  Future<void> _loadNext() async {
+  Future<void> _loadNext({int? limit}) async {
     if (_loading || !_hasMore) return;
 
     final gen = _loadGeneration;
@@ -523,7 +551,7 @@ class _PlacesListState extends State<_PlacesList> {
         types: payload.types,
         minRating: payload.minRating,
         searchTitle: _appliedSearchTitle,
-        limit: _pageSize,
+        limit: limit ?? _pageSize,
         offset: _offset,
       );
 
@@ -938,6 +966,7 @@ class _PlacesListState extends State<_PlacesList> {
                         );
 
                         if (!mounted || result == null) return;
+                        _preserveScrollOnReload = true;
                         await widget.onPlaceDialogResult(result);
                       },
                     );
