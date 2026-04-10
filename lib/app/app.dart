@@ -2447,10 +2447,45 @@ class _BootstrapGateState extends State<BootstrapGate>
     final initialUri = await _appLinks.getInitialLink();
     await _handleIncomingUri(initialUri);
 
+    // Deferred deep link fallback: if no URI arrived (app was installed from
+    // store after user visited plan-invite page), check clipboard for a
+    // saved invite URL.  The web page copies the full URL before redirecting
+    // to the store so that the token survives the install gap.
+    if (initialUri == null) {
+      await _tryReadClipboardInviteToken();
+    }
+
     // stream (while app is running)
     _linkSub = _appLinks.uriLinkStream.listen((uri) {
       unawaited(_handleIncomingUri(uri));
     });
+  }
+
+  /// Reads clipboard looking for a centry plan-invite URL.
+  /// Used as a deferred deep link fallback when the app is opened after
+  /// installation from the store (no real deep link is available).
+  Future<void> _tryReadClipboardInviteToken() async {
+    try {
+      // Skip if we already have a pending token in storage.
+      final existing = await _storage.readPendingPlanInviteToken();
+      if (existing != null && existing.isNotEmpty) return;
+
+      final data = await Clipboard.getData('text/plain');
+      final text = data?.text?.trim() ?? '';
+      if (text.isEmpty) return;
+
+      // Only accept URLs pointing to our invite page.
+      final uri = Uri.tryParse(text);
+      if (uri == null) return;
+
+      final token = _extractPlanInviteToken(uri);
+      if (token == null || token.isEmpty) return;
+
+      await _storage.writePendingPlanInviteToken(token);
+      unawaited(_tryConsumePendingPlanInvite());
+    } catch (_) {
+      // Clipboard access may be denied — not critical.
+    }
   }
 
   void _initFcmTokenRefresh() {
