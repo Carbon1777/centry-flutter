@@ -41,6 +41,18 @@
                     android:host="auth"/>
             </intent-filter>
 
+            <!-- Deep link for plan invites: centry://plan-invite?token=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+
+                <data
+                    android:scheme="centry"
+                    android:host="plan-invite"/>
+            </intent-filter>
+
             <!-- Android App Links: https://www.centry.website/plan-invite?token=... -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
