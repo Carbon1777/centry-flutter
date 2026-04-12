@@ -48,13 +48,30 @@ app.*.map.json
 .env
 scripts/.env
 
-# Scraped data (local only, not for git)
+# Claude Code config
+.claude/
+
+# Scraped data & scripts artifacts (local only, not for git)
 scraped_photos/
 scraped_photos_v2/
+scripts/node_modules/
+scripts/package-lock.json
 scripts/sql_batch_*.sql
 scripts/update_batch_*.sql
 scripts/update_photos_*.sql
 scripts/upload_log.json
+scripts/upload_log_v2.json
 scripts/photo_selection_results.json
 scripts/photo_selection_results.csv
+scripts/photo_selection_v2_results.json
+scripts/photo_selection_v2_results.csv
+scripts/photo_selection_v2_final.json
+scripts/photo_mapping_v2.json
+scripts/moscow_split.json
+scripts/recon_results.json
 scripts/yandex_parse_*.json
+scripts/yandex_dom_dump.html
+
+# TZ work documents (local only)
+TZ*.md
+TZ5_parsing_v2.md
