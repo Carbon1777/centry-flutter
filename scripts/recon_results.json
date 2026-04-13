@@ -1,0 +1,482 @@
+[
+  {
+    "category": "Бар",
+    "city": "Москва",
+    "total": 301,
+    "with_rating": 298,
+    "rating_40_plus": 298,
+    "rating_45_plus": 297,
+    "with_photo": 298,
+    "pct_rating_40": 100,
+    "pct_rating_45": 100,
+    "pct_photo": 99
+  },
+  {
+    "category": "Ресторан",
+    "city": "Москва",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A0%D0%B5%D1%81%D1%82%D0%BE%D1%80%D0%B0%D0%BD%20%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Москва",
+    "total": 17,
+    "with_rating": 16,
+    "rating_40_plus": 16,
+    "rating_45_plus": 14,
+    "with_photo": 16,
+    "pct_rating_40": 100,
+    "pct_rating_45": 88,
+    "pct_photo": 94
+  },
+  {
+    "category": "Сауна",
+    "city": "Москва",
+    "total": 475,
+    "with_rating": 466,
+    "rating_40_plus": 439,
+    "rating_45_plus": 297,
+    "with_photo": 472,
+    "pct_rating_40": 94,
+    "pct_rating_45": 64,
+    "pct_photo": 99
+  },
+  {
+    "category": "Кальянная",
+    "city": "Москва",
+    "total": 317,
+    "with_rating": 315,
+    "rating_40_plus": 315,
+    "rating_45_plus": 308,
+    "with_photo": 313,
+    "pct_rating_40": 100,
+    "pct_rating_45": 98,
+    "pct_photo": 99
+  },
+  {
+    "category": "Караоке",
+    "city": "Москва",
+    "total": 369,
+    "with_rating": 341,
+    "rating_40_plus": 332,
+    "rating_45_plus": 273,
+    "with_photo": 363,
+    "pct_rating_40": 97,
+    "pct_rating_45": 80,
+    "pct_photo": 98
+  },
+  {
+    "category": "Бар",
+    "city": "Санкт-Петербург",
+    "total": 308,
+    "with_rating": 306,
+    "rating_40_plus": 306,
+    "rating_45_plus": 306,
+    "with_photo": 306,
+    "pct_rating_40": 100,
+    "pct_rating_45": 100,
+    "pct_photo": 99
+  },
+  {
+    "category": "Ресторан",
+    "city": "Санкт-Петербург",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A0%D0%B5%D1%81%D1%82%D0%BE%D1%80%D0%B0%D0%BD%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Санкт-Петербург",
+    "error": "page.goto: Navigation to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3\" is interrupted by another navigation to \"https://yandex.ru/maps/?text=%D0%A0%D0%B5%D1%81%D1%82%D0%BE%D1%80%D0%B0%D0%BD%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3\"\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Сауна",
+    "city": "Санкт-Петербург",
+    "total": 320,
+    "with_rating": 307,
+    "rating_40_plus": 296,
+    "rating_45_plus": 234,
+    "with_photo": 316,
+    "pct_rating_40": 96,
+    "pct_rating_45": 76,
+    "pct_photo": 99
+  },
+  {
+    "category": "Кальянная",
+    "city": "Санкт-Петербург",
+    "total": 318,
+    "with_rating": 312,
+    "rating_40_plus": 312,
+    "rating_45_plus": 308,
+    "with_photo": 311,
+    "pct_rating_40": 100,
+    "pct_rating_45": 99,
+    "pct_photo": 98
+  },
+  {
+    "category": "Караоке",
+    "city": "Санкт-Петербург",
+    "total": 147,
+    "with_rating": 140,
+    "rating_40_plus": 137,
+    "rating_45_plus": 117,
+    "with_photo": 146,
+    "pct_rating_40": 98,
+    "pct_rating_45": 84,
+    "pct_photo": 99
+  },
+  {
+    "category": "Бар",
+    "city": "Новосибирск",
+    "total": 214,
+    "with_rating": 197,
+    "rating_40_plus": 191,
+    "rating_45_plus": 134,
+    "with_photo": 213,
+    "pct_rating_40": 97,
+    "pct_rating_45": 68,
+    "pct_photo": 100
+  },
+  {
+    "category": "Ресторан",
+    "city": "Новосибирск",
+    "total": 323,
+    "with_rating": 305,
+    "rating_40_plus": 295,
+    "rating_45_plus": 203,
+    "with_photo": 317,
+    "pct_rating_40": 97,
+    "pct_rating_45": 67,
+    "pct_photo": 98
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Новосибирск",
+    "total": 3,
+    "with_rating": 3,
+    "rating_40_plus": 3,
+    "rating_45_plus": 2,
+    "with_photo": 3,
+    "pct_rating_40": 100,
+    "pct_rating_45": 67,
+    "pct_photo": 100
+  },
+  {
+    "category": "Сауна",
+    "city": "Новосибирск",
+    "total": 159,
+    "with_rating": 149,
+    "rating_40_plus": 145,
+    "rating_45_plus": 81,
+    "with_photo": 153,
+    "pct_rating_40": 97,
+    "pct_rating_45": 54,
+    "pct_photo": 96
+  },
+  {
+    "category": "Кальянная",
+    "city": "Новосибирск",
+    "total": 85,
+    "with_rating": 76,
+    "rating_40_plus": 76,
+    "rating_45_plus": 59,
+    "with_photo": 84,
+    "pct_rating_40": 100,
+    "pct_rating_45": 78,
+    "pct_photo": 99
+  },
+  {
+    "category": "Караоке",
+    "city": "Новосибирск",
+    "total": 74,
+    "with_rating": 64,
+    "rating_40_plus": 63,
+    "rating_45_plus": 47,
+    "with_photo": 71,
+    "pct_rating_40": 98,
+    "pct_rating_45": 73,
+    "pct_photo": 96
+  },
+  {
+    "category": "Бар",
+    "city": "Нижний Новгород",
+    "total": 158,
+    "with_rating": 151,
+    "rating_40_plus": 148,
+    "rating_45_plus": 129,
+    "with_photo": 155,
+    "pct_rating_40": 98,
+    "pct_rating_45": 85,
+    "pct_photo": 98
+  },
+  {
+    "category": "Ресторан",
+    "city": "Нижний Новгород",
+    "total": 318,
+    "with_rating": 301,
+    "rating_40_plus": 295,
+    "rating_45_plus": 234,
+    "with_photo": 315,
+    "pct_rating_40": 98,
+    "pct_rating_45": 78,
+    "pct_photo": 99
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Нижний Новгород",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9D%D0%B8%D0%B6%D0%BD%D0%B8%D0%B9%20%D0%9D%D0%BE%D0%B2%D0%B3%D0%BE%D1%80%D0%BE%D0%B4\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Сауна",
+    "city": "Нижний Новгород",
+    "error": "page.goto: Navigation to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%9D%D0%B8%D0%B6%D0%BD%D0%B8%D0%B9%20%D0%9D%D0%BE%D0%B2%D0%B3%D0%BE%D1%80%D0%BE%D0%B4\" is interrupted by another navigation to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9D%D0%B8%D0%B6%D0%BD%D0%B8%D0%B9%20%D0%9D%D0%BE%D0%B2%D0%B3%D0%BE%D1%80%D0%BE%D0%B4\"\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%9D%D0%B8%D0%B6%D0%BD%D0%B8%D0%B9%20%D0%9D%D0%BE%D0%B2%D0%B3%D0%BE%D1%80%D0%BE%D0%B4\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Кальянная",
+    "city": "Нижний Новгород",
+    "total": 81,
+    "with_rating": 75,
+    "rating_40_plus": 72,
+    "rating_45_plus": 67,
+    "with_photo": 79,
+    "pct_rating_40": 96,
+    "pct_rating_45": 89,
+    "pct_photo": 98
+  },
+  {
+    "category": "Караоке",
+    "city": "Нижний Новгород",
+    "total": 70,
+    "with_rating": 65,
+    "rating_40_plus": 63,
+    "rating_45_plus": 48,
+    "with_photo": 68,
+    "pct_rating_40": 97,
+    "pct_rating_45": 74,
+    "pct_photo": 97
+  },
+  {
+    "category": "Бар",
+    "city": "Ростов-на-Дону",
+    "total": 171,
+    "with_rating": 163,
+    "rating_40_plus": 159,
+    "rating_45_plus": 138,
+    "with_photo": 168,
+    "pct_rating_40": 98,
+    "pct_rating_45": 85,
+    "pct_photo": 98
+  },
+  {
+    "category": "Ресторан",
+    "city": "Ростов-на-Дону",
+    "total": 325,
+    "with_rating": 307,
+    "rating_40_plus": 300,
+    "rating_45_plus": 236,
+    "with_photo": 310,
+    "pct_rating_40": 98,
+    "pct_rating_45": 77,
+    "pct_photo": 95
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Ростов-на-Дону",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%A0%D0%BE%D1%81%D1%82%D0%BE%D0%B2-%D0%BD%D0%B0-%D0%94%D0%BE%D0%BD%D1%83\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Сауна",
+    "city": "Ростов-на-Дону",
+    "error": "page.goto: Navigation to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%A0%D0%BE%D1%81%D1%82%D0%BE%D0%B2-%D0%BD%D0%B0-%D0%94%D0%BE%D0%BD%D1%83\" is interrupted by another navigation to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%A0%D0%BE%D1%81%D1%82%D0%BE%D0%B2-%D0%BD%D0%B0-%D0%94%D0%BE%D0%BD%D1%83\"\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%A0%D0%BE%D1%81%D1%82%D0%BE%D0%B2-%D0%BD%D0%B0-%D0%94%D0%BE%D0%BD%D1%83\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Кальянная",
+    "city": "Ростов-на-Дону",
+    "total": 110,
+    "with_rating": 100,
+    "rating_40_plus": 97,
+    "rating_45_plus": 93,
+    "with_photo": 103,
+    "pct_rating_40": 97,
+    "pct_rating_45": 93,
+    "pct_photo": 94
+  },
+  {
+    "category": "Караоке",
+    "city": "Ростов-на-Дону",
+    "total": 63,
+    "with_rating": 62,
+    "rating_40_plus": 59,
+    "rating_45_plus": 49,
+    "with_photo": 61,
+    "pct_rating_40": 95,
+    "pct_rating_45": 79,
+    "pct_photo": 97
+  },
+  {
+    "category": "Бар",
+    "city": "Казань",
+    "total": 193,
+    "with_rating": 175,
+    "rating_40_plus": 166,
+    "rating_45_plus": 134,
+    "with_photo": 185,
+    "pct_rating_40": 95,
+    "pct_rating_45": 77,
+    "pct_photo": 96
+  },
+  {
+    "category": "Ресторан",
+    "city": "Казань",
+    "total": 322,
+    "with_rating": 316,
+    "rating_40_plus": 315,
+    "rating_45_plus": 272,
+    "with_photo": 318,
+    "pct_rating_40": 100,
+    "pct_rating_45": 86,
+    "pct_photo": 99
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Казань",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9A%D0%B0%D0%B7%D0%B0%D0%BD%D1%8C\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Сауна",
+    "city": "Казань",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%9A%D0%B0%D0%B7%D0%B0%D0%BD%D1%8C\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Кальянная",
+    "city": "Казань",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9A%D0%B0%D0%BB%D1%8C%D1%8F%D0%BD%D0%BD%D0%B0%D1%8F%20%D0%9A%D0%B0%D0%B7%D0%B0%D0%BD%D1%8C\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Караоке",
+    "city": "Казань",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9A%D0%B0%D1%80%D0%B0%D0%BE%D0%BA%D0%B5%20%D0%9A%D0%B0%D0%B7%D0%B0%D0%BD%D1%8C\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Бар",
+    "city": "Сочи",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%91%D0%B0%D1%80%20%D0%A1%D0%BE%D1%87%D0%B8\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Ресторан",
+    "city": "Сочи",
+    "error": "page.goto: Navigation to \"https://yandex.ru/maps/?text=%D0%A0%D0%B5%D1%81%D1%82%D0%BE%D1%80%D0%B0%D0%BD%20%D0%A1%D0%BE%D1%87%D0%B8\" is interrupted by another navigation to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9A%D0%B0%D0%B7%D0%B0%D0%BD%D1%8C\"\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A0%D0%B5%D1%81%D1%82%D0%BE%D1%80%D0%B0%D0%BD%20%D0%A1%D0%BE%D1%87%D0%B8\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Сочи",
+    "total": 3,
+    "with_rating": 2,
+    "rating_40_plus": 2,
+    "rating_45_plus": 1,
+    "with_photo": 3,
+    "pct_rating_40": 100,
+    "pct_rating_45": 50,
+    "pct_photo": 100
+  },
+  {
+    "category": "Сауна",
+    "city": "Сочи",
+    "total": 123,
+    "with_rating": 101,
+    "rating_40_plus": 94,
+    "rating_45_plus": 67,
+    "with_photo": 115,
+    "pct_rating_40": 93,
+    "pct_rating_45": 66,
+    "pct_photo": 93
+  },
+  {
+    "category": "Кальянная",
+    "city": "Сочи",
+    "total": 105,
+    "with_rating": 95,
+    "rating_40_plus": 94,
+    "rating_45_plus": 80,
+    "with_photo": 100,
+    "pct_rating_40": 99,
+    "pct_rating_45": 84,
+    "pct_photo": 95
+  },
+  {
+    "category": "Караоке",
+    "city": "Сочи",
+    "total": 92,
+    "with_rating": 77,
+    "rating_40_plus": 74,
+    "rating_45_plus": 59,
+    "with_photo": 87,
+    "pct_rating_40": 96,
+    "pct_rating_45": 77,
+    "pct_photo": 95
+  },
+  {
+    "category": "Бар",
+    "city": "Краснодар",
+    "total": 322,
+    "with_rating": 308,
+    "rating_40_plus": 300,
+    "rating_45_plus": 246,
+    "with_photo": 321,
+    "pct_rating_40": 97,
+    "pct_rating_45": 80,
+    "pct_photo": 100
+  },
+  {
+    "category": "Ресторан",
+    "city": "Краснодар",
+    "total": 314,
+    "with_rating": 312,
+    "rating_40_plus": 311,
+    "rating_45_plus": 270,
+    "with_photo": 311,
+    "pct_rating_40": 100,
+    "pct_rating_45": 87,
+    "pct_photo": 99
+  },
+  {
+    "category": "Ночной клуб",
+    "city": "Краснодар",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Сауна",
+    "city": "Краснодар",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%A1%D0%B0%D1%83%D0%BD%D0%B0%20%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Кальянная",
+    "city": "Краснодар",
+    "error": "page.goto: Navigation to \"https://yandex.ru/maps/?text=%D0%9A%D0%B0%D0%BB%D1%8C%D1%8F%D0%BD%D0%BD%D0%B0%D1%8F%20%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80\" is interrupted by another navigation to \"https://yandex.ru/maps/?text=%D0%9D%D0%BE%D1%87%D0%BD%D0%BE%D0%B9%20%D0%BA%D0%BB%D1%83%D0%B1%20%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80\"\nCall log:\n\u001b[2m  - navigating to \"https://yandex.ru/maps/?text=%D0%9A%D0%B0%D0%BB%D1%8C%D1%8F%D0%BD%D0%BD%D0%B0%D1%8F%20%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "total": null
+  },
+  {
+    "category": "Караоке",
+    "city": "Краснодар",
+    "total": 78,
+    "with_rating": 72,
+    "rating_40_plus": 71,
+    "rating_45_plus": 57,
+    "with_photo": 77,
+    "pct_rating_40": 99,
+    "pct_rating_45": 79,
+    "pct_photo": 99
+  }
+]
