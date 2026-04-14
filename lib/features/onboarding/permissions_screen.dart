@@ -90,10 +90,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     _goNextStep();
   }
 
-  void _skip() {
-    _goNextStep();
-  }
-
   void _goNextStep() {
     if (!mounted) return;
 
@@ -123,16 +119,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-          child: Column(
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: const Alignment(0, -0.25),
-                  child: _buildContent(context),
-                ),
-              ),
-              _buildSkip(),
-            ],
+          child: Align(
+            alignment: const Alignment(0, -0.25),
+            child: _buildContent(context),
           ),
         ),
       ),
@@ -149,7 +138,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           title: 'Геопозиция',
           description:
               'Ваша локация нужна, чтобы подбирать события, места и интересные активности рядом с вами.',
-          actionLabel: 'Разрешить',
+          actionLabel: 'Продолжить',
           loading: _loading,
           onAction: _requestLocation,
         );
@@ -159,35 +148,13 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           title: 'Уведомления',
           description:
               'Разрешение на уведомления нужно, чтобы вовремя сообщать об интересных событиях, ивентах, приглашениях и активности ваших друзей.',
-          actionLabel: 'Разрешить',
+          actionLabel: 'Продолжить',
           loading: _loading,
           onAction: _requestNotifications,
         );
     }
   }
 
-  Widget _buildSkip() {
-    if (_step == _PermissionStep.intro) {
-      return const SizedBox.shrink();
-    }
-
-    return Center(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: _skip,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(
-            'Пропустить',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _IntroText extends StatelessWidget {
