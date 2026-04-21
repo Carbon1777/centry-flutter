@@ -1,6 +1,6 @@
 class LegalDocumentDto {
   final String id;
-  final String documentType; // 'TERMS' | 'PRIVACY' | 'BONUS_RULES'
+  final String documentType; // 'TERMS' | 'PRIVACY' | 'BONUS_RULES' | 'CHILD_SAFETY'
   final String version;
   final String title;
   final String content;

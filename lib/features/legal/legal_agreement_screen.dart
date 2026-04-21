@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,9 +26,7 @@ class LegalAgreementScreen extends StatefulWidget {
 class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
   static const String _kAppVersion = '1.0.0';
 
-  bool _termsAccepted = false;
-  bool _privacyAccepted = false;
-  bool _bonusRulesAccepted = false;
+  bool _allAccepted = false;
 
   bool _loading = false;
   bool _docsLoading = true;
@@ -74,27 +73,15 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
   }
 
   Future<void> _onContinue() async {
-    // Проверяем каждый пункт отдельно и показываем конкретный toast
-    if (!_termsAccepted && !_privacyAccepted && !_bonusRulesAccepted) {
+    if (!_allAccepted) {
       showCenterToast(context, message: 'Примите все условия для продолжения');
-      return;
-    }
-    if (!_termsAccepted) {
-      showCenterToast(context, message: 'Примите Пользовательское соглашение');
-      return;
-    }
-    if (!_privacyAccepted) {
-      showCenterToast(context, message: 'Примите Политику конфиденциальности');
-      return;
-    }
-    if (!_bonusRulesAccepted) {
-      showCenterToast(context, message: 'Примите Правила проекта');
       return;
     }
 
     final terms = _docByType('TERMS');
     final privacy = _docByType('PRIVACY');
     final bonusRules = _docByType('BONUS_RULES');
+    final childSafety = _docByType('CHILD_SAFETY');
 
     if (terms == null || privacy == null || bonusRules == null) {
       showCenterToast(context, message: 'Ошибка: документы не загружены');
@@ -105,11 +92,12 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
 
     try {
       await _repo.acceptDocuments(
-        appUserId:         widget.appUserId,
-        termsVersion:      terms.version,
-        privacyVersion:    privacy.version,
-        bonusRulesVersion: bonusRules.version,
-        appVersion:        _kAppVersion,
+        appUserId:          widget.appUserId,
+        termsVersion:       terms.version,
+        privacyVersion:     privacy.version,
+        bonusRulesVersion:  bonusRules.version,
+        childSafetyVersion: childSafety?.version,
+        appVersion:         _kAppVersion,
       );
 
       if (!mounted) return;
@@ -121,7 +109,8 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
     }
   }
 
-  void _openDocument(LegalDocumentDto? doc) {
+  void _openDocument(String type) {
+    final doc = _docByType(type);
     if (doc == null) return;
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -130,48 +119,74 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
     );
   }
 
-  Widget _buildCheckRow({
-    required String label,
-    required bool value,
-    required void Function(bool?) onChanged,
-    required LegalDocumentDto? doc,
-  }) {
+  Widget _buildLegalConsent() {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    return InkWell(
-      onTap: () => _openDocument(doc),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Checkbox(
-              value: value,
-              onChanged: _loading ? null : onChanged,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colors.primary,
-                  decoration: TextDecoration.underline,
-                  decorationColor: colors.primary,
-                ),
-              ),
-            ),
-          ],
+    final linkStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: colors.primary,
+      decoration: TextDecoration.underline,
+      decorationColor: colors.primary,
+    );
+    final normalStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: colors.onSurface.withValues(alpha: 0.8),
+    );
+
+    final docLinks = <_DocLink>[
+      const _DocLink('Условиями использования', 'TERMS'),
+      const _DocLink('Политикой конфиденциальности', 'PRIVACY'),
+      const _DocLink('Правилами сообщества', 'BONUS_RULES'),
+      const _DocLink('Стандартами безопасности детей', 'CHILD_SAFETY'),
+    ];
+
+    final spans = <InlineSpan>[
+      TextSpan(text: 'Я согласен с ', style: normalStyle),
+    ];
+
+    for (var i = 0; i < docLinks.length; i++) {
+      final link = docLinks[i];
+      spans.add(
+        TextSpan(
+          text: link.label,
+          style: linkStyle,
+          recognizer: TapGestureRecognizer()
+            ..onTap = () => _openDocument(link.docType),
         ),
-      ),
+      );
+
+      if (i < docLinks.length - 2) {
+        spans.add(TextSpan(text: ', ', style: normalStyle));
+      } else if (i == docLinks.length - 2) {
+        spans.add(TextSpan(text: ' и ', style: normalStyle));
+      }
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Checkbox(
+          value: _allAccepted,
+          onChanged: _loading
+              ? null
+              : (v) => setState(() => _allAccepted = v ?? false),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: RichText(
+              text: TextSpan(children: spans),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Условия использования')),
@@ -192,7 +207,7 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
               Text(
                 'Нажмите на ссылку, чтобы ознакомиться с документом.',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurface.withValues(alpha: 0.5),
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 24),
@@ -210,7 +225,7 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
                         Text(
                           _docsError!,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colors.error,
+                            color: theme.colorScheme.error,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -223,31 +238,8 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
                   ),
                 )
               else ...[
-                Expanded(
-                  child: ListView(
-                    physics: const ClampingScrollPhysics(),
-                    children: [
-                      _buildCheckRow(
-                        label: 'Пользовательское соглашение',
-                        value: _termsAccepted,
-                        onChanged: (v) => setState(() => _termsAccepted = v ?? false),
-                        doc: _docByType('TERMS'),
-                      ),
-                      _buildCheckRow(
-                        label: 'Политика конфиденциальности',
-                        value: _privacyAccepted,
-                        onChanged: (v) => setState(() => _privacyAccepted = v ?? false),
-                        doc: _docByType('PRIVACY'),
-                      ),
-                      _buildCheckRow(
-                        label: 'Правила проекта',
-                        value: _bonusRulesAccepted,
-                        onChanged: (v) => setState(() => _bonusRulesAccepted = v ?? false),
-                        doc: _docByType('BONUS_RULES'),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildLegalConsent(),
+                const Spacer(),
               ],
 
               SizedBox(
@@ -272,4 +264,10 @@ class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
       ),
     );
   }
+}
+
+class _DocLink {
+  final String label;
+  final String docType;
+  const _DocLink(this.label, this.docType);
 }

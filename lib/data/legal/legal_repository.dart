@@ -9,6 +9,7 @@ abstract interface class LegalRepository {
     required String termsVersion,
     required String privacyVersion,
     required String bonusRulesVersion,
+    String? childSafetyVersion,
     required String appVersion,
   });
 

@@ -24,16 +24,21 @@ class LegalRepositoryImpl implements LegalRepository {
     required String termsVersion,
     required String privacyVersion,
     required String bonusRulesVersion,
+    String? childSafetyVersion,
     required String appVersion,
   }) async {
-    await _client.rpc('accept_legal_documents_v1', params: {
+    final params = <String, dynamic>{
       'p_app_user_id':         appUserId,
       'p_terms_version':       termsVersion,
       'p_privacy_version':     privacyVersion,
       'p_bonus_rules_version': bonusRulesVersion,
       'p_user_agent':          'flutter',
       'p_app_version':         appVersion,
-    });
+    };
+    if (childSafetyVersion != null) {
+      params['p_child_safety_version'] = childSafetyVersion;
+    }
+    await _client.rpc('accept_legal_documents_v1', params: params);
   }
 
   @override
