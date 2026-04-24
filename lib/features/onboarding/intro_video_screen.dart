@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
 
 /// Экран с видео-интро, показывается один раз при первом запуске.
@@ -26,9 +27,6 @@ class IntroVideoScreen extends StatefulWidget {
 }
 
 class _IntroVideoScreenState extends State<IntroVideoScreen> {
-  static const _videoUrl =
-      'https://lqgzvolirohuettizkhx.supabase.co/storage/v1/object/public/brand-media/intro1.mp4';
-
   late final VideoPlayerController _controller;
   bool _done = false;
   bool _initialized = false;
@@ -41,7 +39,10 @@ class _IntroVideoScreenState extends State<IntroVideoScreen> {
   }
 
   Future<void> _initVideo() async {
-    _controller = VideoPlayerController.networkUrl(Uri.parse(_videoUrl));
+    final videoUrl = Supabase.instance.client.storage
+        .from('brand-media')
+        .getPublicUrl('intro1.mp4');
+    _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
 
     _controller.addListener(_onVideoUpdate);
 
