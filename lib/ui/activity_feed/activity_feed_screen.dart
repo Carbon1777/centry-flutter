@@ -125,32 +125,70 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   Future<_FeedUserState> _loadFromServer() async {
-    final resolved = await Supabase.instance.client
-        .rpc('current_user')
-        .timeout(const Duration(seconds: 15));
+    final client = Supabase.instance.client;
 
-    if (resolved is! Map) {
-      throw StateError('current_user must return Map, got: $resolved');
+    Object? lastError;
+    for (int attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
+        if (client.auth.currentSession != null) {
+          try {
+            await client.auth
+                .refreshSession()
+                .timeout(const Duration(seconds: 10));
+          } catch (_) {
+          }
+        }
+      }
+
+      try {
+        final resolved = await client
+            .rpc('current_user')
+            .timeout(const Duration(seconds: 25));
+
+        if (resolved is! Map) {
+          throw StateError('current_user must return Map, got: $resolved');
+        }
+
+        final row = Map<String, dynamic>.from(resolved);
+
+        final nickname = (row['nickname'] as String?) ?? '';
+        final publicId = row['public_id'] as String?;
+        final email = row['email'] as String?;
+
+        if (publicId == null || publicId.isEmpty) {
+          throw StateError('current_user missing public_id: $row');
+        }
+
+        final isGuest = email == null || email.trim().isEmpty;
+
+        return _FeedUserState(
+          nickname: nickname,
+          publicId: publicId,
+          email: email,
+          isGuest: isGuest,
+        );
+      } catch (e) {
+        lastError = e;
+        debugPrint('[Feed._loadFromServer] attempt $attempt failed: $e');
+      }
     }
 
-    final row = Map<String, dynamic>.from(resolved);
-
-    final nickname = (row['nickname'] as String?) ?? '';
-    final publicId = row['public_id'] as String?;
-    final email = row['email'] as String?;
-
-    if (publicId == null || publicId.isEmpty) {
-      throw StateError('current_user missing public_id: $row');
+    if (widget.publicId.isNotEmpty) {
+      debugPrint(
+        '[Feed._loadFromServer] RPC failed, falling back to shell-provided user data',
+      );
+      final email = widget.email;
+      final isGuest = email == null || email.trim().isEmpty;
+      return _FeedUserState(
+        nickname: widget.nickname,
+        publicId: widget.publicId,
+        email: email,
+        isGuest: isGuest,
+      );
     }
 
-    final isGuest = email == null || email.trim().isEmpty;
-
-    return _FeedUserState(
-      nickname: nickname,
-      publicId: publicId,
-      email: email,
-      isGuest: isGuest,
-    );
+    throw lastError ?? StateError('Failed to load user');
   }
 
   void _retry() {

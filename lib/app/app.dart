@@ -2749,38 +2749,60 @@ class _BootstrapGateState extends State<BootstrapGate>
 
     // ===== USER =====
     if (session != null) {
-      final res = await _supabase.rpc('current_user');
-
-      if (res is Map) {
-        final row = Map<String, dynamic>.from(res);
-
-        await _storage.clear();
-
-        if (!mounted) return;
-
-        if (_inboxInvitesChannelUserId != (row['id'] as String)) {
-          await _disposeInboxInvitesRealtimeSubscription();
+      Map<String, dynamic>? row;
+      Object? lastError;
+      for (int attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+          await Future.delayed(const Duration(milliseconds: 800));
+          try {
+            await _supabase.auth
+                .refreshSession()
+                .timeout(const Duration(seconds: 10));
+          } catch (_) {
+          }
         }
-        setState(() {
-          _userId = row['id'] as String;
-          _nickname = row['nickname'] as String? ?? '';
-          _publicId = row['public_id'] as String;
-          _email = row['email'] as String?;
-          _restoring = false;
-          _appShellReady = false;
-          _shellGeneration++;
-          _homeVisibleAt = null;
-          _postIdentityFlowsRerunRequested = false;
-        });
-    
-    
-    
+        try {
+          final res = await _supabase
+              .rpc('current_user')
+              .timeout(const Duration(seconds: 20));
+          if (res is Map) {
+            row = Map<String, dynamic>.from(res);
+            break;
+          }
+        } catch (e) {
+          lastError = e;
+          debugPrint('[App._restore] current_user attempt $attempt failed: $e');
+        }
+      }
 
-        unawaited(_checkLegalAcceptanceIfNeeded());
+      if (row == null) {
+        debugPrint('[App._restore] current_user unavailable, retrying via timer (lastError=$lastError)');
+        _retryTimer = Timer(const Duration(milliseconds: 2000), _restore);
         return;
       }
 
-      _retryTimer = Timer(const Duration(milliseconds: 400), _restore);
+      final userRow = row;
+
+      await _storage.clear();
+
+      if (!mounted) return;
+
+      if (_inboxInvitesChannelUserId != (userRow['id'] as String)) {
+        await _disposeInboxInvitesRealtimeSubscription();
+      }
+      setState(() {
+        _userId = userRow['id'] as String;
+        _nickname = userRow['nickname'] as String? ?? '';
+        _publicId = userRow['public_id'] as String;
+        _email = userRow['email'] as String?;
+        _restoring = false;
+        _appShellReady = false;
+        _shellGeneration++;
+        _homeVisibleAt = null;
+        _postIdentityFlowsRerunRequested = false;
+      });
+
+      unawaited(_checkLegalAcceptanceIfNeeded());
       return;
     }
 
