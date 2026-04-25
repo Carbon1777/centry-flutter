@@ -149,7 +149,7 @@ class _EmailScreenState extends State<EmailScreen> {
 
         await client.auth.signInWithOtp(
           email: email,
-          emailRedirectTo: 'centry://auth',
+          emailRedirectTo: 'https://www.centry.website/auth-callback',
         );
 
         setState(() {
@@ -181,7 +181,7 @@ class _EmailScreenState extends State<EmailScreen> {
     try {
       await Supabase.instance.client.auth.signInWithOtp(
         email: email,
-        emailRedirectTo: 'centry://auth',
+        emailRedirectTo: 'https://www.centry.website/auth-callback',
       );
 
       setState(() {

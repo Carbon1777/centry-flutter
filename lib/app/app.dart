@@ -2501,11 +2501,42 @@ class _BootstrapGateState extends State<BootstrapGate>
   Future<void> _handleIncomingUri(Uri? uri) async {
     if (uri == null) return;
 
+    if (await _tryHandleAuthCallback(uri)) return;
+
     final token = _extractPlanInviteToken(uri);
     if (token == null || token.isEmpty) return;
 
     await _storage.writePendingPlanInviteToken(token);
     unawaited(_tryConsumePendingPlanInvite());
+  }
+
+  /// Magic link callback. Returns true if the URI was an auth callback
+  /// (and was handled — successfully or not), false otherwise.
+  Future<bool> _tryHandleAuthCallback(Uri uri) async {
+    final code = uri.queryParameters['code'];
+    final hasAuthFragment =
+        uri.fragment.contains('access_token=') ||
+        uri.fragment.contains('error=');
+
+    if (code != null && code.isNotEmpty) {
+      try {
+        await _supabase.auth.exchangeCodeForSession(code);
+      } catch (e) {
+        debugPrint('[DeepLink] PKCE exchangeCodeForSession failed: $e');
+      }
+      return true;
+    }
+
+    if (hasAuthFragment) {
+      try {
+        await _supabase.auth.getSessionFromUrl(uri);
+      } catch (e) {
+        debugPrint('[DeepLink] getSessionFromUrl failed: $e');
+      }
+      return true;
+    }
+
+    return false;
   }
 
   String? _extractPlanInviteToken(Uri uri) {

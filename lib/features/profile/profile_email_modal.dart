@@ -137,7 +137,7 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
 
         await client.auth.signInWithOtp(
           email: email,
-          emailRedirectTo: 'centry://auth',
+          emailRedirectTo: 'https://www.centry.website/auth-callback',
         );
 
         setState(() {
@@ -167,7 +167,7 @@ class _ProfileEmailModalState extends State<ProfileEmailModal> {
     try {
       await Supabase.instance.client.auth.signInWithOtp(
         email: _controller.text.trim(),
-        emailRedirectTo: 'centry://auth',
+        emailRedirectTo: 'https://www.centry.website/auth-callback',
       );
 
       setState(() {
