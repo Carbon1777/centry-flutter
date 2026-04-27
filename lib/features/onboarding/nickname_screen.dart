@@ -1,10 +1,8 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../data/legal/legal_document_dto.dart';
 import '../../data/legal/legal_repository_impl.dart';
-import '../legal/legal_document_screen.dart';
+import '../auth/onboarding_state.dart';
 import 'permissions_screen.dart';
 
 class NicknameScreen extends StatefulWidget {
@@ -24,17 +22,12 @@ class _NicknameScreenState extends State<NicknameScreen> {
   bool _loading = false;
   String? _errorText;
 
-  bool _allAccepted = false;
-
-  List<LegalDocumentDto> _documents = [];
-  bool _docsLoading = true;
-
   late final LegalRepositoryImpl _repo;
 
   String get _value => _controller.text.trim();
   int get _length => _value.length;
   bool get _nicknameValid => _length >= 2 && _length <= 20;
-  bool get _canSubmit => _nicknameValid && _allAccepted && !_loading;
+  bool get _canSubmit => _nicknameValid && !_loading;
 
   String? get _lengthError {
     if (_length == 0) return null;
@@ -47,37 +40,6 @@ class _NicknameScreenState extends State<NicknameScreen> {
   void initState() {
     super.initState();
     _repo = LegalRepositoryImpl(Supabase.instance.client);
-    _loadDocuments();
-  }
-
-  Future<void> _loadDocuments() async {
-    try {
-      final docs = await _repo.getCurrentDocuments();
-      if (!mounted) return;
-      setState(() {
-        _documents = docs;
-        _docsLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _docsLoading = false);
-    }
-  }
-
-  LegalDocumentDto? _docByType(String type) {
-    try {
-      return _documents.firstWhere((d) => d.documentType == type);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  void _openDocument(String type) {
-    final doc = _docByType(type);
-    if (doc == null) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => LegalDocumentScreen(document: doc)),
-    );
   }
 
   Future<void> _submit() async {
@@ -91,7 +53,7 @@ class _NicknameScreenState extends State<NicknameScreen> {
     try {
       final client = Supabase.instance.client;
 
-      // Шаг 1: создаём пользователя
+      // Шаг 1: создаём app_users (USER если есть auth.uid(), иначе GUEST).
       final dynamic data = await client.rpc(
         'bootstrap_guest',
         params: {'nickname': _value},
@@ -113,23 +75,32 @@ class _NicknameScreenState extends State<NicknameScreen> {
       if (publicId == null || publicId.isEmpty) {
         throw StateError('RPC payload has no public_id: $payload');
       }
-      if (state != 'GUEST') {
+      if (state != 'GUEST' && state != 'USER') {
         throw StateError('Unexpected state from bootstrap_guest: $payload');
       }
 
-      // Шаг 2: фиксируем принятие соглашений (версии получены из загруженных документов)
-      final terms = _docByType('TERMS');
-      final privacy = _docByType('PRIVACY');
-      final bonusRules = _docByType('BONUS_RULES');
-      final childSafety = _docByType('CHILD_SAFETY');
+      // Шаг 2: фиксируем принятие соглашений (версии собраны на AgreementScreen).
+      final docs = OnboardingFlowState.instance.acceptedLegalDocuments;
+      String? versionByType(String type) {
+        try {
+          return docs.firstWhere((d) => d.documentType == type).version;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      final terms = versionByType('TERMS');
+      final privacy = versionByType('PRIVACY');
+      final bonusRules = versionByType('BONUS_RULES');
+      final childSafety = versionByType('CHILD_SAFETY');
 
       if (terms != null && privacy != null && bonusRules != null) {
         await _repo.acceptDocuments(
           appUserId:          userId,
-          termsVersion:       terms.version,
-          privacyVersion:     privacy.version,
-          bonusRulesVersion:  bonusRules.version,
-          childSafetyVersion: childSafety?.version,
+          termsVersion:       terms,
+          privacyVersion:     privacy,
+          bonusRulesVersion:  bonusRules,
+          childSafetyVersion: childSafety,
           appVersion:         _kAppVersion,
         );
       }
@@ -167,74 +138,6 @@ class _NicknameScreenState extends State<NicknameScreen> {
     }
   }
 
-  /// Строит виджет с одним чекбоксом и текстом с кликабельными ссылками на документы.
-  Widget _buildLegalConsent() {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
-    final linkStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: colors.primary,
-      decoration: TextDecoration.underline,
-      decorationColor: colors.primary,
-    );
-    final normalStyle = theme.textTheme.bodyMedium?.copyWith(
-      color: colors.onSurface.withValues(alpha: 0.8),
-    );
-
-    // Определяем документы и их названия
-    final docLinks = <_DocLink>[
-      const _DocLink('Условиями использования', 'TERMS'),
-      const _DocLink('Политикой конфиденциальности', 'PRIVACY'),
-      const _DocLink('Правилами сообщества', 'BONUS_RULES'),
-      const _DocLink('Стандартами безопасности детей', 'CHILD_SAFETY'),
-    ];
-
-    // Строим RichText: "Я согласен с A, B, C и D"
-    final spans = <InlineSpan>[
-      TextSpan(text: 'Я согласен с ', style: normalStyle),
-    ];
-
-    for (var i = 0; i < docLinks.length; i++) {
-      final link = docLinks[i];
-      spans.add(
-        TextSpan(
-          text: link.label,
-          style: linkStyle,
-          recognizer: TapGestureRecognizer()
-            ..onTap = () => _openDocument(link.docType),
-        ),
-      );
-
-      if (i < docLinks.length - 2) {
-        spans.add(TextSpan(text: ', ', style: normalStyle));
-      } else if (i == docLinks.length - 2) {
-        spans.add(TextSpan(text: ' и ', style: normalStyle));
-      }
-    }
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Checkbox(
-          value: _allAccepted,
-          onChanged: _loading
-              ? null
-              : (v) => setState(() => _allAccepted = v ?? false),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: RichText(
-              text: TextSpan(children: spans),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -242,7 +145,10 @@ class _NicknameScreenState extends State<NicknameScreen> {
     final error = _errorText ?? _lengthError;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Никнейм')),
+      appBar: AppBar(
+        title: const Text('Никнейм'),
+        automaticallyImplyLeading: false,
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -281,24 +187,7 @@ class _NicknameScreenState extends State<NicknameScreen> {
                           _errorText = null;
                         }),
                       ),
-                      const SizedBox(height: 32),
-                      if (_docsLoading)
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colors.onSurface.withValues(alpha: 0.4),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        _buildLegalConsent(),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -323,11 +212,4 @@ class _NicknameScreenState extends State<NicknameScreen> {
       ),
     );
   }
-}
-
-/// Вспомогательный класс для связки "название документа" → "тип документа".
-class _DocLink {
-  final String label;
-  final String docType;
-  const _DocLink(this.label, this.docType);
 }

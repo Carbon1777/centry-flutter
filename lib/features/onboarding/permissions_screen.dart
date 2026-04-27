@@ -3,9 +3,6 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'email_screen.dart';
 
 enum _PermissionStep {
   intro,
@@ -37,15 +34,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   void initState() {
     super.initState();
 
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _next();
-      });
-      return;
-    }
-
+    // В новом флоу PermissionsScreen всегда показывается после Nickname
+    // (одинаково для signUp+OTP, signIn и Skip). Старый skip-by-session
+    // больше не актуален.
     _introTimer = Timer(const Duration(milliseconds: 4500), () {
       if (!mounted) return;
       setState(() {
@@ -103,14 +94,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   }
 
   void _next() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => EmailScreen(
-          bootstrapResult: widget.bootstrapResult,
-          onDone: widget.onDone,
-        ),
-      ),
-    );
+    // PermissionsScreen — последний экран онбординга в новом флоу
+    // (Agreement → Auth → Otp → Nickname → Permissions). Передаём
+    // результат наверх и схлопываем стек, чтобы BootstrapGate перерисовался
+    // и показал Home/ActivityFeed.
+    widget.onDone(widget.bootstrapResult);
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override

@@ -23,8 +23,8 @@ import '../data/legal/legal_repository_impl.dart';
 import '../features/home/home_screen.dart';
 import '../ui/activity_feed/activity_feed_screen.dart';
 import '../features/legal/legal_agreement_screen.dart';
+import '../features/auth/agreement_screen.dart';
 import '../features/onboarding/intro_video_screen.dart';
-import '../features/onboarding/nickname_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
 import '../ui/private_chats/private_chats_list_screen.dart';
@@ -2501,42 +2501,14 @@ class _BootstrapGateState extends State<BootstrapGate>
   Future<void> _handleIncomingUri(Uri? uri) async {
     if (uri == null) return;
 
-    if (await _tryHandleAuthCallback(uri)) return;
-
+    // Magic link auth-callback больше не поддерживается клиентом
+    // (миграция на email+password+OTP). Старые ссылки из email падают на
+    // fallback-страницу centry.website/auth-callback и в приложение не доходят.
     final token = _extractPlanInviteToken(uri);
     if (token == null || token.isEmpty) return;
 
     await _storage.writePendingPlanInviteToken(token);
     unawaited(_tryConsumePendingPlanInvite());
-  }
-
-  /// Magic link callback. Returns true if the URI was an auth callback
-  /// (and was handled — successfully or not), false otherwise.
-  Future<bool> _tryHandleAuthCallback(Uri uri) async {
-    final code = uri.queryParameters['code'];
-    final hasAuthFragment =
-        uri.fragment.contains('access_token=') ||
-        uri.fragment.contains('error=');
-
-    if (code != null && code.isNotEmpty) {
-      try {
-        await _supabase.auth.exchangeCodeForSession(code);
-      } catch (e) {
-        debugPrint('[DeepLink] PKCE exchangeCodeForSession failed: $e');
-      }
-      return true;
-    }
-
-    if (hasAuthFragment) {
-      try {
-        await _supabase.auth.getSessionFromUrl(uri);
-      } catch (e) {
-        debugPrint('[DeepLink] getSessionFromUrl failed: $e');
-      }
-      return true;
-    }
-
-    return false;
   }
 
   String? _extractPlanInviteToken(Uri uri) {
@@ -3047,8 +3019,6 @@ class _BootstrapGateState extends State<BootstrapGate>
       );
     }
 
-    return NicknameScreen(
-      onBootstrapped: _finishOnboarding,
-    );
+    return AgreementScreen(onCompleted: _finishOnboarding);
   }
 }
