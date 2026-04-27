@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class LeisureOption {
   final String key;
   final String emoji;
@@ -5,6 +7,11 @@ class LeisureOption {
   final String subLabel;
 
   const LeisureOption(this.key, this.emoji, this.label, this.subLabel);
+
+  /// Material-иконка взамен эмодзи. Эмодзи на iPad-симуляторе iOS 26.3
+  /// рендерятся как `?` — Apple Color Emoji ненадёжен. Material Icons
+  /// — векторный шрифт, гарантированно рисуется на любой платформе.
+  IconData get icon => LeisureConstants.iconFor(key);
 }
 
 class LeisureConstants {
@@ -60,5 +67,54 @@ class LeisureConstants {
       if (o.key == key) return o;
     }
     return null;
+  }
+
+  /// Маппинг ключей LeisureOption на Material-иконки.
+  /// См. комментарий в [LeisureOption.icon].
+  static IconData iconFor(String key) {
+    switch (key) {
+      // restPreferences
+      case 'rest_format_dining':       return Icons.restaurant;
+      case 'rest_format_bars':         return Icons.local_bar;
+      case 'rest_format_walks':        return Icons.park;
+      case 'rest_format_loud':         return Icons.celebration;
+      case 'rest_format_spontaneous':  return Icons.directions_car;
+      case 'rest_format_leisure':      return Icons.movie;
+      case 'rest_format_active':       return Icons.directions_run;
+
+      // restDislikes
+      case 'rest_dislike_noise':         return Icons.volume_up;
+      case 'rest_dislike_late':          return Icons.schedule;
+      case 'rest_dislike_alcohol':       return Icons.wine_bar;
+      case 'rest_dislike_strict_plans':  return Icons.assignment;
+      case 'rest_dislike_large_groups':  return Icons.groups;
+      case 'rest_dislike_long_walks':    return Icons.directions_walk;
+      case 'rest_dislike_spontaneous':   return Icons.bolt;
+
+      // socialFormats
+      case 'social_one_on_one':    return Icons.person;
+      case 'social_small_group':   return Icons.group;
+      case 'social_large_group':   return Icons.diversity_3;
+
+      // restTempos
+      case 'tempo_spontaneous':  return Icons.bolt;
+      case 'tempo_planned':      return Icons.event;
+      case 'tempo_flexible':     return Icons.balance;
+
+      // meetingTimes
+      case 'time_morning':       return Icons.wb_twilight;
+      case 'time_afternoon':     return Icons.wb_sunny;
+      case 'time_evening':       return Icons.brightness_3;
+      case 'time_late_evening':  return Icons.bedtime;
+
+      // vibes
+      case 'vibe_calm':       return Icons.self_improvement;
+      case 'vibe_easy':       return Icons.thumb_up_alt;
+      case 'vibe_conscious':  return Icons.psychology;
+      case 'vibe_energetic':  return Icons.local_fire_department;
+      case 'vibe_mix':        return Icons.auto_awesome;
+
+      default: return Icons.label_outline;
+    }
   }
 }

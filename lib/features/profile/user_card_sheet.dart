@@ -819,7 +819,7 @@ class _ViewLeisureRow extends StatelessWidget {
               children: selectedKeys.map((key) {
                 final opt = LeisureConstants.findByKey(options, key);
                 if (opt == null) return const SizedBox.shrink();
-                return _LeisureChip(label: '${opt.emoji} ${opt.label}');
+                return _LeisureChip(label: opt.label, icon: opt.icon);
               }).toList(),
             ),
         ],
@@ -830,8 +830,9 @@ class _ViewLeisureRow extends StatelessWidget {
 
 class _LeisureChip extends StatelessWidget {
   final String label;
+  final IconData? icon;
 
-  const _LeisureChip({required this.label});
+  const _LeisureChip({required this.label, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -839,13 +840,29 @@ class _LeisureChip extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colors.outlineVariant),
       ),
-      child: Text(label, style: textTheme.bodySmall, maxLines: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: colors.onSurface.withValues(alpha: 0.75)),
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              style: textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

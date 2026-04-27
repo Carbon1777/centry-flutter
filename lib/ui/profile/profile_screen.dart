@@ -354,15 +354,10 @@ class _ProfileContent extends StatelessWidget {
             Column(
               children: [
                 Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      width: constraints.maxWidth,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                 // Stack: левый контент на всю высоту + правая колонка Positioned
                 // Stack сам становится высотой левого контента → Positioned внутри bounds → нет конфликтов тапов
@@ -482,11 +477,8 @@ class _ProfileContent extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-
-          ],
-        ),
             _ProfileMediaSheet(
               availableHeight: constraints.maxHeight,
               userId: userId,
@@ -525,7 +517,11 @@ class _AttentionSignBoxIcon extends StatelessWidget {
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-                child: Text('🎁', style: TextStyle(fontSize: 63)),
+                child: Icon(
+                  Icons.card_giftcard,
+                  size: 56,
+                  color: Color(0xFFE53935),
+                ),
               ),
             ),
             if (hasIncoming)
@@ -1617,7 +1613,8 @@ class _LeisureRow extends StatelessWidget {
                         final opt = LeisureConstants.findByKey(options, key);
                         if (opt == null) return const SizedBox.shrink();
                         return _LeisureChip(
-                          label: '${opt.emoji} ${opt.label}',
+                          label: opt.label,
+                          icon: opt.icon,
                         );
                       }).toList(),
                     ),
@@ -1639,8 +1636,9 @@ class _LeisureRow extends StatelessWidget {
 
 class _LeisureChip extends StatelessWidget {
   final String label;
+  final IconData? icon;
 
-  const _LeisureChip({required this.label});
+  const _LeisureChip({required this.label, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -1648,13 +1646,29 @@ class _LeisureChip extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colors.outlineVariant),
       ),
-      child: Text(label, style: textTheme.bodySmall, maxLines: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: colors.onSurface.withValues(alpha: 0.75)),
+            const SizedBox(width: 6),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              style: textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1853,7 +1867,7 @@ class _PickerTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
           child: Row(
             children: [
-              Text(option.emoji, style: const TextStyle(fontSize: 20)),
+              Icon(option.icon, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

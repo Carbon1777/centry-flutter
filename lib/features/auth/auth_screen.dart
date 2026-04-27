@@ -28,13 +28,14 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _busy = false;
   String? _error;
   bool _obscure = true;
+  bool _emailTaken = false;
 
   bool get _validEmail {
     final v = _emailCtrl.text.trim();
     return v.contains('@') && v.contains('.');
   }
 
-  bool get _validPassword => _passwordCtrl.text.length >= 6;
+  bool get _validPassword => _passwordCtrl.text.isNotEmpty;
 
   bool get _canSubmit => _validEmail && _validPassword && !_busy;
 
@@ -56,6 +57,7 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _emailTaken = false;
     });
 
     final email = _emailCtrl.text.trim();
@@ -63,6 +65,16 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_mode == _AuthMode.signUp) {
+        // Pre-check: если email уже занят — Supabase молча вернёт 200 OK
+        // на signUp, но письмо НЕ отправит (privacy guard). Спросим заранее
+        // и подскажем юзеру, что нужно войти / восстановить пароль.
+        final available = await _auth.checkEmailAvailable(email);
+        if (!mounted) return;
+        if (!available) {
+          setState(() => _emailTaken = true);
+          return;
+        }
+
         await _auth.signUp(email: email, password: password);
         OnboardingFlowState.instance.pendingEmail = email;
         if (!mounted) return;
@@ -97,6 +109,25 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  void _switchToSignInWithEmail() {
+    setState(() {
+      _mode = _AuthMode.signIn;
+      _emailTaken = false;
+      _error = null;
+      _passwordCtrl.clear();
+    });
+  }
+
+  void _openForgotPasswordWithEmail() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ForgotPasswordScreen(
+          initialEmail: _emailCtrl.text.trim(),
+        ),
+      ),
+    );
+  }
+
   void _skip() {
     // Гостевой режим: не было signUp/signIn, app_users создастся как GUEST.
     Navigator.of(context).pushReplacement(
@@ -126,6 +157,12 @@ class _AuthScreenState extends State<AuthScreen> {
             'nickname': payload['nickname'] ?? '',
             'state': 'USER',
           });
+          // BootstrapGate.build уже покажет HomeScreen внизу. Закрываем
+          // все pushed-экраны (AuthScreen и предки), иначе пользователь
+          // остаётся на форме входа.
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
           return;
         }
       }
@@ -203,7 +240,10 @@ class _AuthScreenState extends State<AuthScreen> {
                     labelText: 'Email',
                     hintText: 'example@mail.com',
                   ),
-                  onChanged: (_) => setState(() => _error = null),
+                  onChanged: (_) => setState(() {
+                    _error = null;
+                    _emailTaken = false;
+                  }),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -212,7 +252,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
                     labelText: 'Пароль',
-                    helperText: isSignUp ? 'Минимум 6 символов' : null,
                     suffixIcon: IconButton(
                       icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
                       onPressed: () => setState(() => _obscure = !_obscure),
@@ -237,6 +276,54 @@ class _AuthScreenState extends State<AuthScreen> {
                     _error!,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.error,
+                    ),
+                  ),
+                ],
+                if (_emailTaken && isSignUp) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: colors.primary.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Этот email уже зарегистрирован',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Если это ваш аккаунт — войдите по паролю или восстановите его, если забыли.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colors.onSurface.withValues(alpha: 0.7),
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _busy ? null : _switchToSignInWithEmail,
+                            child: const Text('Войти'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _busy ? null : _openForgotPasswordWithEmail,
+                            child: const Text('Восстановить пароль'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

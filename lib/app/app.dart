@@ -129,7 +129,6 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   // Legal acceptance check for returning users.
   bool _legalNeedsAcceptance = false;
-  bool _legalCheckInProgress = false;
 
   // Intro video (показывается один раз при первом запуске).
   bool _showIntroVideo = false;
@@ -2596,8 +2595,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     final userId = _userId;
     if (userId == null) return;
 
-    setState(() => _legalCheckInProgress = true);
-
     try {
       final repo = LegalRepositoryImpl(_supabase);
       final status = await repo.checkAcceptance(appUserId: userId);
@@ -2605,18 +2602,14 @@ class _BootstrapGateState extends State<BootstrapGate>
       if (!mounted) return;
 
       if (status.needsAcceptance) {
-        setState(() {
-          _legalNeedsAcceptance = true;
-          _legalCheckInProgress = false;
-        });
+        // build() переключится на LegalAgreementScreen при следующем кадре.
+        setState(() => _legalNeedsAcceptance = true);
       } else {
-        setState(() => _legalCheckInProgress = false);
         _runPostIdentityFlows();
       }
     } catch (_) {
       // fail-open: ошибка проверки не блокирует пользователя
       if (!mounted) return;
-      setState(() => _legalCheckInProgress = false);
       _runPostIdentityFlows();
     }
   }
@@ -2862,6 +2855,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     unawaited(_finishOnboardingAsync(result));
   }
 
+  DateTime? _finishOnboardingAt;
+
   Future<void> _finishOnboardingAsync(Map<String, dynamic> result) async {
     final userId = result['id'] as String?;
     final publicId = result['public_id'] as String?;
@@ -2886,6 +2881,8 @@ class _BootstrapGateState extends State<BootstrapGate>
     await _storage.save(snapshot);
 
     if (!mounted) return;
+    _finishOnboardingAt = DateTime.now();
+    debugPrint('[App] _finishOnboarding setState welcome=false at $_finishOnboardingAt');
     setState(() {
       _userId = snapshot.id;
       _publicId = snapshot.publicId;
@@ -2904,6 +2901,10 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   void _onWelcomeCompleted() {
     if (!mounted) return;
+    final since = _finishOnboardingAt == null
+        ? 'n/a'
+        : '${DateTime.now().difference(_finishOnboardingAt!).inMilliseconds}ms';
+    debugPrint('[App] _onWelcomeCompleted welcome=true (since finishOnboarding=$since)');
     setState(() {
       _welcomeCompleted = true;
     });
@@ -2964,11 +2965,11 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     if (_userId != null && _publicId != null) {
-      if (_legalCheckInProgress) {
-        return const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        );
-      }
+      // _legalCheckInProgress намеренно НЕ перерисовывает экран:
+      // фоновая проверка соглашений не должна выгонять welcome-анимацию
+      // HomeScreen в circular progress (был баг: HomeScreen unmount→remount,
+      // юзер видел приветствие двумя обрывками). Если needsAcceptance=true,
+      // следующая ветка переключит на LegalAgreementScreen после setState.
 
       if (_legalNeedsAcceptance) {
         return LegalAgreementScreen(
@@ -2992,12 +2993,14 @@ class _BootstrapGateState extends State<BootstrapGate>
       });
 
       if (!_welcomeCompleted) {
+        debugPrint('[App.build] -> HomeScreen (welcome=false)');
         return HomeScreen(
           nickname: _nickname ?? '',
           onWelcomeCompleted: _onWelcomeCompleted,
         );
       }
 
+      debugPrint('[App.build] -> ActivityFeedScreen (welcome=true)');
       return ActivityFeedScreen(
         userId: _userId!,
         nickname: _nickname ?? '',

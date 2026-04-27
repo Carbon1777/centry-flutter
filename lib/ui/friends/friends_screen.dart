@@ -973,20 +973,26 @@ class _FriendCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Ник: ${_nickLabel(profile, friend.displayName)}',
-                                  style: titleStyle,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _nameLabel(profile),
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                              ],
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Ник: ${_nickLabel(profile, friend.displayName)}',
+                                    style: titleStyle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _nameLabel(profile),
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
                             const SizedBox(width: 6),
                             Icon(

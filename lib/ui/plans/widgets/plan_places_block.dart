@@ -173,7 +173,7 @@ class _ServerFirstPlanPlacesBlock extends StatelessWidget {
       children: [
         if (helperText != null) ...[
           Text(helperText, style: helperStyle),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
         ],
         Expanded(
           child: ListView.separated(

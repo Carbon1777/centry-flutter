@@ -102,7 +102,7 @@ class _AgreementScreenState extends State<AgreementScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Перед стартом — пара коротких документов. Загляните, если интересно, и поставьте галку, если со всем согласны.',
+                        'Прежде чем продолжить, ознакомьтесь с документами ниже. После ознакомления — поставьте галку.',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: colors.onSurface.withValues(alpha: 0.6),
                           height: 1.45,

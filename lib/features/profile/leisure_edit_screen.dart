@@ -309,7 +309,7 @@ class _OptionTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
           child: Row(
             children: [
-              Text(option.emoji, style: const TextStyle(fontSize: 20)),
+              Icon(option.icon, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

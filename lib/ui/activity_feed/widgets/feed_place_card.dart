@@ -277,12 +277,16 @@ class _PlansBadge extends StatelessWidget {
               size: 12,
               color: active ? colors.primary : Colors.grey.shade600),
           const SizedBox(width: 4),
-          Text(
-            'Планов — $count',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-              color: active ? colors.primary : Colors.grey.shade600,
+          Flexible(
+            child: Text(
+              'Планов — $count',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                color: active ? colors.primary : Colors.grey.shade600,
+              ),
             ),
           ),
         ],
@@ -309,12 +313,16 @@ class _PastPlansBadge extends StatelessWidget {
       children: [
         Icon(Icons.history, size: 13, color: Colors.grey.shade600),
         const SizedBox(width: 4),
-        Text(
-          _label(count),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            color: Colors.grey.shade600,
+        Flexible(
+          child: Text(
+            _label(count),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: Colors.grey.shade600,
+            ),
           ),
         ),
       ],
@@ -390,12 +398,16 @@ class _SignalChip extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: color,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
             ),
           ),
         ],

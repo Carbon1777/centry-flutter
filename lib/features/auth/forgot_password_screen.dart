@@ -9,7 +9,9 @@ import 'auth_service.dart';
 enum _Step { enterEmail, enterCode, enterNewPassword, success }
 
 class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+  const ForgotPasswordScreen({super.key, this.initialEmail});
+
+  final String? initialEmail;
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
@@ -39,6 +41,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   void initState() {
     super.initState();
     _auth = AuthService(Supabase.instance.client);
+    final initial = widget.initialEmail?.trim() ?? '';
+    if (initial.isNotEmpty) {
+      _emailCtrl.text = initial;
+    }
   }
 
   @override
@@ -107,7 +113,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> _setNewPassword() async {
-    if (_passwordCtrl.text.length < 6 || _busy) return;
+    if (_passwordCtrl.text.isEmpty || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -295,7 +301,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Минимум 6 символов.',
+          'Введите новый пароль для входа в аккаунт.',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: colors.onSurface.withValues(alpha: 0.6),
           ),
@@ -324,7 +330,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           height: 48,
           child: ElevatedButton(
             onPressed:
-                (_passwordCtrl.text.length >= 6 && !_busy) ? _setNewPassword : null,
+                (_passwordCtrl.text.isNotEmpty && !_busy) ? _setNewPassword : null,
             child: _busy
                 ? const SizedBox(
                     width: 20,

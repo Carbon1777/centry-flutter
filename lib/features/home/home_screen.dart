@@ -21,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final DateTime _mountedAt;
 
   late final Animation<double> _iconOpacity;
   late final Animation<double> _iconScale;
@@ -46,10 +47,22 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
 
+    _mountedAt = DateTime.now();
+    debugPrint('[HomeScreen] initState at $_mountedAt nick="${widget.nickname}"');
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 5500),
     );
+
+    // Запускаем controller ТОЛЬКО когда HomeScreen стал актуальным Route.
+    // Иначе при онбординге (когда HomeScreen уже создан внизу, но поверх него
+    // ещё PermissionsScreen / NicknameScreen) Ticker муфолд через TickerMode,
+    // controller "бежит" формально, но юзер фактически видит welcome <1с
+    // после popUntil — баг множественной 1-секундной регрессии.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeStartWhenActive();
+    });
 
     // Иконка: первая — fade + scale
     _iconOpacity = CurvedAnimation(
@@ -128,8 +141,6 @@ class _HomeScreenState extends State<HomeScreen>
         unawaited(_commitAfterWelcome());
       }
     });
-
-    _controller.forward();
   }
 
   void _buildLetterAnimations() {
@@ -182,14 +193,36 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  void _maybeStartWhenActive() {
+    if (!mounted) return;
+    if (_controller.status != AnimationStatus.dismissed) return;
+    final route = ModalRoute.of(context);
+    final isActive = route == null || route.isCurrent;
+    if (isActive) {
+      debugPrint('[HomeScreen] route active, controller.forward()');
+      _controller.forward();
+      return;
+    }
+    // Под другим экраном (PermissionsScreen и т.п.) — ждём, пока HomeScreen
+    // станет current route. Polling, потому что Navigator не уведомляет
+    // напрямую без RouteObserver, а заводить observer ради одного экрана
+    // избыточно.
+    Future.delayed(const Duration(milliseconds: 80), _maybeStartWhenActive);
+  }
+
   Future<void> _commitAfterWelcome() async {
     if (_committed || !mounted) return;
     _committed = true;
+
+    final elapsed = DateTime.now().difference(_mountedAt).inMilliseconds;
+    debugPrint('[HomeScreen] animation completed (${elapsed}ms after mount)');
 
     // Даём фразе 500мс для фиксации в сознании
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
+    final total = DateTime.now().difference(_mountedAt).inMilliseconds;
+    debugPrint('[HomeScreen] commit -> onWelcomeCompleted (total ${total}ms)');
     widget.onWelcomeCompleted?.call();
   }
 
@@ -207,95 +240,108 @@ class _HomeScreenState extends State<HomeScreen>
       body: SafeArea(
         child: Align(
           alignment: const Alignment(0, -0.25),
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (_, __) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ── Иконка приложения ──────────────────────────────
-                  Opacity(
-                    opacity: _iconOpacity.value,
-                    child: Transform.scale(
-                      scale: _iconScale.value,
-                      child: Image.asset(
-                        'assets/images/app_icon.png',
-                        width: 117,
-                        height: 117,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (_, __) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Иконка приложения ──────────────────────────────
+                    Opacity(
+                      opacity: _iconOpacity.value,
+                      child: Transform.scale(
+                        scale: _iconScale.value,
+                        child: Image.asset(
+                          'assets/images/app_icon.png',
+                          width: 117,
+                          height: 117,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  // ── Добро пожаловать ───────────────────────────────
-                  FadeTransition(
-                    opacity: _titleOpacity,
-                    child: SlideTransition(
-                      position: _titleSlide,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Добро пожаловать',
-                            style: TextStyle(
-                              fontSize: 29,
-                              fontWeight: FontWeight.w600,
-                              height: 1.05,
-                            ),
+                    const SizedBox(height: 8),
+                    // ── Добро пожаловать ───────────────────────────────
+                    FadeTransition(
+                      opacity: _titleOpacity,
+                      child: SlideTransition(
+                        position: _titleSlide,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Добро пожаловать',
+                                style: TextStyle(
+                                  fontSize: 29,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Transform.rotate(
+                                angle: _handRotation.value,
+                                child: const Icon(
+                                  Icons.waving_hand_rounded,
+                                  size: 30,
+                                  color: Color(0xFFF7B500),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Transform.rotate(
-                            angle: _handRotation.value,
-                            child: const Text(
-                              '👋',
-                              style: TextStyle(fontSize: 30),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 7),
-                  if (widget.nickname.trim().isNotEmpty &&
-                      _letterOpacities.isNotEmpty)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(
-                        widget.nickname.split('').length,
-                        (i) => Opacity(
-                          opacity: _letterOpacities[i].value,
-                          child: Transform.scale(
-                            scale: _letterScales[i].value,
-                            child: Text(
-                              widget.nickname.split('')[i],
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w500,
-                                height: 1.05,
+                    const SizedBox(height: 7),
+                    if (widget.nickname.trim().isNotEmpty &&
+                        _letterOpacities.isNotEmpty)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: List.generate(
+                            widget.nickname.split('').length,
+                            (i) => Opacity(
+                              opacity: _letterOpacities[i].value,
+                              child: Transform.scale(
+                                scale: _letterScales[i].value,
+                                child: Text(
+                                  widget.nickname.split('')[i],
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.05,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  const SizedBox(height: 16),
-                  FadeTransition(
-                    opacity: _textOpacity,
-                    child: SlideTransition(
-                      position: _textSlide,
-                      child: Text(
-                        'Посмотрим, что сегодня интересного…',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          height: 1.1,
-                          color: colors.onSurface.withValues(alpha: 0.7),
+                    const SizedBox(height: 16),
+                    FadeTransition(
+                      opacity: _textOpacity,
+                      child: SlideTransition(
+                        position: _textSlide,
+                        child: Text(
+                          'Посмотрим, что сегодня интересного…',
+                          textAlign: TextAlign.center,
+                          softWrap: true,
+                          style: TextStyle(
+                            fontSize: 18,
+                            height: 1.1,
+                            color: colors.onSurface.withValues(alpha: 0.7),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),

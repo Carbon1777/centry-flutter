@@ -12,6 +12,18 @@ class AuthService {
   Session? get currentSession => _auth.currentSession;
   User? get currentUser => _auth.currentUser;
 
+  /// Проверить, свободен ли email (true = можно регистрироваться).
+  /// RPC проверяет `app_users` и `auth.users`. Используется ДО signUp,
+  /// чтобы не упереться в тихий `user_repeated_signup` (когда Supabase
+  /// возвращает 200 OK, но письмо не шлёт по соображениям приватности).
+  Future<bool> checkEmailAvailable(String email) async {
+    final dynamic res = await _client.rpc(
+      'check_email_available',
+      params: {'p_email': email.trim()},
+    );
+    return res == true;
+  }
+
   /// Создать аккаунт. После signUp Supabase сразу шлёт письмо с OTP-кодом
   /// (так настроен Confirm signup template).
   /// Сессия НЕ выдаётся, пока не пройден verifyOtp.
@@ -148,8 +160,14 @@ class AuthService {
     if (msg.contains('rate limit') || msg.contains('over_email_send_rate_limit')) {
       return 'Слишком много попыток. Попробуйте позже';
     }
-    if (msg.contains('weak password') || msg.contains('password should be')) {
-      return 'Пароль слишком простой (минимум 6 символов)';
+    if (msg.contains('different from the old password') ||
+        msg.contains('same_password') ||
+        msg.contains('same password')) {
+      return 'Новый пароль должен отличаться от старого';
+    }
+    if (msg.contains('weak password') ||
+        msg.contains('password should be at least')) {
+      return 'Пароль слишком простой';
     }
     return 'Ошибка авторизации';
   }

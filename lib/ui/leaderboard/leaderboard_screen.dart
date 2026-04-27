@@ -489,14 +489,10 @@ class _EntryRow extends StatelessWidget {
               SizedBox(
                 width: 22,
                 child: isTop3
-                    ? Text(
-                        switch (place) {
-                          1 => '🥇',
-                          2 => '🥈',
-                          _ => '🥉',
-                        },
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 15),
+                    ? Icon(
+                        Icons.workspace_premium,
+                        size: 18,
+                        color: medalColor,
                       )
                     : Text(
                         '$place',
@@ -524,37 +520,45 @@ class _EntryRow extends StatelessWidget {
               ),
               const SizedBox(width: 6),
 
-              // Ник + город
+              // Ник + город — FittedBox чтобы автомасштабировалось под высоту
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      entry.nickname.isNotEmpty
-                          ? entry.nickname
-                          : 'Пользователь',
-                      style: text.bodySmall?.copyWith(
-                        fontSize: 13,
-                        fontWeight: isTop3 ? FontWeight.w700 : FontWeight.w400,
-                        color: isTop3
-                            ? medalColor
-                            : colors.onSurface.withValues(alpha: 0.9),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                    if (entry.city != null && entry.city!.isNotEmpty)
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Text(
-                        entry.city!,
+                        entry.nickname.isNotEmpty
+                            ? entry.nickname
+                            : 'Пользователь',
                         style: text.bodySmall?.copyWith(
-                          fontSize: 10,
-                          color: colors.onSurface.withValues(alpha: 0.35),
+                          fontSize: 13,
+                          fontWeight:
+                              isTop3 ? FontWeight.w700 : FontWeight.w400,
+                          color: isTop3
+                              ? medalColor
+                              : colors.onSurface.withValues(alpha: 0.9),
+                          height: 1.05,
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
                       ),
-                  ],
+                      if (entry.city != null && entry.city!.isNotEmpty)
+                        Text(
+                          entry.city!,
+                          style: text.bodySmall?.copyWith(
+                            fontSize: 10,
+                            color: colors.onSurface.withValues(alpha: 0.35),
+                            height: 1.0,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
