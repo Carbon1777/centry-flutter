@@ -187,18 +187,25 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final viewportHeight = MediaQuery.sizeOf(context).height;
+    final viewInsetsBottom = MediaQuery.viewInsetsOf(context).bottom;
+    final maxDialogHeight =
+        (viewportHeight - 80 - viewInsetsBottom).clamp(360.0, double.infinity);
 
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: maxDialogHeight,
+          maxWidth: 560,
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -225,93 +232,111 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _nameController,
-                      readOnly: true,
-                      onTap: _submitting
-                          ? null
-                          : () => _openInputDialog(_nameController, 'Название'),
-                      decoration: _inputDecoration('Название'),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'Обязательное поле'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedType,
-                      decoration: _inputDecoration('Тип'),
-                      items: _types
-                          .map(
-                            (e) => DropdownMenuItem<String>(
-                              value: e,
-                              child: Text(e),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: _nameController,
+                              readOnly: true,
+                              onTap: _submitting
+                                  ? null
+                                  : () => _openInputDialog(
+                                      _nameController, 'Название'),
+                              decoration: _inputDecoration('Название'),
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Обязательное поле'
+                                  : null,
                             ),
-                          )
-                          .toList(),
-                      onChanged: _submitting
-                          ? null
-                          : (value) => setState(() => _selectedType = value),
-                      validator: (v) => v == null ? 'Выберите тип' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedCity,
-                      decoration: _inputDecoration('Город'),
-                      items: _cities
-                          .map(
-                            (e) => DropdownMenuItem<String>(
-                              value: e,
-                              child: Text(e),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              initialValue: _selectedType,
+                              decoration: _inputDecoration('Тип'),
+                              items: _types
+                                  .map(
+                                    (e) => DropdownMenuItem<String>(
+                                      value: e,
+                                      child: Text(e),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _submitting
+                                  ? null
+                                  : (value) =>
+                                      setState(() => _selectedType = value),
+                              validator: (v) =>
+                                  v == null ? 'Выберите тип' : null,
                             ),
-                          )
-                          .toList(),
-                      onChanged: _submitting
-                          ? null
-                          : (value) => setState(() => _selectedCity = value),
-                      validator: (v) => v == null ? 'Выберите город' : null,
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              initialValue: _selectedCity,
+                              decoration: _inputDecoration('Город'),
+                              items: _cities
+                                  .map(
+                                    (e) => DropdownMenuItem<String>(
+                                      value: e,
+                                      child: Text(e),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _submitting
+                                  ? null
+                                  : (value) =>
+                                      setState(() => _selectedCity = value),
+                              validator: (v) =>
+                                  v == null ? 'Выберите город' : null,
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _streetController,
+                              readOnly: true,
+                              onTap: _submitting
+                                  ? null
+                                  : () => _openInputDialog(
+                                      _streetController, 'Улица'),
+                              decoration: _inputDecoration('Улица'),
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Обязательное поле'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _houseController,
+                              readOnly: true,
+                              onTap: _submitting
+                                  ? null
+                                  : () => _openInputDialog(
+                                      _houseController, '№ дома'),
+                              decoration: _inputDecoration('№ дома'),
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Обязательное поле'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _linkController,
+                              readOnly: true,
+                              onTap: _submitting
+                                  ? null
+                                  : () => _openInputDialog(
+                                      _linkController, 'Сайт'),
+                              decoration: _inputDecoration('Сайт'),
+                              validator: (v) {
+                                final val = v?.trim() ?? '';
+                                if (val.isEmpty) return 'Обязательное поле';
+                                if (!_isValidUrl(val)) {
+                                  return 'Укажите адрес сайта (например: site.ru)';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _streetController,
-                      readOnly: true,
-                      onTap: _submitting
-                          ? null
-                          : () => _openInputDialog(_streetController, 'Улица'),
-                      decoration: _inputDecoration('Улица'),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'Обязательное поле'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _houseController,
-                      readOnly: true,
-                      onTap: _submitting
-                          ? null
-                          : () => _openInputDialog(_houseController, '№ дома'),
-                      decoration: _inputDecoration('№ дома'),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'Обязательное поле'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _linkController,
-                      readOnly: true,
-                      onTap: _submitting
-                          ? null
-                          : () => _openInputDialog(_linkController, 'Сайт'),
-                      decoration: _inputDecoration('Сайт'),
-                      validator: (v) {
-                        final val = v?.trim() ?? '';
-                        if (val.isEmpty) return 'Обязательное поле';
-                        if (!_isValidUrl(val)) {
-                          return 'Укажите адрес сайта (например: site.ru)';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 28),
                     Center(
                       child: FractionallySizedBox(
                         widthFactor: 0.6,
@@ -344,22 +369,22 @@ class _AddPlaceDialogState extends State<AddPlaceDialog> {
                 ),
               ),
             ),
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Material(
-              color: Colors.black45,
-              shape: const CircleBorder(),
-              child: IconButton(
-                icon: const Icon(Icons.close),
-                color: Colors.white,
-                onPressed:
-                    _submitting ? null : () => Navigator.of(context).pop(),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Material(
+                color: Colors.black45,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.close),
+                  color: Colors.white,
+                  onPressed:
+                      _submitting ? null : () => Navigator.of(context).pop(),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

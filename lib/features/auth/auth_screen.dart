@@ -1,7 +1,10 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../onboarding/nickname_screen.dart';
+import '../onboarding/permissions_screen.dart';
 import 'auth_service.dart';
 import 'forgot_password_screen.dart';
 import 'onboarding_state.dart';
@@ -151,12 +154,33 @@ class _AuthScreenState extends State<AuthScreen> {
         final publicId = payload['public_id'] as String?;
         if (userId != null && userId.isNotEmpty &&
             publicId != null && publicId.isNotEmpty) {
-          widget.onCompleted({
+          final bootstrapResult = <String, dynamic>{
             'id': userId,
             'public_id': publicId,
             'nickname': payload['nickname'] ?? '',
             'state': 'USER',
-          });
+          };
+
+          // Если на устройстве не выданы геолокация или уведомления —
+          // показываем PermissionsScreen перед попаданием в Home.
+          // Permission status — per-device-per-app, не per-account, поэтому
+          // signIn на новом устройстве должен пройти через permissions.
+          final needsPermissions = await _hasMissingPermissions();
+          if (!mounted) return;
+
+          if (needsPermissions) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => PermissionsScreen(
+                  bootstrapResult: bootstrapResult,
+                  onDone: widget.onCompleted,
+                ),
+              ),
+            );
+            return;
+          }
+
+          widget.onCompleted(bootstrapResult);
           // BootstrapGate.build уже покажет HomeScreen внизу. Закрываем
           // все pushed-экраны (AuthScreen и предки), иначе пользователь
           // остаётся на форме входа.
@@ -176,6 +200,26 @@ class _AuthScreenState extends State<AuthScreen> {
         builder: (_) => NicknameScreen(onBootstrapped: widget.onCompleted),
       ),
     );
+  }
+
+  Future<bool> _hasMissingPermissions() async {
+    try {
+      final geo = await Geolocator.checkPermission();
+      final geoGranted = geo == LocationPermission.always ||
+          geo == LocationPermission.whileInUse;
+
+      final fcm =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      final fcmGranted =
+          fcm.authorizationStatus == AuthorizationStatus.authorized ||
+              fcm.authorizationStatus == AuthorizationStatus.provisional;
+
+      return !geoGranted || !fcmGranted;
+    } catch (_) {
+      // если проверка упала — лучше показать permissions экран,
+      // чем пропустить и потом не получить разрешения.
+      return true;
+    }
   }
 
   void _toggleMode() {

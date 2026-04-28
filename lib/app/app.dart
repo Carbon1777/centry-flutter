@@ -2855,8 +2855,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     unawaited(_finishOnboardingAsync(result));
   }
 
-  DateTime? _finishOnboardingAt;
-
   Future<void> _finishOnboardingAsync(Map<String, dynamic> result) async {
     final userId = result['id'] as String?;
     final publicId = result['public_id'] as String?;
@@ -2881,8 +2879,6 @@ class _BootstrapGateState extends State<BootstrapGate>
     await _storage.save(snapshot);
 
     if (!mounted) return;
-    _finishOnboardingAt = DateTime.now();
-    debugPrint('[App] _finishOnboarding setState welcome=false at $_finishOnboardingAt');
     setState(() {
       _userId = snapshot.id;
       _publicId = snapshot.publicId;
@@ -2893,18 +2889,11 @@ class _BootstrapGateState extends State<BootstrapGate>
       _homeVisibleAt = null;
     });
 
-
-
-
     _runPostIdentityFlows();
   }
 
   void _onWelcomeCompleted() {
     if (!mounted) return;
-    final since = _finishOnboardingAt == null
-        ? 'n/a'
-        : '${DateTime.now().difference(_finishOnboardingAt!).inMilliseconds}ms';
-    debugPrint('[App] _onWelcomeCompleted welcome=true (since finishOnboarding=$since)');
     setState(() {
       _welcomeCompleted = true;
     });
@@ -2993,14 +2982,12 @@ class _BootstrapGateState extends State<BootstrapGate>
       });
 
       if (!_welcomeCompleted) {
-        debugPrint('[App.build] -> HomeScreen (welcome=false)');
         return HomeScreen(
           nickname: _nickname ?? '',
           onWelcomeCompleted: _onWelcomeCompleted,
         );
       }
 
-      debugPrint('[App.build] -> ActivityFeedScreen (welcome=true)');
       return ActivityFeedScreen(
         userId: _userId!,
         nickname: _nickname ?? '',

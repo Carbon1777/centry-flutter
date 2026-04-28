@@ -517,10 +517,11 @@ class _AttentionSignBoxIcon extends StatelessWidget {
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-                child: Icon(
-                  Icons.card_giftcard,
-                  size: 56,
-                  color: Color(0xFFE53935),
+                child: Image(
+                  image: AssetImage('assets/twemoji/1f381_fluent.png'),
+                  width: 56,
+                  height: 56,
+                  filterQuality: FilterQuality.medium,
                 ),
               ),
             ),
@@ -1614,7 +1615,7 @@ class _LeisureRow extends StatelessWidget {
                         if (opt == null) return const SizedBox.shrink();
                         return _LeisureChip(
                           label: opt.label,
-                          icon: opt.icon,
+                          assetPath: opt.assetPath,
                         );
                       }).toList(),
                     ),
@@ -1636,9 +1637,9 @@ class _LeisureRow extends StatelessWidget {
 
 class _LeisureChip extends StatelessWidget {
   final String label;
-  final IconData? icon;
+  final String? assetPath;
 
-  const _LeisureChip({required this.label, this.icon});
+  const _LeisureChip({required this.label, this.assetPath});
 
   @override
   Widget build(BuildContext context) {
@@ -1655,8 +1656,8 @@ class _LeisureChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: colors.onSurface.withValues(alpha: 0.75)),
+          if (assetPath != null) ...[
+            TwemojiIcon(assetPath: assetPath!, size: 14),
             const SizedBox(width: 6),
           ],
           Flexible(
@@ -1867,7 +1868,7 @@ class _PickerTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
           child: Row(
             children: [
-              Icon(option.icon, size: 22),
+              TwemojiIcon(assetPath: option.assetPath, size: 22),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

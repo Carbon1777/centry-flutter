@@ -2136,7 +2136,8 @@ class _Body extends StatelessWidget {
             child: PlanPlacesBlock(
               items: details.placeCandidates,
               placeVoting: details.placeVoting,
-              onAddCandidate: plan.status == 'OPEN' ? onAddPlaceCandidate : null,
+              onAddCandidate:
+                  plan.status == 'OPEN' ? onAddPlaceCandidate : null,
               actionsDisabled: actionsDisabled,
               onOpenDetails: onOpenPlaceDetails,
               onRemoveCandidate: onRemovePlaceCandidate,
@@ -2148,8 +2149,8 @@ class _Body extends StatelessWidget {
           ),
         ],
       ),
-    ),
-    Positioned.fill(
+            ),
+            Positioned.fill(
       child: Align(
         alignment: Alignment.bottomCenter,
         child: PlanChatBlock(

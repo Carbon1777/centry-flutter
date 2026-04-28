@@ -21,7 +21,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final DateTime _mountedAt;
 
   late final Animation<double> _iconOpacity;
   late final Animation<double> _iconScale;
@@ -46,9 +45,6 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-
-    _mountedAt = DateTime.now();
-    debugPrint('[HomeScreen] initState at $_mountedAt nick="${widget.nickname}"');
 
     _controller = AnimationController(
       vsync: this,
@@ -199,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen>
     final route = ModalRoute.of(context);
     final isActive = route == null || route.isCurrent;
     if (isActive) {
-      debugPrint('[HomeScreen] route active, controller.forward()');
       _controller.forward();
       return;
     }
@@ -214,15 +209,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (_committed || !mounted) return;
     _committed = true;
 
-    final elapsed = DateTime.now().difference(_mountedAt).inMilliseconds;
-    debugPrint('[HomeScreen] animation completed (${elapsed}ms after mount)');
-
     // Даём фразе 500мс для фиксации в сознании
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
 
-    final total = DateTime.now().difference(_mountedAt).inMilliseconds;
-    debugPrint('[HomeScreen] commit -> onWelcomeCompleted (total ${total}ms)');
     widget.onWelcomeCompleted?.call();
   }
 
@@ -283,10 +273,11 @@ class _HomeScreenState extends State<HomeScreen>
                               const SizedBox(width: 8),
                               Transform.rotate(
                                 angle: _handRotation.value,
-                                child: const Icon(
-                                  Icons.waving_hand_rounded,
-                                  size: 30,
-                                  color: Color(0xFFF7B500),
+                                child: const Image(
+                                  image: AssetImage('assets/twemoji/1f44b.png'),
+                                  width: 30,
+                                  height: 30,
+                                  filterQuality: FilterQuality.medium,
                                 ),
                               ),
                             ],

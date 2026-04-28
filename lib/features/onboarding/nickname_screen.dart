@@ -15,7 +15,7 @@ class NicknameScreen extends StatefulWidget {
 }
 
 class _NicknameScreenState extends State<NicknameScreen> {
-  static const String _kAppVersion = '1.0.0';
+  static const String _kAppVersion = '1.0.10';
 
   final _controller = TextEditingController();
 

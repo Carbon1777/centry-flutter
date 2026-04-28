@@ -537,10 +537,15 @@ class _MySignCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Flexible(
-            child: CachedNetworkImage(
-              imageUrl: sign.stickerUrl,
-              width: 200,
-              fit: BoxFit.fitWidth,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 200,
+                maxHeight: 200,
+              ),
+              child: CachedNetworkImage(
+                imageUrl: sign.stickerUrl,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
           const SizedBox(height: 8),

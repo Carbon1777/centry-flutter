@@ -1,0 +1,12 @@
+Bundled emoji graphics:
+
+Twemoji (most files):
+- © Twitter, Inc and other contributors.
+- Licensed under Creative Commons Attribution 4.0 International (CC-BY 4.0).
+- Source: https://github.com/jdecked/twemoji
+- License: https://creativecommons.org/licenses/by/4.0/
+
+Microsoft Fluent Emoji (1f381_fluent.png):
+- © Microsoft Corporation.
+- Licensed under MIT License.
+- Source: https://github.com/microsoft/fluentui-emoji

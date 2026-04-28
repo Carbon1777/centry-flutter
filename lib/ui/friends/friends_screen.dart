@@ -950,61 +950,64 @@ class _FriendCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: IntrinsicWidth(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                      ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.35),
                     ),
-                    child: InkWell(
-                      onTap: onOpenProfile,
-                      onLongPress: onSendAttentionSign,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            UserAvatarWidget(
-                              profile: profile,
-                              size: 48,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
+                  ),
+                  child: InkWell(
+                    onTap: onOpenProfile,
+                    onLongPress: onSendAttentionSign,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                      child: Row(
+                        children: [
+                          UserAvatarWidget(
+                            profile: profile,
+                            size: 48,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
                                     'Ник: ${_nickLabel(profile, friend.displayName)}',
                                     style: titleStyle,
                                     maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
+                                ),
+                                const SizedBox(height: 2),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
                                     _nameLabel(profile),
                                     style: Theme.of(context).textTheme.bodyMedium,
                                     maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 6),
-                            Icon(
-                              Icons.chevron_right,
-                              color: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.color
-                                  ?.withValues(alpha: 0.7),
-                            ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.chevron_right,
+                            color: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.color
+                                ?.withValues(alpha: 0.7),
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -2,7 +2,7 @@ name: centry
 description: "Centry mobile application"
 publish_to: 'none'
 
-version: 1.0.9+15
+version: 1.0.10+16
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -76,3 +76,4 @@ flutter:
   assets:
     - assets/images/
     - assets/images/map_markers/
+    - assets/twemoji/

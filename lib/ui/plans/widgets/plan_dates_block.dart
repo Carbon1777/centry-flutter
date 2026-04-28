@@ -102,6 +102,11 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
       builder: (context, constraints) {
         const gap = 8.0;
         final itemWidth = (constraints.maxWidth - gap * 2) / 3;
+        // Адаптивная высота: на узком iPhone (itemWidth ~115) карточка
+        // приближается к квадрату (~92px), на широком iPad (itemWidth ~260)
+        // ограничивается сверху, чтобы не съедать пространство блока мест.
+        final slotHeight =
+            (itemWidth * 0.8).clamp(80.0, 110.0).toDouble();
 
         Widget buildSlot(int index) {
           if (index < snapshot.candidates.length) {
@@ -125,6 +130,7 @@ class _ServerFirstPlanDatesBlock extends StatelessWidget {
 
           return SizedBox(
             width: itemWidth,
+            height: slotHeight,
             child: _EmptyDateSlot(
               canAddCandidate: snapshot.canAddCandidate,
               onTap: (!actionsDisabled && snapshot.canAddCandidate)
@@ -429,27 +435,31 @@ class _EmptyDateSlot extends StatelessWidget {
       child: Opacity(
         opacity: canAddCandidate ? 1 : 0.6,
         child: Container(
-          height: 120,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
             border: Border.all(color: theme.dividerColor),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.add_circle_outline,
-                size: 26,
+                size: 22,
                 color: canAddCandidate
                     ? theme.colorScheme.primary
                     : theme.disabledColor,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Добавить дату',
-                style: theme.textTheme.bodySmall,
-                textAlign: TextAlign.center,
+              const SizedBox(height: 4),
+              Flexible(
+                child: Text(
+                  'Добавить дату',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
           ),

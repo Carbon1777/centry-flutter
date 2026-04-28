@@ -819,7 +819,7 @@ class _ViewLeisureRow extends StatelessWidget {
               children: selectedKeys.map((key) {
                 final opt = LeisureConstants.findByKey(options, key);
                 if (opt == null) return const SizedBox.shrink();
-                return _LeisureChip(label: opt.label, icon: opt.icon);
+                return _LeisureChip(label: opt.label, assetPath: opt.assetPath);
               }).toList(),
             ),
         ],
@@ -830,9 +830,9 @@ class _ViewLeisureRow extends StatelessWidget {
 
 class _LeisureChip extends StatelessWidget {
   final String label;
-  final IconData? icon;
+  final String? assetPath;
 
-  const _LeisureChip({required this.label, this.icon});
+  const _LeisureChip({required this.label, this.assetPath});
 
   @override
   Widget build(BuildContext context) {
@@ -849,8 +849,8 @@ class _LeisureChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: colors.onSurface.withValues(alpha: 0.75)),
+          if (assetPath != null) ...[
+            TwemojiIcon(assetPath: assetPath!, size: 14),
             const SizedBox(width: 6),
           ],
           Flexible(

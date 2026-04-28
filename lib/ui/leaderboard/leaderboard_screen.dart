@@ -489,10 +489,15 @@ class _EntryRow extends StatelessWidget {
               SizedBox(
                 width: 22,
                 child: isTop3
-                    ? Icon(
-                        Icons.workspace_premium,
-                        size: 18,
-                        color: medalColor,
+                    ? Image.asset(
+                        place == 1
+                            ? 'assets/twemoji/1f947.png'
+                            : place == 2
+                                ? 'assets/twemoji/1f948.png'
+                                : 'assets/twemoji/1f949.png',
+                        width: 22,
+                        height: 22,
+                        filterQuality: FilterQuality.medium,
                       )
                     : Text(
                         '$place',

@@ -8,10 +8,7 @@ class LeisureOption {
 
   const LeisureOption(this.key, this.emoji, this.label, this.subLabel);
 
-  /// Material-иконка взамен эмодзи. Эмодзи на iPad-симуляторе iOS 26.3
-  /// рендерятся как `?` — Apple Color Emoji ненадёжен. Material Icons
-  /// — векторный шрифт, гарантированно рисуется на любой платформе.
-  IconData get icon => LeisureConstants.iconFor(key);
+  String get assetPath => LeisureConstants.assetPathFor(key);
 }
 
 class LeisureConstants {
@@ -69,52 +66,73 @@ class LeisureConstants {
     return null;
   }
 
-  /// Маппинг ключей LeisureOption на Material-иконки.
-  /// См. комментарий в [LeisureOption.icon].
-  static IconData iconFor(String key) {
+  // Маппинг key → twemoji asset (CC-BY 4.0). Apple Color Emoji ненадёжен на
+  // iPad-симуляторе iOS 26.3, потому используем bundled Twemoji PNG.
+  static String assetPathFor(String key) {
     switch (key) {
       // restPreferences
-      case 'rest_format_dining':       return Icons.restaurant;
-      case 'rest_format_bars':         return Icons.local_bar;
-      case 'rest_format_walks':        return Icons.park;
-      case 'rest_format_loud':         return Icons.celebration;
-      case 'rest_format_spontaneous':  return Icons.directions_car;
-      case 'rest_format_leisure':      return Icons.movie;
-      case 'rest_format_active':       return Icons.directions_run;
+      case 'rest_format_dining':       return 'assets/twemoji/1f37d.png';
+      case 'rest_format_bars':         return 'assets/twemoji/1f378.png';
+      case 'rest_format_walks':        return 'assets/twemoji/1f33f.png';
+      case 'rest_format_loud':         return 'assets/twemoji/1f389.png';
+      case 'rest_format_spontaneous':  return 'assets/twemoji/1f697.png';
+      case 'rest_format_leisure':      return 'assets/twemoji/1f3ac.png';
+      case 'rest_format_active':       return 'assets/twemoji/1f3c3.png';
 
       // restDislikes
-      case 'rest_dislike_noise':         return Icons.volume_up;
-      case 'rest_dislike_late':          return Icons.schedule;
-      case 'rest_dislike_alcohol':       return Icons.wine_bar;
-      case 'rest_dislike_strict_plans':  return Icons.assignment;
-      case 'rest_dislike_large_groups':  return Icons.groups;
-      case 'rest_dislike_long_walks':    return Icons.directions_walk;
-      case 'rest_dislike_spontaneous':   return Icons.bolt;
+      case 'rest_dislike_noise':         return 'assets/twemoji/1f50a.png';
+      case 'rest_dislike_late':          return 'assets/twemoji/1f550.png';
+      case 'rest_dislike_alcohol':       return 'assets/twemoji/1f377.png';
+      case 'rest_dislike_strict_plans':  return 'assets/twemoji/1f4cb.png';
+      case 'rest_dislike_large_groups':  return 'assets/twemoji/1f465.png';
+      case 'rest_dislike_long_walks':    return 'assets/twemoji/1f6b6.png';
+      case 'rest_dislike_spontaneous':   return 'assets/twemoji/26a1.png';
 
       // socialFormats
-      case 'social_one_on_one':    return Icons.person;
-      case 'social_small_group':   return Icons.group;
-      case 'social_large_group':   return Icons.diversity_3;
+      case 'social_one_on_one':    return 'assets/twemoji/1f464.png';
+      case 'social_small_group':   return 'assets/twemoji/1f465.png';
+      case 'social_large_group':   return 'assets/twemoji/1f9d1-200d-1f91d-200d-1f9d1.png';
 
       // restTempos
-      case 'tempo_spontaneous':  return Icons.bolt;
-      case 'tempo_planned':      return Icons.event;
-      case 'tempo_flexible':     return Icons.balance;
+      case 'tempo_spontaneous':  return 'assets/twemoji/26a1.png';
+      case 'tempo_planned':      return 'assets/twemoji/1f5d3.png';
+      case 'tempo_flexible':     return 'assets/twemoji/2696.png';
 
       // meetingTimes
-      case 'time_morning':       return Icons.wb_twilight;
-      case 'time_afternoon':     return Icons.wb_sunny;
-      case 'time_evening':       return Icons.brightness_3;
-      case 'time_late_evening':  return Icons.bedtime;
+      case 'time_morning':       return 'assets/twemoji/1f305.png';
+      case 'time_afternoon':     return 'assets/twemoji/2600.png';
+      case 'time_evening':       return 'assets/twemoji/1f307.png';
+      case 'time_late_evening':  return 'assets/twemoji/1f319.png';
 
       // vibes
-      case 'vibe_calm':       return Icons.self_improvement;
-      case 'vibe_easy':       return Icons.thumb_up_alt;
-      case 'vibe_conscious':  return Icons.psychology;
-      case 'vibe_energetic':  return Icons.local_fire_department;
-      case 'vibe_mix':        return Icons.auto_awesome;
+      case 'vibe_calm':       return 'assets/twemoji/1f60c.png';
+      case 'vibe_easy':       return 'assets/twemoji/1f60e.png';
+      case 'vibe_conscious':  return 'assets/twemoji/1f9e0.png';
+      case 'vibe_energetic':  return 'assets/twemoji/1f525.png';
+      case 'vibe_mix':        return 'assets/twemoji/2728.png';
 
-      default: return Icons.label_outline;
+      default: return 'assets/twemoji/2728.png';
     }
+  }
+}
+
+class TwemojiIcon extends StatelessWidget {
+  final String assetPath;
+  final double size;
+
+  const TwemojiIcon({
+    super.key,
+    required this.assetPath,
+    this.size = 20,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      assetPath,
+      width: size,
+      height: size,
+      filterQuality: FilterQuality.medium,
+    );
   }
 }

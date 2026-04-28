@@ -24,7 +24,7 @@ class LegalAgreementScreen extends StatefulWidget {
 }
 
 class _LegalAgreementScreenState extends State<LegalAgreementScreen> {
-  static const String _kAppVersion = '1.0.0';
+  static const String _kAppVersion = '1.0.10';
 
   bool _allAccepted = false;
 
