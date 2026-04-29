@@ -68,14 +68,20 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_mode == _AuthMode.signUp) {
-        // Pre-check: если email уже занят — Supabase молча вернёт 200 OK
-        // на signUp, но письмо НЕ отправит (privacy guard). Спросим заранее
-        // и подскажем юзеру, что нужно войти / восстановить пароль.
-        final available = await _auth.checkEmailAvailable(email);
-        if (!mounted) return;
-        if (!available) {
-          setState(() => _emailTaken = true);
-          return;
+        // Pre-check (best-effort): если email уже занят — Supabase молча
+        // вернёт 200 OK на signUp, но письмо НЕ отправит (privacy guard).
+        // Спросим заранее и подскажем юзеру, что нужно войти / восстановить.
+        // Если RPC недоступен (сеть/прокси) — пропускаем пре-чек: signUp
+        // ниже сам распознает занятый email через identities=[].
+        try {
+          final available = await _auth.checkEmailAvailable(email);
+          if (!mounted) return;
+          if (!available) {
+            setState(() => _emailTaken = true);
+            return;
+          }
+        } catch (_) {
+          // best-effort: продолжаем на signUp, он отдаст канонический ответ
         }
 
         await _auth.signUp(email: email, password: password);
@@ -104,7 +110,15 @@ class _AuthScreenState extends State<AuthScreen> {
         await _proceedAfterSignIn();
       }
     } on AuthFlowException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (!mounted) return;
+      // Email уже занят — показываем тот же красивый блок, что и pre-check,
+      // с кнопками "Войти" / "Восстановить пароль".
+      if (_mode == _AuthMode.signUp &&
+          e.message == 'Этот email уже зарегистрирован') {
+        setState(() => _emailTaken = true);
+      } else {
+        setState(() => _error = e.message);
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Ошибка сервера');
     } finally {

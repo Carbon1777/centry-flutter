@@ -27,9 +27,18 @@ class AuthService {
   /// Создать аккаунт. После signUp Supabase сразу шлёт письмо с OTP-кодом
   /// (так настроен Confirm signup template).
   /// Сессия НЕ выдаётся, пока не пройден verifyOtp.
+  ///
+  /// Если email уже зарегистрирован, Supabase по соображениям приватности
+  /// возвращает 200 OK с user.identities = []. Распознаём этот случай и
+  /// бросаем человекочитаемую ошибку — иначе фронт пойдёт на OtpVerifyScreen
+  /// и юзер будет ждать письмо, которое не придёт.
   Future<void> signUp({required String email, required String password}) async {
     try {
-      await _auth.signUp(email: email.trim(), password: password);
+      final res = await _auth.signUp(email: email.trim(), password: password);
+      final identities = res.user?.identities;
+      if (identities != null && identities.isEmpty) {
+        throw AuthFlowException('Этот email уже зарегистрирован');
+      }
     } on AuthException catch (e) {
       throw AuthFlowException(_mapAuthError(e));
     }
