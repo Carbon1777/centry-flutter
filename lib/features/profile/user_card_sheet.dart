@@ -2,11 +2,132 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../data/local/user_snapshot_storage.dart';
 import '../../data/profile_photos/profile_photo_dto.dart';
 import '../../data/profile_photos/profile_photos_repository_impl.dart';
+import '../../data/reports/report_dto.dart';
 import '../../features/profile/leisure_constants.dart';
 import '../../features/profile/photo_fullscreen_viewer.dart';
+import '../../ui/common/block_user_sheet.dart';
 import '../../ui/common/center_toast.dart';
+import '../../ui/common/report_content_sheet.dart';
+
+// =======================
+// Apple Guideline 1.2: Report + Block actions для чужого профиля
+// =======================
+
+/// Показывает bottom-sheet с действиями «Пожаловаться» и «Заблокировать».
+/// Закрывает текущую карточку при успешной блокировке.
+Future<void> _showProfileActions(
+  BuildContext context, {
+  required String targetUserId,
+  String? targetNickname,
+  VoidCallback? onAfterBlocked,
+}) async {
+  final action = await showModalBottomSheet<_ProfileAction>(
+    context: context,
+    useRootNavigator: false,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => _ProfileActionSheet(targetNickname: targetNickname),
+  );
+  if (action == null || !context.mounted) return;
+
+  switch (action) {
+    case _ProfileAction.report:
+      await ReportContentSheet.show(
+        context,
+        targetType: ReportTargetType.profile,
+        targetId: targetUserId,
+        targetTypeLabel: targetNickname?.isNotEmpty == true
+            ? 'на профиль ${targetNickname!}'
+            : 'на профиль пользователя',
+      );
+      break;
+    case _ProfileAction.block:
+      final snapshot = await UserSnapshotStorage().read();
+      final myId = snapshot?.id ?? '';
+      if (myId.isEmpty) {
+        if (!context.mounted) return;
+        await showCenterToast(context,
+            message: 'Не удалось определить текущего пользователя',
+            isError: true);
+        return;
+      }
+      if (myId == targetUserId) {
+        if (!context.mounted) return;
+        await showCenterToast(context,
+            message: 'Нельзя заблокировать самого себя',
+            isError: true);
+        return;
+      }
+      if (!context.mounted) return;
+      final blocked = await BlockUserSheet.show(
+        context,
+        appUserId: myId,
+        targetUserId: targetUserId,
+        targetNickname: targetNickname,
+      );
+      if (blocked && onAfterBlocked != null) onAfterBlocked();
+      break;
+  }
+}
+
+enum _ProfileAction { report, block }
+
+class _ProfileActionSheet extends StatelessWidget {
+  final String? targetNickname;
+  const _ProfileActionSheet({this.targetNickname});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF14161A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3F4A),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.flag_outlined,
+                  color: Color(0xFFE6EAF2)),
+              title: const Text('Пожаловаться',
+                  style: TextStyle(color: Color(0xFFE6EAF2))),
+              onTap: () =>
+                  Navigator.of(context).pop(_ProfileAction.report),
+            ),
+            ListTile(
+              leading: const Icon(Icons.block,
+                  color: Color(0xFFE74C3C)),
+              title: const Text('Заблокировать пользователя',
+                  style: TextStyle(color: Color(0xFFE74C3C))),
+              onTap: () => Navigator.of(context).pop(_ProfileAction.block),
+            ),
+            const SizedBox(height: 4),
+            ListTile(
+              title: const Center(
+                child: Text('Отмена',
+                    style: TextStyle(color: Color(0xFF8B92A0))),
+              ),
+              onTap: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // =======================
 // Мини-данные профиля для списков
@@ -274,7 +395,7 @@ class _CardContent extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Avatar + nickname
+          // Avatar + nickname + меню действий (Apple 1.2)
           Row(
             children: [
               Container(
@@ -306,6 +427,21 @@ class _CardContent extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_horiz),
+                tooltip: 'Действия',
+                iconSize: 22,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _showProfileActions(
+                  context,
+                  targetUserId: targetUserId,
+                  targetNickname: card.nickname,
+                  onAfterBlocked: () {
+                    // После блокировки закрываем карточку профиля
+                    Navigator.of(context, rootNavigator: true).maybePop();
+                  },
                 ),
               ),
             ],
@@ -491,6 +627,19 @@ class _FullProfileSheet extends StatelessWidget {
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.more_horiz),
+                      tooltip: 'Действия',
+                      onPressed: () => _showProfileActions(
+                        context,
+                        targetUserId: profile.userId,
+                        targetNickname: profile.nickname,
+                        onAfterBlocked: () {
+                          // Закрываем полный профиль после блокировки
+                          Navigator.of(context).maybePop();
+                        },
                       ),
                     ),
                     IconButton(

@@ -6,8 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/private_chats/private_chat_dto.dart';
 import '../../data/private_chats/private_chats_repository_impl.dart';
+import '../../data/reports/report_dto.dart';
 import '../../features/profile/user_card_sheet.dart';
 import '../../ui/common/center_toast.dart';
+import '../../ui/common/report_content_sheet.dart';
 
 // ═══════════════════════════════════════════════════════════
 // Block (State Management)
@@ -784,6 +786,7 @@ class _PrivateChatViewState extends State<_PrivateChatView>
     final canEdit = message.isMine && !message.isTombstone;
     final canDeleteForAll = message.isMine && !message.isTombstone;
     final canCopy = !message.isTombstone;
+    final canReport = !message.isMine && !message.isTombstone;
 
     showModalBottomSheet<void>(
       context: context,
@@ -806,6 +809,17 @@ class _PrivateChatViewState extends State<_PrivateChatView>
                 Clipboard.setData(ClipboardData(text: message.text));
                 Navigator.of(context).pop();
                 showCenterToast(context, message: 'Скопировано');
+              }
+            : null,
+        onReport: canReport
+            ? () {
+                Navigator.of(context).pop();
+                ReportContentSheet.show(
+                  context,
+                  targetType: ReportTargetType.privateChatMessage,
+                  targetId: message.id,
+                  targetTypeLabel: 'на приватное сообщение',
+                );
               }
             : null,
         onDeleteForMe: () async {
@@ -1744,6 +1758,7 @@ class _MessageActionSheet extends StatelessWidget {
   final VoidCallback? onReply;
   final VoidCallback? onEdit;
   final VoidCallback? onCopy;
+  final VoidCallback? onReport;
   final Future<void> Function() onDeleteForMe;
   final Future<void> Function()? onDeleteForAll;
   final VoidCallback? onSelectMultiple;
@@ -1753,6 +1768,7 @@ class _MessageActionSheet extends StatelessWidget {
     this.onReply,
     this.onEdit,
     this.onCopy,
+    this.onReport,
     this.onDeleteForAll,
     this.onSelectMultiple,
   });
@@ -1818,6 +1834,16 @@ class _MessageActionSheet extends StatelessWidget {
                 label: 'Скопировать текст',
                 labelColor: Colors.white.withValues(alpha: 0.90),
                 onTap: onCopy!,
+              ),
+              divider(),
+            ],
+            if (onReport != null) ...[
+              _ActionTile(
+                icon: Icons.flag_outlined,
+                iconColor: const Color(0xFFE74C3C),
+                label: 'Пожаловаться',
+                labelColor: const Color(0xFFE74C3C),
+                onTap: onReport!,
               ),
               divider(),
             ],

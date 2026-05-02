@@ -9,7 +9,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/profile_photos/profile_photo_dto.dart';
 import '../../data/profile_photos/profile_photos_repository_impl.dart';
+import '../../data/reports/report_dto.dart';
 import '../../ui/common/center_toast.dart';
+import '../../ui/common/report_content_sheet.dart';
 import 'photo_crop_screen.dart';
 
 /// Fullscreen просмотр фото альбома.
@@ -215,6 +217,19 @@ class _PhotoFullscreenViewerState extends State<PhotoFullscreenViewer> {
     }
   }
 
+  // ── Apple Guideline 1.2: Жалоба на чужое фото ──
+
+  Future<void> _reportCurrentPhoto() async {
+    if (_photos.isEmpty) return;
+    final photo = _photos[_currentIndex];
+    await ReportContentSheet.show(
+      context,
+      targetType: ReportTargetType.photo,
+      targetId: photo.id,
+      targetTypeLabel: 'на фото',
+    );
+  }
+
   static String _generateUuid() {
     final rng = Random.secure();
     final b = List<int>.generate(16, (_) => rng.nextInt(256));
@@ -279,7 +294,14 @@ class _PhotoFullscreenViewerState extends State<PhotoFullscreenViewer> {
                           onPressed: _replaceCurrentPhoto,
                         ),
                       ],
-                    ),
+                    )
+            else
+              // Apple Guideline 1.2: Report для чужих фото
+              IconButton(
+                icon: const Icon(Icons.flag_outlined),
+                tooltip: 'Пожаловаться на фото',
+                onPressed: _reportCurrentPhoto,
+              ),
           ],
         ),
         body: Stack(

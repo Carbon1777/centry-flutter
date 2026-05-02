@@ -7,10 +7,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/plans/plan_details_dto.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/places/places_repository_impl.dart';
+import '../../data/reports/report_dto.dart';
 import '../../features/places/add_place/add_place_dialog.dart';
 import '../../features/places/details/place_details_dialog.dart';
 import '../../features/places/my_places_screen.dart';
 import '../common/center_toast.dart';
+import '../common/report_content_sheet.dart';
 import '../places/places_screen.dart';
 import 'plan_members_modal.dart';
 import 'widgets/add_place_source_modal.dart';
@@ -1305,6 +1307,18 @@ class _PlanDetailsScreenState extends State<PlanDetailsScreen>
       appBar: AppBar(
         title: const Text('Детали плана'),
         actions: [
+          // Apple Guideline 1.2: Report для чужих планов (если юзер не owner)
+          if (!_loading && _details != null && !canDeletePlan)
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: 'Пожаловаться на план',
+              onPressed: () => ReportContentSheet.show(
+                context,
+                targetType: ReportTargetType.plan,
+                targetId: widget.planId,
+                targetTypeLabel: 'на план',
+              ),
+            ),
           if (!_loading && _details != null && canUpdateVisibility)
             IconButton(
               onPressed: _visibilityLoading ? null : _toggleVisibility,

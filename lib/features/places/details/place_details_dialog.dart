@@ -7,11 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/feed/feed_repository.dart';
 import '../../../data/feed/plan_shell_dto.dart';
+import '../../../data/reports/report_dto.dart';
 import '../../profile/user_card_sheet.dart';
 import '../../../data/places/place_dto.dart';
 import '../../../ui/common/category_placeholder.dart';
 import '../../../data/places/places_repository.dart';
 import '../../../ui/common/center_toast.dart';
+import '../../../ui/common/report_content_sheet.dart';
 import '../../../ui/places/places_screen.dart';
 import '../../profile/profile_email_modal.dart';
 import 'add_place_to_plan_modal.dart';
@@ -1580,6 +1582,24 @@ class _PlanShellTile extends StatelessWidget {
                   ],
                 ),
               ),
+              // Apple Guideline 1.2: Report для видимого плана из ленты
+              if (!isHidden)
+                IconButton(
+                  icon: const Icon(Icons.flag_outlined, size: 18),
+                  tooltip: 'Пожаловаться на план',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                  onPressed: () => ReportContentSheet.show(
+                    context,
+                    targetType: ReportTargetType.plan,
+                    targetId: shell.planId,
+                    targetTypeLabel: 'на план «${shell.title ?? 'Без названия'}»',
+                  ),
+                ),
               // Стрелка — только для видимых
               if (!isHidden) ...[
                 const SizedBox(width: 8),

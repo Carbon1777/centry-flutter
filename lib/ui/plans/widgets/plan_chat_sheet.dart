@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../../data/plans/plan_details_dto.dart';
+import '../../../data/reports/report_dto.dart';
+import '../../common/report_content_sheet.dart';
 import 'plan_chat_message_bubble.dart';
 
 class PlanChatSheet extends StatefulWidget {
@@ -816,6 +818,8 @@ class _PlanChatSheetState extends State<PlanChatSheet>
         message.isMine &&
         !message.isTombstone;
 
+    final canReport = !message.isMine && !message.isTombstone;
+
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -837,6 +841,17 @@ class _PlanChatSheetState extends State<PlanChatSheet>
               ? () {
                   Clipboard.setData(ClipboardData(text: message.text));
                   Navigator.of(context).pop();
+                }
+              : null,
+          onReport: canReport
+              ? () {
+                  Navigator.of(context).pop();
+                  ReportContentSheet.show(
+                    context,
+                    targetType: ReportTargetType.planChatMessage,
+                    targetId: message.id,
+                    targetTypeLabel: 'на сообщение в чате плана',
+                  );
                 }
               : null,
           onDeleteForMe: () async {
@@ -1478,6 +1493,7 @@ class _MessageActionSheet extends StatelessWidget {
   final VoidCallback? onReply;
   final VoidCallback? onEdit;
   final VoidCallback? onCopy;
+  final VoidCallback? onReport;
   final Future<void> Function() onDeleteForMe;
   final Future<void> Function()? onDeleteForAll;
   final VoidCallback? onSelectMultiple;
@@ -1487,6 +1503,7 @@ class _MessageActionSheet extends StatelessWidget {
     this.onReply,
     this.onEdit,
     this.onCopy,
+    this.onReport,
     this.onDeleteForAll,
     this.onSelectMultiple,
   });
@@ -1566,6 +1583,16 @@ class _MessageActionSheet extends StatelessWidget {
                 label: 'Скопировать текст',
                 labelColor: Colors.white.withValues(alpha: 0.90),
                 onTap: onCopy!,
+              ),
+              divider(),
+            ],
+            if (onReport != null) ...[
+              _ActionTile(
+                icon: Icons.flag_outlined,
+                iconColor: const Color(0xFFE74C3C),
+                label: 'Пожаловаться',
+                labelColor: const Color(0xFFE74C3C),
+                onTap: onReport!,
               ),
               divider(),
             ],
