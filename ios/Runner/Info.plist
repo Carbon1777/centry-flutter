@@ -42,9 +42,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Нужно для съёмки аватара</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Нужно для рекомендаций мест поблизости</string>
+	<string>Чтобы показывать на карте заведения и события рядом с вами — например, бары и рестораны поблизости. Без доступа карта откроется по центру выбранного города.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Нужно для рекомендаций мест поблизости</string>
+	<string>Чтобы показывать на карте заведения и события рядом с вами — например, бары и рестораны поблизости. Без доступа карта откроется по центру выбранного города.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Нужно для записи видео</string>
 	<key>NSPhotoLibraryUsageDescription</key>

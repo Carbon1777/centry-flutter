@@ -1,10 +1,7 @@
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../onboarding/nickname_screen.dart';
-import '../onboarding/permissions_screen.dart';
 import 'auth_service.dart';
 import 'forgot_password_screen.dart';
 import 'onboarding_state.dart';
@@ -27,7 +24,14 @@ class _AuthScreenState extends State<AuthScreen> {
 
   late final AuthService _auth;
 
-  _AuthMode _mode = _AuthMode.signUp;
+  // Default — Sign In, не Sign Up. Большинство возвращающихся юзеров
+  // нажимают "Войти", а новые юзеры переключатся на регистрацию через
+  // кнопку "Новый пользователь? Зарегистрироваться" внизу экрана.
+  // Apple Review (8-й цикл, 2.1(a) "Unable to bypass a code screen"):
+  // ревьюер пытался регистрировать новый аккаунт и попадал на OTP-экран,
+  // несмотря на demo-credentials в Notes for Reviewer. Default Sign In
+  // убирает саму возможность ошибиться.
+  _AuthMode _mode = _AuthMode.signIn;
   bool _busy = false;
   String? _error;
   bool _obscure = true;
@@ -175,25 +179,11 @@ class _AuthScreenState extends State<AuthScreen> {
             'state': 'USER',
           };
 
-          // Если на устройстве не выданы геолокация или уведомления —
-          // показываем PermissionsScreen перед попаданием в Home.
-          // Permission status — per-device-per-app, не per-account, поэтому
-          // signIn на новом устройстве должен пройти через permissions.
-          final needsPermissions = await _hasMissingPermissions();
           if (!mounted) return;
 
-          if (needsPermissions) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => PermissionsScreen(
-                  bootstrapResult: bootstrapResult,
-                  onDone: widget.onCompleted,
-                ),
-              ),
-            );
-            return;
-          }
-
+          // PermissionsScreen уже показан перед AuthScreen (после Agreement).
+          // Apple Guideline 5.1.1(iv): нельзя показывать кастомный экран с
+          // кнопкой перед системным диалогом permission. Перенесли в pre-auth.
           widget.onCompleted(bootstrapResult);
           // BootstrapGate.build уже покажет HomeScreen внизу. Закрываем
           // все pushed-экраны (AuthScreen и предки), иначе пользователь
@@ -214,26 +204,6 @@ class _AuthScreenState extends State<AuthScreen> {
         builder: (_) => NicknameScreen(onBootstrapped: widget.onCompleted),
       ),
     );
-  }
-
-  Future<bool> _hasMissingPermissions() async {
-    try {
-      final geo = await Geolocator.checkPermission();
-      final geoGranted = geo == LocationPermission.always ||
-          geo == LocationPermission.whileInUse;
-
-      final fcm =
-          await FirebaseMessaging.instance.getNotificationSettings();
-      final fcmGranted =
-          fcm.authorizationStatus == AuthorizationStatus.authorized ||
-              fcm.authorizationStatus == AuthorizationStatus.provisional;
-
-      return !geoGranted || !fcmGranted;
-    } catch (_) {
-      // если проверка упала — лучше показать permissions экран,
-      // чем пропустить и потом не получить разрешения.
-      return true;
-    }
   }
 
   void _toggleMode() {

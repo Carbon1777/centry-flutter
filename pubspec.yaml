@@ -2,7 +2,7 @@ name: centry
 description: "Centry mobile application"
 publish_to: 'none'
 
-version: 1.0.11+18
+version: 1.0.11+20
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

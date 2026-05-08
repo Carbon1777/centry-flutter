@@ -270,7 +270,16 @@ class PushNotifications {
     _initedUi = true;
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
-    const iosInit = DarwinInitializationSettings();
+    // requestAlert/Badge/SoundPermission=false: разрешение на уведомления
+    // запрашивается ТОЛЬКО на PermissionsScreen после Agreement (через
+    // permission_handler). Без этого flutter_local_notifications сам
+    // показывал системный диалог при инициализации — диалог всплывал в
+    // случайный момент онбординга, не на нашем экране (Apple 5.1.1(iv)).
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
 
     const settings = InitializationSettings(
       android: androidInit,
@@ -510,7 +519,16 @@ class PushNotifications {
     _initedBg = true;
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
-    const iosInit = DarwinInitializationSettings();
+    // requestAlert/Badge/SoundPermission=false: разрешение на уведомления
+    // запрашивается ТОЛЬКО на PermissionsScreen после Agreement (через
+    // permission_handler). Без этого flutter_local_notifications сам
+    // показывал системный диалог при инициализации — диалог всплывал в
+    // случайный момент онбординга, не на нашем экране (Apple 5.1.1(iv)).
+    const iosInit = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
 
     const settings = InitializationSettings(
       android: androidInit,

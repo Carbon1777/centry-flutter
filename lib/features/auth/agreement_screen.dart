@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../data/legal/legal_document_dto.dart';
 import '../../data/legal/legal_repository_impl.dart';
 import '../legal/legal_document_screen.dart';
+import '../onboarding/permissions_screen.dart';
 import 'auth_screen.dart';
 import 'onboarding_state.dart';
 
@@ -65,9 +66,22 @@ class _AgreementScreenState extends State<AgreementScreen> {
     if (!_accepted || _docsLoading) return;
     OnboardingFlowState.instance.acceptedLegalDocuments = _documents;
 
+    // Сначала PermissionsScreen (system dialogs гео + уведомления),
+    // затем AuthScreen. Apple Guideline 5.1.1(iv): ни одного exit-button
+    // на экране перед системным диалогом.
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AuthScreen(onCompleted: widget.onCompleted),
+        builder: (_) => PermissionsScreen(
+          onContinue: () {
+            if (!mounted) return;
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) =>
+                    AuthScreen(onCompleted: widget.onCompleted),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

@@ -2511,11 +2511,18 @@ class _BootstrapGateState extends State<BootstrapGate>
   }
 
   String? _extractPlanInviteToken(Uri uri) {
+    // Канонические формы:
+    //   HTTPS App Link:  https://www.centry.website/plan-invite?token=XXX  → host=www.centry.website, path=/plan-invite
+    //   Custom scheme:   centry://plan-invite?token=XXX                    → host=plan-invite,         path=""
+    // Без проверки host custom-scheme-форма теряет токен и юзер не попадает в план.
     final path = uri.path.toLowerCase();
+    final host = uri.host.toLowerCase();
     final qp = uri.queryParameters;
 
-    final looksLikePlanInvitePath =
-        path.contains('plan-invite') || path.contains('plan_invite');
+    final looksLikePlanInvitePath = path.contains('plan-invite') ||
+        path.contains('plan_invite') ||
+        host == 'plan-invite' ||
+        host == 'plan_invite';
 
     final tokenFromDedicatedParam =
         qp['plan_invite_token'] ?? qp['planInviteToken'] ?? qp['invite_token'];
@@ -2681,12 +2688,20 @@ class _BootstrapGateState extends State<BootstrapGate>
     _registeringDeviceToken = true;
 
     try {
+      // Permission запрашивается ТОЛЬКО на PermissionsScreen после Agreement.
+      // ВАЖНО: на iOS FirebaseMessaging.getToken() неявно запрашивает push-
+      // permission, если он ещё notDetermined, и системный диалог всплывает
+      // не на нашем экране, а позже (например, на Nickname). Поэтому сначала
+      // проверяем статус и пропускаем регистрацию, если разрешение не выдано.
       if (platform == 'ios') {
-        await FirebaseMessaging.instance.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+        final settings =
+            await FirebaseMessaging.instance.getNotificationSettings();
+        final granted = settings.authorizationStatus ==
+                AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional;
+        if (!granted) {
+          return;
+        }
       }
 
       final token = await FirebaseMessaging.instance.getToken();

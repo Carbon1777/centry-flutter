@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/legal/legal_repository_impl.dart';
 import '../auth/onboarding_state.dart';
-import 'permissions_screen.dart';
 
 class NicknameScreen extends StatefulWidget {
   final void Function(Map<String, dynamic> result) onBootstrapped;
@@ -107,14 +106,11 @@ class _NicknameScreenState extends State<NicknameScreen> {
 
       if (!mounted) return;
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PermissionsScreen(
-            bootstrapResult: payload,
-            onDone: widget.onBootstrapped,
-          ),
-        ),
-      );
+      // PermissionsScreen уже показан перед AuthScreen (после Agreement).
+      // Apple Guideline 5.1.1(iv): нельзя показывать кастомный экран с
+      // кнопкой перед системным диалогом permission. Перенесли в pre-auth.
+      widget.onBootstrapped(payload);
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } on PostgrestException catch (e) {
       if (e.code == 'P0001') {
         setState(() {

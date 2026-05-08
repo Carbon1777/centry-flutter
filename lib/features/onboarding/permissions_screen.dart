@@ -1,23 +1,21 @@
-import 'dart:async';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-enum _PermissionStep {
-  intro,
-  location,
-  notifications,
-}
-
+/// Запрос системных разрешений (геолокация + уведомления) ОДНИМ экраном.
+///
+/// Экран показывается сразу после AgreementScreen, до AuthScreen.
+/// Per-device, не per-account: запрашивается один раз на устройстве.
+///
+/// При нажатии "Продолжить" подряд показываются ДВА системных диалога iOS/Android:
+/// сначала location, затем notifications. Никакого exit-button нет —
+/// пользователь не может пропустить запрос (Apple Guideline 5.1.1(iv)).
 class PermissionsScreen extends StatefulWidget {
-  final Map<String, dynamic> bootstrapResult;
-  final void Function(Map<String, dynamic> result) onDone;
+  final VoidCallback onContinue;
 
   const PermissionsScreen({
     super.key,
-    required this.bootstrapResult,
-    required this.onDone,
+    required this.onContinue,
   });
 
   @override
@@ -26,191 +24,154 @@ class PermissionsScreen extends StatefulWidget {
 
 class _PermissionsScreenState extends State<PermissionsScreen> {
   bool _loading = false;
-  _PermissionStep _step = _PermissionStep.intro;
 
-  Timer? _introTimer;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // В новом флоу PermissionsScreen всегда показывается после Nickname
-    // (одинаково для signUp+OTP, signIn и Skip). Старый skip-by-session
-    // больше не актуален.
-    _introTimer = Timer(const Duration(milliseconds: 4500), () {
-      if (!mounted) return;
-      setState(() {
-        _step = _PermissionStep.location;
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _introTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _requestLocation() async {
+  Future<void> _onContinue() async {
     if (_loading) return;
     setState(() => _loading = true);
 
-    // Geolocator корректно удерживает CLLocationManager на iOS —
-    // системный диалог гарантированно показывается.
-    await Geolocator.requestPermission();
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-    _goNextStep();
-  }
-
-  Future<void> _requestNotifications() async {
-    if (_loading) return;
-    setState(() => _loading = true);
-
-    // FirebaseMessaging использует UNUserNotificationCenter напрямую —
-    // надёжнее permission_handler на iOS.
-    await FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-    _goNextStep();
-  }
-
-  void _goNextStep() {
-    if (!mounted) return;
-
-    setState(() {
-      if (_step == _PermissionStep.location) {
-        _step = _PermissionStep.notifications;
-      } else {
-        _next();
-      }
-    });
-  }
-
-  void _next() {
-    // PermissionsScreen — последний экран онбординга в новом флоу
-    // (Agreement → Auth → Otp → Nickname → Permissions). Передаём
-    // результат наверх и схлопываем стек, чтобы BootstrapGate перерисовался
-    // и показал Home/ActivityFeed.
-    widget.onDone(widget.bootstrapResult);
-    if (mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
+    // 1) Location — системный диалог iOS/Android.
+    // Если permission уже определён, requestPermission вернёт текущий статус
+    // мгновенно и без диалога — это ок, идём дальше.
+    try {
+      await Geolocator.requestPermission();
+    } catch (_) {
+      // Игнорируем — отсутствие разрешения не блокирует онбординг,
+      // приложение работает по выбранному в аккаунте городу.
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-          child: Align(
-            alignment: const Alignment(0, -0.25),
-            child: _buildContent(context),
-          ),
-        ),
-      ),
-    );
-  }
+    if (!mounted) return;
 
-  Widget _buildContent(BuildContext context) {
-    switch (_step) {
-      case _PermissionStep.intro:
-        return const _IntroText();
-
-      case _PermissionStep.location:
-        return _PermissionCard(
-          title: 'Геопозиция',
-          description:
-              'Ваша локация нужна, чтобы подбирать события, места и интересные активности рядом с вами.',
-          actionLabel: 'Продолжить',
-          loading: _loading,
-          onAction: _requestLocation,
-        );
-
-      case _PermissionStep.notifications:
-        return _PermissionCard(
-          title: 'Уведомления',
-          description:
-              'Разрешение на уведомления нужно, чтобы вовремя сообщать об интересных событиях, ивентах, приглашениях и активности ваших друзей.',
-          actionLabel: 'Продолжить',
-          loading: _loading,
-          onAction: _requestNotifications,
-        );
+    // 2) Notifications — FirebaseMessaging.requestPermission на iOS вызывает
+    // родной UNUserNotificationCenter.requestAuthorization. Маленькая пауза,
+    // чтобы предыдущий системный диалог гео успел полностью закрыться,
+    // иначе iOS может проигнорировать второй запрос.
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } catch (_) {
+      // Пуши не критичны для запуска, отказ не блокирует онбординг.
     }
+
+    if (!mounted) return;
+
+    setState(() => _loading = false);
+    widget.onContinue();
   }
-
-}
-
-class _IntroText extends StatelessWidget {
-  const _IntroText();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Text(
-      'Для полноценной работы всех функций приложения нам необходимы ваши разрешения',
-      textAlign: TextAlign.center,
-      style: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w500,
-        height: 1.4,
-      ),
-    );
-  }
-}
-
-class _PermissionCard extends StatelessWidget {
-  final String title;
-  final String description;
-  final String actionLabel;
-  final bool loading;
-  final VoidCallback onAction;
-
-  const _PermissionCard({
-    required this.title,
-    required this.description,
-    required this.actionLabel,
-    required this.loading,
-    required this.onAction,
-  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 24),
+              Text(
+                'Для полноценной работы приложения нам нужны два разрешения',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 32),
+              _PermissionRow(
+                icon: Icons.location_on_outlined,
+                title: 'Геопозиция',
+                description:
+                    'Чтобы показывать на карте заведения и события рядом с вами — например, бары и рестораны поблизости. Без доступа карта откроется по центру выбранного города.',
+                colors: colors,
+                theme: theme,
+              ),
+              const SizedBox(height: 24),
+              _PermissionRow(
+                icon: Icons.notifications_outlined,
+                title: 'Уведомления',
+                description:
+                    'Чтобы вовремя сообщать о приглашениях друзей, новых сообщениях в чатах и событиях, на которые вы записаны.',
+                colors: colors,
+                theme: theme,
+              ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _onContinue,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Продолжить'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PermissionRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final ColorScheme colors;
+  final ThemeData theme;
+
+  const _PermissionRow({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.colors,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w600,
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: colors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
           ),
+          child: Icon(icon, color: colors.primary, size: 22),
         ),
-        const SizedBox(height: 12),
-        Text(
-          description,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: colors.onSurface.withValues(alpha: 0.65),
-            height: 1.45,
-          ),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: loading ? null : onAction,
-            child: Text(actionLabel),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurface.withValues(alpha: 0.7),
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ),
       ],
