@@ -106,6 +106,15 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   bool _handlingPendingPlanInvite = false;
 
+  /// Plan-invite токены, уже обработанные в текущей сессии (успешно или с
+  /// «безобидной» ошибкой вроде «already used»). Защищает от повторного
+  /// `use_plan_invite_v1` при повторной доставке того же deep link (iOS на
+  /// cold start часто отдаёт ссылку и через getInitialLink(), и через stream)
+  /// или при повторном чтении clipboard-страховки — иначе сервер вернёт
+  /// «Invite already used» и пользователь увидит лишний красный тост, хотя он
+  /// уже в плане.
+  final Set<String> _consumedPlanInviteTokens = <String>{};
+
   // If server successfully applied invite, it returns plan_id.
   // We forward it to HomeScreen to immediately open PlanDetails.
   String? _pendingOpenPlanId;
@@ -2479,6 +2488,7 @@ class _BootstrapGateState extends State<BootstrapGate>
 
       final token = _extractPlanInviteToken(uri);
       if (token == null || token.isEmpty) return;
+      if (_consumedPlanInviteTokens.contains(token)) return;
 
       await _storage.writePendingPlanInviteToken(token);
       unawaited(_tryConsumePendingPlanInvite());
@@ -2505,6 +2515,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     // fallback-страницу centry.website/auth-callback и в приложение не доходят.
     final token = _extractPlanInviteToken(uri);
     if (token == null || token.isEmpty) return;
+    if (_consumedPlanInviteTokens.contains(token)) return;
 
     await _storage.writePendingPlanInviteToken(token);
     unawaited(_tryConsumePendingPlanInvite());
@@ -2545,39 +2556,104 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (userId == null || userId.isEmpty) return;
 
     _handlingPendingPlanInvite = true;
+    String? token;
     try {
-      final token = await _storage.readPendingPlanInviteToken();
+      token = await _storage.readPendingPlanInviteToken();
       if (token == null || token.isEmpty) return;
+
+      // Этот токен уже обрабатывали в текущей сессии — повторный RPC вернул бы
+      // «Invite already used». Тихо чистим хвосты и выходим.
+      if (_consumedPlanInviteTokens.contains(token)) {
+        await _storage.clearPendingPlanInviteToken();
+        await _clearClipboardIfHoldsInviteToken(token);
+        return;
+      }
 
       final res = await _supabase.rpc('use_plan_invite_v1', params: {
         'p_app_user_id': userId,
         'p_token': token,
       });
 
-      final planId = res?.toString();
-      if (planId == null || planId.isEmpty) {
-        await _storage.clearPendingPlanInviteToken();
-        return;
-      }
-
+      // Помечаем токен обработанным сразу — до дальнейших await, — чтобы
+      // повторная доставка того же deep link / clipboard не запустила RPC снова.
+      _consumedPlanInviteTokens.add(token);
       await _storage.clearPendingPlanInviteToken();
+      await _clearClipboardIfHoldsInviteToken(token);
+
+      final planId = res?.toString();
+      if (planId == null || planId.isEmpty) return;
 
       _queuePendingPlanOpen(planId);
 
       await _restore();
     } on PostgrestException catch (e) {
+      // Сюда попадаем только при ПЕРВОЙ обработке токена: повторные доставки
+      // того же deep link / clipboard отсекаются дедупом ещё до RPC, поэтому
+      // «ложного» тоста «уже использовано» (когда пользователь на самом деле
+      // только что присоединился) тут уже не будет. Значит ошибка реальная —
+      // ссылка использована/устарела/недействительна — и её нужно показать,
+      // но человеческим русским текстом, а не сырым ответом сервера.
+      if (token != null && token.isNotEmpty) {
+        _consumedPlanInviteTokens.add(token);
+      }
       await _storage.clearPendingPlanInviteToken();
+      await _clearClipboardIfHoldsInviteToken(token);
 
       if (!mounted) return;
-      unawaited(showCenterToast(context, message: e.message, isError: true));
+      unawaited(showCenterToast(context,
+          message: _inviteErrorMessageRu(e.message), isError: true));
     } catch (e) {
       await _storage.clearPendingPlanInviteToken();
 
       if (!mounted) return;
       unawaited(showCenterToast(context,
-          message: 'Ошибка инвайта: $e', isError: true));
+          message: 'Не удалось применить приглашение', isError: true));
     } finally {
       _handlingPendingPlanInvite = false;
+    }
+  }
+
+  /// Переводит ответ сервера об ошибке plan-invite в понятный русский текст
+  /// для тоста. Сырые сообщения RPC англоязычные — пользователю их показывать
+  /// нельзя.
+  String _inviteErrorMessageRu(String serverMessage) {
+    final m = serverMessage.toLowerCase();
+    if (m.contains('already a member') || m.contains('already member')) {
+      return 'Вы уже участник этого плана';
+    }
+    if (m.contains('already used') || m.contains('already accepted')) {
+      return 'Это приглашение уже использовано';
+    }
+    if (m.contains('expired')) {
+      return 'Срок действия приглашения истёк';
+    }
+    if (m.contains('not found') ||
+        m.contains('revoked') ||
+        m.contains('invalid')) {
+      return 'Приглашение недействительно';
+    }
+    if (m.contains('full') || m.contains('limit')) {
+      return 'В плане больше нет свободных мест';
+    }
+    return 'Не удалось применить приглашение';
+  }
+
+  /// Если в буфере обмена лежит именно наш invite-URL с этим токеном —
+  /// очищаем его, чтобы deferred-fallback не подхватил тот же токен при
+  /// следующем старте приложения. Чужое содержимое буфера не трогаем.
+  Future<void> _clearClipboardIfHoldsInviteToken(String? token) async {
+    if (token == null || token.isEmpty) return;
+    try {
+      final data = await Clipboard.getData('text/plain');
+      final text = data?.text?.trim() ?? '';
+      if (text.isEmpty) return;
+      final uri = Uri.tryParse(text);
+      if (uri == null) return;
+      if (_extractPlanInviteToken(uri) == token) {
+        await Clipboard.setData(const ClipboardData(text: ''));
+      }
+    } catch (_) {
+      // Доступ к буферу может быть запрещён — не критично.
     }
   }
 
