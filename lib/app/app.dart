@@ -2474,24 +2474,40 @@ class _BootstrapGateState extends State<BootstrapGate>
   /// installation from the store (no real deep link is available).
   Future<void> _tryReadClipboardInviteToken() async {
     try {
-      // Skip if we already have a pending token in storage.
-      final existing = await _storage.readPendingPlanInviteToken();
-      if (existing != null && existing.isNotEmpty) return;
+      // Если оба slot'а уже заполнены — clipboard читать незачем.
+      final existingPlan = await _storage.readPendingPlanInviteToken();
+      final existingRef = await _storage.readPendingReferralCode();
+      final havePlan = existingPlan != null && existingPlan.isNotEmpty;
+      final haveRef = existingRef != null && existingRef.isNotEmpty;
+      if (havePlan && haveRef) return;
 
       final data = await Clipboard.getData('text/plain');
       final text = data?.text?.trim() ?? '';
       if (text.isEmpty) return;
 
-      // Only accept URLs pointing to our invite page.
+      // Only accept URLs pointing to our invite/referral pages.
       final uri = Uri.tryParse(text);
       if (uri == null) return;
 
-      final token = _extractPlanInviteToken(uri);
-      if (token == null || token.isEmpty) return;
-      if (_consumedPlanInviteTokens.contains(token)) return;
+      // Plan-invite ветка
+      if (!havePlan) {
+        final token = _extractPlanInviteToken(uri);
+        if (token != null &&
+            token.isNotEmpty &&
+            !_consumedPlanInviteTokens.contains(token)) {
+          await _storage.writePendingPlanInviteToken(token);
+          unawaited(_tryConsumePendingPlanInvite());
+        }
+      }
 
-      await _storage.writePendingPlanInviteToken(token);
-      unawaited(_tryConsumePendingPlanInvite());
+      // Referral-code ветка (TZ §5.1, deferred fallback)
+      if (!haveRef) {
+        final refCode = _extractReferralCode(uri);
+        if (refCode != null && refCode.isNotEmpty) {
+          await _storage.writePendingReferralCode(refCode);
+          unawaited(_tryApplyPendingReferralCode());
+        }
+      }
     } catch (_) {
       // Clipboard access may be denied — not critical.
     }
@@ -2513,12 +2529,24 @@ class _BootstrapGateState extends State<BootstrapGate>
     // Magic link auth-callback больше не поддерживается клиентом
     // (миграция на email+password+OTP). Старые ссылки из email падают на
     // fallback-страницу centry.website/auth-callback и в приложение не доходят.
-    final token = _extractPlanInviteToken(uri);
-    if (token == null || token.isEmpty) return;
-    if (_consumedPlanInviteTokens.contains(token)) return;
 
-    await _storage.writePendingPlanInviteToken(token);
-    unawaited(_tryConsumePendingPlanInvite());
+    // 1) Plan-invite ветка (legacy, не трогаем семантику).
+    final token = _extractPlanInviteToken(uri);
+    if (token != null &&
+        token.isNotEmpty &&
+        !_consumedPlanInviteTokens.contains(token)) {
+      await _storage.writePendingPlanInviteToken(token);
+      unawaited(_tryConsumePendingPlanInvite());
+    }
+
+    // 2) Referral-code ветка (TZ_referral_program.md §5.1). Независима от
+    //    plan-invite: deep link может нести и то, и другое, и каждый ключ
+    //    кладётся в свой slot в storage.
+    final refCode = _extractReferralCode(uri);
+    if (refCode != null && refCode.isNotEmpty) {
+      await _storage.writePendingReferralCode(refCode);
+      unawaited(_tryApplyPendingReferralCode());
+    }
   }
 
   String? _extractPlanInviteToken(Uri uri) {
@@ -2545,6 +2573,39 @@ class _BootstrapGateState extends State<BootstrapGate>
     if (tokenFromDedicatedParam != null && tokenFromDedicatedParam.isNotEmpty) {
       return tokenFromDedicatedParam;
     }
+
+    return null;
+  }
+
+  /// Извлекает реф-код из URL. См. TZ_referral_program.md §5.1.
+  /// Канонические формы:
+  ///   HTTPS App Link:  https://www.centry.website/r?ref=XXX → host=www.centry.website, path=/r
+  ///   Custom scheme:   centry://r?ref=XXX                    → host=r,                 path=""
+  ///   Fallback:        ?ref=XXX на любом нашем path (centry.website / centry://)
+  /// Сервер сам делает upper(trim(code)) — клиент только подчищает whitespace.
+  String? _extractReferralCode(Uri uri) {
+    final raw = uri.queryParameters['ref'];
+    if (raw == null) return null;
+    final code = raw.trim();
+    if (code.isEmpty) return null;
+
+    final path = uri.path.toLowerCase();
+    final host = uri.host.toLowerCase();
+    final scheme = uri.scheme.toLowerCase();
+
+    final looksLikeReferralPath = path == '/r' ||
+        path.startsWith('/r/') ||
+        path.contains('/r/') ||
+        host == 'r';
+    if (looksLikeReferralPath) return code;
+
+    // Fallback: ?ref=... на любом нашем path (centry.website или centry://)
+    final isCentryHost = host == 'www.centry.website' ||
+        host == 'centry.website' ||
+        host == 'plan-invite' ||
+        host == 'plan_invite';
+    final isCentryScheme = scheme == 'centry';
+    if (isCentryHost || isCentryScheme) return code;
 
     return null;
   }
@@ -2638,6 +2699,32 @@ class _BootstrapGateState extends State<BootstrapGate>
     return 'Не удалось применить приглашение';
   }
 
+  /// Применяет pending реф-код после успешной авторизации. См. TZ §5.2.
+  /// Дедупликация и защита от self-invite / перепривязки — на сервере
+  /// (idempotency_key в bonus_grant_if_absent + проверки в register_referral_v1).
+  /// Невалидный код сервер возвращает void без ошибки — поэтому исключение
+  /// тут означает только сетевую/RPC ошибку: в этом случае ref-код в storage
+  /// сохраняется и попытка повторится на следующем post-identity flow.
+  Future<void> _tryApplyPendingReferralCode() async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+
+    String? code;
+    try {
+      code = await _storage.readPendingReferralCode();
+      if (code == null || code.isEmpty) return;
+
+      await _supabase.rpc(
+        'register_referral_v1',
+        params: {'p_ref_code': code},
+      );
+      await _storage.clearPendingReferralCode();
+    } catch (_) {
+      // Сетевая/транспортная ошибка — оставляем код в storage,
+      // повторим на следующем _runPostIdentityFlowsAsync.
+    }
+  }
+
   /// Если в буфере обмена лежит именно наш invite-URL с этим токеном —
   /// очищаем его, чтобы deferred-fallback не подхватил тот же токен при
   /// следующем старте приложения. Чужое содержимое буфера не трогаем.
@@ -2712,6 +2799,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       // After identity becomes available (AUTH/GUEST/onboarding), kick off pending UI-only flows.
       await _ensureDeviceTokenRegistered();
       await _tryConsumePendingPlanInvite();
+      await _tryApplyPendingReferralCode();
       _schedulePendingPlanOpenIfReady();
     } finally {
       _postIdentityFlowsRunning = false;

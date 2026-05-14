@@ -37,6 +37,7 @@ class UserSnapshotStorage {
 
   // Pending deep links (foundation for invites; later deferred provider will write here too)
   static const _pendingPlanInviteTokenKey = 'pending_plan_invite_token';
+  static const _pendingReferralCodeKey = 'pending_referral_code';
 
   final _storage = const FlutterSecureStorage();
 
@@ -77,5 +78,31 @@ class UserSnapshotStorage {
 
   Future<void> clearPendingPlanInviteToken() async {
     await _storage.delete(key: _pendingPlanInviteTokenKey);
+  }
+
+  // ===== Pending Referral Code =====
+  //
+  // Постоянная реф-ссылка юзера (см. TZ_referral_program.md). Захватывается
+  // при первом запуске из deep link или clipboard, применяется после
+  // успешной авторизации в _runPostIdentityFlowsAsync. clear() для
+  // user_snapshot этот ключ НЕ трогает — pending данные переживают logout
+  // (как pending_plan_invite_token).
+
+  Future<String?> readPendingReferralCode() async {
+    final raw = await _storage.read(key: _pendingReferralCodeKey);
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
+  Future<void> writePendingReferralCode(String code) async {
+    if (code.isEmpty) return;
+    await _storage.write(
+      key: _pendingReferralCodeKey,
+      value: code,
+    );
+  }
+
+  Future<void> clearPendingReferralCode() async {
+    await _storage.delete(key: _pendingReferralCodeKey);
   }
 }
