@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/legal/legal_repository_impl.dart';
+import '../../data/local/user_snapshot_storage.dart';
 import '../auth/onboarding_state.dart';
 
 class NicknameScreen extends StatefulWidget {
@@ -52,11 +53,32 @@ class _NicknameScreenState extends State<NicknameScreen> {
     try {
       final client = Supabase.instance.client;
 
+      // Подхватываем pending реф-код, если был захвачен из deep link / clipboard
+      // до начала онбординга. Передаём его в bootstrap_guest, чтобы атрибуция
+      // референса произошла в той же транзакции, что и создание app_user
+      // (исключает race с handle_auth_user_created в email-flow, где
+      // app_user сразу создаётся как USER и v2 use_referral_code_v1 не
+      // успевает записать referred_by до конверсии).
+      final storage = UserSnapshotStorage();
+      final pendingRefCode = await storage.readPendingReferralCode();
+
       // Шаг 1: создаём app_users (USER если есть auth.uid(), иначе GUEST).
       final dynamic data = await client.rpc(
         'bootstrap_guest',
-        params: {'nickname': _value},
+        params: {
+          'nickname': _value,
+          if (pendingRefCode != null && pendingRefCode.isNotEmpty)
+            'p_referral_code': pendingRefCode,
+        },
       );
+
+      // Реф-код использован — чистим storage, чтобы не пытаться повторно
+      // применить тот же код для этого юзера. Сервер сам идемпотентен через
+      // referred_by_app_user_id и bonus_grant_if_absent.idempotency_key, но
+      // на клиенте не имеем смысла его таскать дальше.
+      if (pendingRefCode != null && pendingRefCode.isNotEmpty) {
+        await storage.clearPendingReferralCode();
+      }
 
       if (data is! Map) {
         throw StateError('bootstrap_guest must return Map, got: $data');
