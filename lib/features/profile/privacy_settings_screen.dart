@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'delete_account_modal.dart';
 import 'app_version_label.dart';
+import '../../data/referral/referral_repository_impl.dart';
+import '../../ui/profile/referral_link_modal.dart';
 import '../../ui/support/support_direction_screen.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
@@ -84,6 +86,17 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     } catch (e) {
       debugPrint('[PrivacySettings] openSupport error: $e');
     }
+  }
+
+  void _openReferralModal() {
+    final repo = ReferralRepositoryImpl(Supabase.instance.client);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => ReferralLinkModal(
+        onLoadCode: repo.getOrCreateMyCode,
+      ),
+    );
   }
 
   Future<void> _toggle(String ctx, String field, bool value) async {
@@ -213,6 +226,47 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   child: Text(
                     '* Настройки приватности не распространяются на ваших друзей — для них мини профиль и полный профиль всегда открыты.',
                     style: text.bodySmall?.copyWith(color: colors.outline, fontSize: 12),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // ── Реферальная программа ──
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Реферальная программа',
+                        style: text.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'За каждого друга, который зарегистрируется по твоей ссылке, ты получишь +15 токенов.',
+                        style: text.bodySmall?.copyWith(
+                          color: colors.outline,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: _openReferralModal,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Сгенерировать ссылку',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
