@@ -2505,7 +2505,7 @@ class _BootstrapGateState extends State<BootstrapGate>
         final refCode = _extractReferralCode(uri);
         if (refCode != null && refCode.isNotEmpty) {
           await _storage.writePendingReferralCode(refCode);
-          unawaited(_tryApplyPendingReferralCode());
+          unawaited(_tryConsumePendingReferralCode());
         }
       }
     } catch (_) {
@@ -2545,7 +2545,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     final refCode = _extractReferralCode(uri);
     if (refCode != null && refCode.isNotEmpty) {
       await _storage.writePendingReferralCode(refCode);
-      unawaited(_tryApplyPendingReferralCode());
+      unawaited(_tryConsumePendingReferralCode());
     }
   }
 
@@ -2699,29 +2699,58 @@ class _BootstrapGateState extends State<BootstrapGate>
     return 'Не удалось применить приглашение';
   }
 
-  /// Применяет pending реф-код после успешной авторизации. См. TZ §5.2.
-  /// Дедупликация и защита от self-invite / перепривязки — на сервере
-  /// (idempotency_key в bonus_grant_if_absent + проверки в register_referral_v1).
-  /// Невалидный код сервер возвращает void без ошибки — поэтому исключение
-  /// тут означает только сетевую/RPC ошибку: в этом случае ref-код в storage
-  /// сохраняется и попытка повторится на следующем post-identity flow.
-  Future<void> _tryApplyPendingReferralCode() async {
+  /// Применяет pending реф-код. Архитектура по образцу plan-invite (TZ v2):
+  ///
+  /// - Вызывается use_referral_code_v1(app_user_id, ref_code).
+  /// - Сервер записывает referred_by_app_user_id у GUEST юзера.
+  ///   Бонус начисляется НЕ здесь, а позже при регистрации GUEST → USER
+  ///   через trigger handle_auth_user_created (он зовёт
+  ///   bonus_process_referral_registration с тем же idempotency_key).
+  /// - Existing USER (state='USER') получит ALREADY_REGISTERED — это правильно
+  ///   по правилам Centry: бонус положен только за РЕГИСТРАЦИЮ нового юзера.
+  ///
+  /// Анализ ответа:
+  /// - ok=true / code=LINKED  → запись установлена, storage чистим.
+  /// - ok=false с конкретным кодом отказа (SELF_INVITE, INVALID_CODE,
+  ///   EMPTY_CODE, ALREADY_LINKED, ALREADY_REGISTERED, USER_NOT_FOUND,
+  ///   USER_REQUIRED) → точечный отказ, хранить нет смысла, storage чистим.
+  /// - exception (сеть/RPC) → код остаётся в storage, повторим на следующем
+  ///   _runPostIdentityFlowsAsync.
+  static const _terminalReferralOutcomes = {
+    'LINKED',
+    'SELF_INVITE',
+    'INVALID_CODE',
+    'EMPTY_CODE',
+    'ALREADY_LINKED',
+    'ALREADY_REGISTERED',
+    'USER_NOT_FOUND',
+    'USER_REQUIRED',
+  };
+
+  Future<void> _tryConsumePendingReferralCode() async {
     final userId = _userId;
     if (userId == null || userId.isEmpty) return;
 
-    String? code;
     try {
-      code = await _storage.readPendingReferralCode();
+      final code = await _storage.readPendingReferralCode();
       if (code == null || code.isEmpty) return;
 
-      await _supabase.rpc(
-        'register_referral_v1',
-        params: {'p_ref_code': code},
+      final res = await _supabase.rpc(
+        'use_referral_code_v1',
+        params: {
+          'p_app_user_id': userId,
+          'p_ref_code': code,
+        },
       );
-      await _storage.clearPendingReferralCode();
+
+      // RPC возвращает jsonb {ok, code, ...}
+      final map = (res is Map) ? Map<String, dynamic>.from(res) : null;
+      final outcome = map?['code']?.toString();
+      if (outcome != null && _terminalReferralOutcomes.contains(outcome)) {
+        await _storage.clearPendingReferralCode();
+      }
     } catch (_) {
-      // Сетевая/транспортная ошибка — оставляем код в storage,
-      // повторим на следующем _runPostIdentityFlowsAsync.
+      // Сетевая/транспортная ошибка — оставляем код, повторим позже.
     }
   }
 
@@ -2799,7 +2828,7 @@ class _BootstrapGateState extends State<BootstrapGate>
       // After identity becomes available (AUTH/GUEST/onboarding), kick off pending UI-only flows.
       await _ensureDeviceTokenRegistered();
       await _tryConsumePendingPlanInvite();
-      await _tryApplyPendingReferralCode();
+      await _tryConsumePendingReferralCode();
       _schedulePendingPlanOpenIfReady();
     } finally {
       _postIdentityFlowsRunning = false;
