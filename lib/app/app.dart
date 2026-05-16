@@ -725,9 +725,25 @@ class _BootstrapGateState extends State<BootstrapGate>
   Future<void> _handleAnnouncementOpen(String announcementId) async {
     final ctx = App.navigatorKey.currentContext;
     if (ctx == null || !ctx.mounted) return;
+    final userId = (_userId ?? '').trim();
     await AnnouncementsController.instance.showById(
       context: ctx,
+      appUserId: userId,
       announcementId: announcementId,
+    );
+  }
+
+  /// Fallback: тап по announcement-push без announcement_id в data
+  /// (например push_worker не передаёт это поле). Открываем стопку
+  /// непрочитанных через стандартный AnnouncementsController.
+  Future<void> _handleAnnouncementsPumpFallback() async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    final userId = (_userId ?? '').trim();
+    if (userId.isEmpty) return;
+    await AnnouncementsController.instance.pumpUnread(
+      context: ctx,
+      appUserId: userId,
     );
   }
 
@@ -821,6 +837,21 @@ class _BootstrapGateState extends State<BootstrapGate>
     final type = (data['type'] ?? data['kind'] ?? '').toString().trim();
     if (type.isEmpty) return;
 
+    // ── Fallback: announcement push без announcement_id в data ──────────
+    // Если push_worker не передал announcement_id (старая версия Edge Function),
+    // открываем стопку непрочитанных через стандартный pumpUnread.
+    if (type == 'ANNOUNCEMENT_PUBLISHED') {
+      if (_canResolveNotificationOpenFromInbox()) {
+        unawaited(_handleAnnouncementsPumpFallback());
+      } else {
+        _enqueueNotificationOpenIntent(<String, dynamic>{
+          ...data,
+          'type': 'ANNOUNCEMENT_PUBLISHED',
+        });
+      }
+      return;
+    }
+
     if (type == 'ATTENTION_SIGN_RECEIVED') {
       if (_canResolveNotificationOpenFromInbox()) {
         unawaited(_handleAttentionSignOpen());
@@ -873,6 +904,12 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     final type = (intent['type'] ?? '').toString().trim();
+
+    // Fallback: announcement push без announcement_id в data
+    if (type == 'ANNOUNCEMENT_PUBLISHED') {
+      await _handleAnnouncementsPumpFallback();
+      return;
+    }
     if (type == 'PLAN_INTERNAL_INVITE') {
       final inviteId = (intent['invite_id'] ?? '').toString().trim();
       final planId = (intent['plan_id'] ?? '').toString().trim();
@@ -2508,7 +2545,10 @@ class _BootstrapGateState extends State<BootstrapGate>
         );
         // 2. После — стопка непрочитанных announcements.
         if (ctx.mounted) {
-          await AnnouncementsController.instance.pumpUnread(context: ctx);
+          await AnnouncementsController.instance.pumpUnread(
+            context: ctx,
+            appUserId: userId,
+          );
         }
       }());
     });
