@@ -8,13 +8,16 @@ import '../common/center_toast.dart';
 
 /// Модальное окно одной серверно-управляемой новости.
 ///
-/// Контент полностью описан сервером в `blocks` (массив type='text|image|video|button').
-/// Клиент рендерит их в порядке как пришли. Никаких продуктовых решений
-/// (полностью презентационный слой).
+/// Центральная брендовая модалка в стиле остальных Centry-диалогов
+/// (см. `lib/ui/common/modal_events_checker.dart`):
+/// - `showDialog` с `barrierDismissible: false` и `useRootNavigator: true`
+/// - `AlertDialog` с insetPadding/titlePadding/contentPadding/actionsPadding
+/// - Размер адаптивный: mainAxisSize.min + maxWidth 360 + maxHeight 80% экрана.
+///   Если контента мало — диалог компактный. Много — растёт до максимума,
+///   дальше внутренний скрол.
 ///
-/// При закрытии — диалог сам не делает markRead(); это решает [AnnouncementsController],
-/// который выкручивает очередь непрочитанных. Так модалка остаётся пригодной для
-/// push-сценария «открыть конкретную новость» (см. push_notifications.dart).
+/// Контент полностью описан сервером в `blocks` (массив type='text|image|video|button').
+/// При закрытии — диалог сам не делает markRead(); это решает [AnnouncementsController].
 class AnnouncementModal extends StatelessWidget {
   final AnnouncementDto announcement;
 
@@ -22,14 +25,10 @@ class AnnouncementModal extends StatelessWidget {
 
   /// Показывает модалку и резолвится после её закрытия.
   static Future<void> show(BuildContext context, AnnouncementDto dto) {
-    return showModalBottomSheet<void>(
+    return showDialog<void>(
       context: context,
-      isScrollControlled: true,
+      barrierDismissible: false,
       useRootNavigator: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => AnnouncementModal(announcement: dto),
     );
   }
@@ -37,52 +36,57 @@ class AnnouncementModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final mediaSize = MediaQuery.of(context).size;
-    final maxHeight = mediaSize.height * 0.9;
+    final colors = theme.colorScheme;
+    final media = MediaQuery.of(context);
+    // Контент адаптивный: минимум 280, максимум 360 по ширине.
+    // По высоте — растёт по контенту до 80% экрана, дальше внутренний скрол.
+    final maxContentHeight = media.size.height * 0.8;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Grab handle для bottom sheet
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 10),
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const ClampingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                itemCount: announcement.blocks.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 14),
-                itemBuilder: (_, i) => _BlockWidget(block: announcement.blocks[i]),
-              ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Закрыть'),
-                ),
-              ),
-            ),
-          ],
+    return AlertDialog(
+      // Тонкая обводка всего окна — канон place_details_dialog.
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: colors.primary.withValues(alpha: 0.5),
+          width: 1.2,
         ),
       ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+      titlePadding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
+      contentPadding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+      actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      title: Text(
+        'Новость от Centry',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: 280,
+          maxWidth: 360,
+          maxHeight: maxContentHeight,
+        ),
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < announcement.blocks.length; i++) ...[
+                if (i > 0) const SizedBox(height: 14),
+                _BlockWidget(block: announcement.blocks[i]),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Закрыть'),
+        ),
+      ],
     );
   }
 }
@@ -119,16 +123,24 @@ class _TextBlockView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final html = _markdownLinksToHtml(body);
-    return HtmlWidget(
-      html,
-      textStyle: theme.textTheme.bodyLarge?.copyWith(
-        fontSize: 16,
-        height: 1.4,
+    // Тонкая рамка как в plan_details / place_details — единый стиль Centry.
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        borderRadius: BorderRadius.circular(14),
       ),
-      onTapUrl: (url) async {
-        await _safeLaunchUrl(context, url);
-        return true;
-      },
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: HtmlWidget(
+        html,
+        textStyle: theme.textTheme.bodyLarge?.copyWith(
+          fontSize: 16,
+          height: 1.4,
+        ),
+        onTapUrl: (url) async {
+          await _safeLaunchUrl(context, url);
+          return true;
+        },
+      ),
     );
   }
 }
@@ -147,15 +159,15 @@ class _ImageBlockView extends StatelessWidget {
         fit: BoxFit.cover,
         width: double.infinity,
         placeholder: (_, __) => Container(
-          height: 200,
+          height: 160,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
         errorWidget: (_, __, ___) => Container(
-          height: 160,
+          height: 120,
           alignment: Alignment.center,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: const Icon(Icons.broken_image_outlined, size: 40),
+          child: const Icon(Icons.broken_image_outlined, size: 36),
         ),
       ),
     );
@@ -186,19 +198,19 @@ class _VideoBlockView extends StatelessWidget {
                   imageUrl: coverUrl!,
                   fit: BoxFit.cover,
                   width: double.infinity,
-                  height: 200,
+                  height: 160,
                   placeholder: (_, __) => Container(
-                    height: 200,
+                    height: 160,
                     color: theme.colorScheme.surfaceContainerHighest,
                   ),
                   errorWidget: (_, __, ___) => Container(
-                    height: 200,
+                    height: 160,
                     color: theme.colorScheme.surfaceContainerHighest,
                   ),
                 )
               else
                 Container(
-                  height: 160,
+                  height: 120,
                   width: double.infinity,
                   alignment: Alignment.center,
                   color: theme.colorScheme.surfaceContainerHighest,
@@ -213,10 +225,10 @@ class _VideoBlockView extends StatelessWidget {
                     color: Colors.black.withValues(alpha: 0.35),
                     shape: BoxShape.circle,
                   ),
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   child: const Icon(
                     Icons.play_arrow,
-                    size: 36,
+                    size: 32,
                     color: Colors.white,
                   ),
                 ),

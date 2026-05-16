@@ -29,12 +29,16 @@ class AnnouncementsController {
     _repo = repository;
   }
 
-  /// Вытаскивает все непрочитанные новости и показывает их по одной.
+  /// Вытаскивает все непрочитанные новости для [appUserId] и показывает их по одной.
   /// После закрытия каждой — markRead. Если в процессе пришёл новый
   /// триггер — запускаем pump ещё раз после завершения текущего.
-  Future<void> pumpUnread({required BuildContext context}) async {
+  Future<void> pumpUnread({
+    required BuildContext context,
+    required String appUserId,
+  }) async {
     final repo = _repo;
     if (repo == null) return;
+    if (appUserId.trim().isEmpty) return;
 
     if (_pumping) {
       _pumpRerunRequested = true;
@@ -43,16 +47,14 @@ class AnnouncementsController {
     _pumping = true;
 
     try {
-      await _doPump(context: context, repo: repo);
+      await _doPump(context: context, repo: repo, appUserId: appUserId);
     } finally {
       _pumping = false;
       if (_pumpRerunRequested) {
         _pumpRerunRequested = false;
         // ignore: use_build_context_synchronously
         if (context.mounted) {
-          // Запускаем повторный pump без await — не блокируем хвост.
-          // Безопасно: _pumping снова станет true перед work'ом.
-          pumpUnread(context: context);
+          pumpUnread(context: context, appUserId: appUserId);
         }
       }
     }
@@ -61,22 +63,23 @@ class AnnouncementsController {
   Future<void> _doPump({
     required BuildContext context,
     required AnnouncementsRepository repo,
+    required String appUserId,
   }) async {
     List<AnnouncementDto> items;
     try {
-      items = await repo.fetchUnread();
+      items = await repo.fetchUnread(appUserId: appUserId);
     } catch (e, st) {
       debugPrint('[Announcements] fetchUnread error: $e\n$st');
       return;
     }
     if (items.isEmpty) return;
 
-    debugPrint('[Announcements] pumping ${items.length} unread');
+    debugPrint('[Announcements] pumping ${items.length} unread for user=$appUserId');
     for (final item in items) {
       if (!context.mounted) return;
       await AnnouncementModal.show(context, item);
       try {
-        await repo.markRead(item.id);
+        await repo.markRead(appUserId: appUserId, announcementId: item.id);
       } catch (e) {
         debugPrint('[Announcements] markRead(${item.id}) error: $e');
       }
@@ -87,6 +90,7 @@ class AnnouncementsController {
   /// Если новость удалена/закончилась — тихо ничего не делает.
   Future<void> showById({
     required BuildContext context,
+    required String appUserId,
     required String announcementId,
   }) async {
     final repo = _repo;
@@ -104,10 +108,12 @@ class AnnouncementsController {
     }
     if (!context.mounted) return;
     await AnnouncementModal.show(context, dto);
-    try {
-      await repo.markRead(announcementId);
-    } catch (e) {
-      debugPrint('[Announcements] markRead($announcementId) error: $e');
+    if (appUserId.trim().isNotEmpty) {
+      try {
+        await repo.markRead(appUserId: appUserId, announcementId: announcementId);
+      } catch (e) {
+        debugPrint('[Announcements] markRead($announcementId) error: $e');
+      }
     }
   }
 }

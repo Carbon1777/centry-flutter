@@ -39,9 +39,9 @@ class AnnouncementsRepositoryImpl implements AnnouncementsRepository {
   }
 
   @override
-  Future<List<AnnouncementDto>> fetchUnread() async {
+  Future<List<AnnouncementDto>> fetchUnread({required String appUserId}) async {
     final response = await _client
-        .rpc('get_unread_announcements_v1')
+        .rpc('get_unread_announcements_v1', params: {'p_user_id': appUserId})
         .timeout(const Duration(seconds: 15));
     debugPrint('[Announcements] fetchUnread response type=${response.runtimeType}, '
         'value=${response is List ? '(List len=${response.length})' : '$response'}');
@@ -61,10 +61,13 @@ class AnnouncementsRepositoryImpl implements AnnouncementsRepository {
   }
 
   @override
-  Future<void> markRead(String announcementId) async {
+  Future<void> markRead({required String appUserId, required String announcementId}) async {
     await _client.rpc(
       'mark_announcement_read_v1',
-      params: {'p_announcement_id': announcementId},
+      params: {
+        'p_user_id': appUserId,
+        'p_announcement_id': announcementId,
+      },
     ).timeout(const Duration(seconds: 15));
   }
 
