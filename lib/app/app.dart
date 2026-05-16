@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ✅ Firebase / FCM
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -31,6 +32,8 @@ import '../ui/private_chats/private_chats_list_screen.dart';
 import '../ui/attention_signs/attention_sign_box_screen.dart';
 import '../ui/attention_signs/attention_signs_bus.dart';
 import '../ui/common/modal_events_checker.dart';
+import '../data/announcements/announcements_repository_impl.dart';
+import '../ui/announcements/announcements_controller.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -160,6 +163,11 @@ class _BootstrapGateState extends State<BootstrapGate>
 
 
     unawaited(_refreshGeoAndSync());
+
+    // Привязываем репозиторий новостных модалок к глобальному контроллеру.
+    // Контроллер — singleton, инициализируется один раз на старте приложения.
+    AnnouncementsController.instance
+        .attachRepository(AnnouncementsRepositoryImpl(_supabase));
 
     _initAuthListener();
     _initDeepLinks();
@@ -712,6 +720,29 @@ class _BootstrapGateState extends State<BootstrapGate>
     );
   }
 
+  /// Открыть конкретную новостную модалку по id (push deep link).
+  /// Если новость удалена / закончилась — тихо ничего не делает.
+  Future<void> _handleAnnouncementOpen(String announcementId) async {
+    final ctx = App.navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    await AnnouncementsController.instance.showById(
+      context: ctx,
+      announcementId: announcementId,
+    );
+  }
+
+  /// Открыть внешний URL из push-payload (external_url) во внешнем браузере.
+  /// Используется когда сервер шлёт прямую ссылку без id новости.
+  Future<void> _handleExternalUrlOpen(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('[Announcements] external_url launch error: $e');
+    }
+  }
+
   void _initFcmForegroundMessages() {
     if (kIsWeb) return;
 
@@ -762,6 +793,31 @@ class _BootstrapGateState extends State<BootstrapGate>
   }
 
   void _handleFcmMessageOpen(Map<String, dynamic> data) {
+    // ── Announcement deep link (новостная модалка) ───────────────────────
+    // Приоритет над type-роутингом: если в payload пришёл announcement_id —
+    // открываем конкретную новость поверх текущего экрана, минуя очередь
+    // непрочитанных. См. lib/data/announcements/ и AnnouncementsController.
+    final announcementId = (data['announcement_id'] ?? '').toString().trim();
+    if (announcementId.isNotEmpty) {
+      if (_canResolveNotificationOpenFromInbox()) {
+        unawaited(_handleAnnouncementOpen(announcementId));
+      } else {
+        _enqueueNotificationOpenIntent(<String, dynamic>{
+          ...data,
+          'announcement_id': announcementId,
+        });
+      }
+      return;
+    }
+
+    // ── External URL (внешняя ссылка из push'а) ──────────────────────────
+    // Опционально: если в payload пришёл готовый внешний URL без id новости.
+    final externalUrl = (data['external_url'] ?? '').toString().trim();
+    if (externalUrl.isNotEmpty) {
+      unawaited(_handleExternalUrlOpen(externalUrl));
+      return;
+    }
+
     final type = (data['type'] ?? data['kind'] ?? '').toString().trim();
     if (type.isEmpty) return;
 
@@ -809,6 +865,13 @@ class _BootstrapGateState extends State<BootstrapGate>
 
   Future<void> _handlePendingNotificationOpenIntent(
       Map<String, dynamic> intent) async {
+    // ── Announcement pending intent ──────────────────────────────────────
+    final announcementId = (intent['announcement_id'] ?? '').toString().trim();
+    if (announcementId.isNotEmpty) {
+      await _handleAnnouncementOpen(announcementId);
+      return;
+    }
+
     final type = (intent['type'] ?? '').toString().trim();
     if (type == 'PLAN_INTERNAL_INVITE') {
       final inviteId = (intent['invite_id'] ?? '').toString().trim();
@@ -2435,12 +2498,19 @@ class _BootstrapGateState extends State<BootstrapGate>
         debugPrint('[ModalEvents][${DateTime.now().toIso8601String()}] _trigger postFrame: ctx=${ctx == null ? "NULL" : "unmounted"}');
         return;
       }
-      unawaited(checkAndShowModalEvents(
-        context: ctx,
-        appUserId: userId,
-        onOpenPlan: (planId) =>
-            _queuePendingPlanOpen(planId, toastMessage: 'Приглашение принято'),
-      ));
+      unawaited(() async {
+        // 1. Сначала разгребаем modal_event_queue (продуктовые модалки приоритетнее).
+        await checkAndShowModalEvents(
+          context: ctx,
+          appUserId: userId,
+          onOpenPlan: (planId) =>
+              _queuePendingPlanOpen(planId, toastMessage: 'Приглашение принято'),
+        );
+        // 2. После — стопка непрочитанных announcements.
+        if (ctx.mounted) {
+          await AnnouncementsController.instance.pumpUnread(context: ctx);
+        }
+      }());
     });
   }
 
