@@ -53,6 +53,8 @@
 	<string>Нужно для записи видео</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Нужно для загрузки аватара из галереи</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Это поможет нам понять, какие источники приводят в Centry новых пользователей. Никакая личная информация не передаётся.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
