@@ -1,8 +1,15 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Remove AD_ID permission auto-added by Firebase/AppMetrica transitive deps.
+         Centry does NOT show ads and does NOT use Advertising ID for tracking.
+         Declaration in Play Console: "Использует рекламный идентификатор? — Нет". -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove"/>
 
     <application
         android:label="Centry"
