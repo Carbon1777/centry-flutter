@@ -8,6 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/profile_photos/profile_photo_dto.dart';
 import '../../data/profile_photos/profile_photos_repository_impl.dart';
 import '../../features/profile/photo_crop_screen.dart';
@@ -45,7 +46,11 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen>
+    with ScreenAnalyticsMixin<ProfileScreen> {
+  @override
+  String get screenName => 'profile';
+
   late Future<_ProfileData> _future;
   StreamSubscription<AuthState>? _authSub;
 

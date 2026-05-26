@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/plans/plans_repository_impl.dart';
 import '../../data/plans/plan_summary_dto.dart';
@@ -26,7 +27,13 @@ class PlansScreen extends StatefulWidget {
 }
 
 class _PlansScreenState extends State<PlansScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with
+        SingleTickerProviderStateMixin,
+        WidgetsBindingObserver,
+        ScreenAnalyticsMixin<PlansScreen> {
+  @override
+  String get screenName => 'plans';
+
   static const Duration _chatBadgesRefreshInterval = Duration(seconds: 10);
 
   late final PlansRepository _repo;

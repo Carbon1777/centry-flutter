@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/private_chats/private_chat_dto.dart';
 import '../../data/private_chats/private_chats_repository_impl.dart';
 import '../../features/profile/user_card_sheet.dart';
@@ -18,7 +19,10 @@ class PrivateChatsListScreen extends StatefulWidget {
 }
 
 class _PrivateChatsListScreenState extends State<PrivateChatsListScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ScreenAnalyticsMixin<PrivateChatsListScreen> {
+  @override
+  String get screenName => 'private_chats_list';
+
   late final _repo =
       PrivateChatsRepositoryImpl(Supabase.instance.client);
 

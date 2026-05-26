@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/analytics_service.dart';
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../onboarding/nickname_screen.dart';
 import 'auth_service.dart';
 import 'forgot_password_screen.dart';
@@ -18,7 +20,11 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
+class _AuthScreenState extends State<AuthScreen>
+    with ScreenAnalyticsMixin<AuthScreen> {
+  @override
+  String get screenName => 'auth';
+
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
@@ -50,6 +56,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     _auth = AuthService(Supabase.instance.client);
+    AnalyticsService.event(AppEvents.emailFormShown);
   }
 
   @override
@@ -89,6 +96,7 @@ class _AuthScreenState extends State<AuthScreen> {
         }
 
         await _auth.signUp(email: email, password: password);
+        AnalyticsService.event(AppEvents.emailSubmitted, {'mode': 'signup'});
         OnboardingFlowState.instance.pendingEmail = email;
         if (!mounted) return;
         Navigator.of(context).push(
@@ -96,6 +104,7 @@ class _AuthScreenState extends State<AuthScreen> {
             builder: (_) => OtpVerifyScreen(
               email: email,
               onVerified: (ctx) async {
+                AnalyticsService.event(AppEvents.emailConfirmed);
                 Navigator.of(ctx).pushReplacement(
                   MaterialPageRoute(
                     builder: (_) => NicknameScreen(

@@ -2,6 +2,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../core/analytics/analytics_service.dart';
+import '../../core/analytics/screen_analytics_mixin.dart';
+
 /// Запрос системных разрешений (геолокация + уведомления) ОДНИМ экраном.
 ///
 /// Экран показывается сразу после AgreementScreen, до AuthScreen.
@@ -22,18 +25,33 @@ class PermissionsScreen extends StatefulWidget {
   State<PermissionsScreen> createState() => _PermissionsScreenState();
 }
 
-class _PermissionsScreenState extends State<PermissionsScreen> {
+class _PermissionsScreenState extends State<PermissionsScreen>
+    with ScreenAnalyticsMixin<PermissionsScreen> {
   bool _loading = false;
+
+  @override
+  String get screenName => 'permissions';
+
+  @override
+  void initState() {
+    super.initState();
+    AnalyticsService.event(AppEvents.permissionsShown);
+  }
 
   Future<void> _onContinue() async {
     if (_loading) return;
     setState(() => _loading = true);
 
+    bool locationGranted = false;
+    bool notificationsGranted = false;
+
     // 1) Location — системный диалог iOS/Android.
     // Если permission уже определён, requestPermission вернёт текущий статус
     // мгновенно и без диалога — это ок, идём дальше.
     try {
-      await Geolocator.requestPermission();
+      final perm = await Geolocator.requestPermission();
+      locationGranted = perm == LocationPermission.always ||
+          perm == LocationPermission.whileInUse;
     } catch (_) {
       // Игнорируем — отсутствие разрешения не блокирует онбординг,
       // приложение работает по выбранному в аккаунте городу.
@@ -47,14 +65,26 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     // иначе iOS может проигнорировать второй запрос.
     try {
       await Future<void>.delayed(const Duration(milliseconds: 250));
-      await FirebaseMessaging.instance.requestPermission(
+      final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
+      notificationsGranted =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+              settings.authorizationStatus == AuthorizationStatus.provisional;
     } catch (_) {
       // Пуши не критичны для запуска, отказ не блокирует онбординг.
     }
+
+    final anyGranted = locationGranted || notificationsGranted;
+    AnalyticsService.event(
+      anyGranted ? AppEvents.permissionsGranted : AppEvents.permissionsSkipped,
+      {
+        'location': locationGranted,
+        'notifications': notificationsGranted,
+      },
+    );
 
     if (!mounted) return;
 

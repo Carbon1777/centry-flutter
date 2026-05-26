@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/private_chats/private_chat_dto.dart';
 import '../../data/private_chats/private_chats_repository_impl.dart';
 import '../../data/reports/report_dto.dart';
@@ -49,7 +50,10 @@ class PrivateChatBlock extends StatefulWidget {
 }
 
 class _PrivateChatBlockState extends State<PrivateChatBlock>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ScreenAnalyticsMixin<PrivateChatBlock> {
+  @override
+  String get screenName => 'private_chat';
+
   late final _repo = PrivateChatsRepositoryImpl(Supabase.instance.client);
 
   static const _kRefreshInterval = Duration(seconds: 2);

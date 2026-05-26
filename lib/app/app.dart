@@ -25,7 +25,7 @@ import '../features/home/home_screen.dart';
 import '../ui/activity_feed/activity_feed_screen.dart';
 import '../features/legal/legal_agreement_screen.dart';
 import '../features/auth/agreement_screen.dart';
-import '../features/onboarding/intro_video_screen.dart';
+import '../features/onboarding/intro_screen.dart';
 import '../push/push_notifications.dart';
 import '../ui/common/center_toast.dart';
 import '../ui/private_chats/private_chats_list_screen.dart';
@@ -3149,7 +3149,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     // ===== ONBOARDING =====
     if (!mounted) return;
     await _disposeInboxInvitesRealtimeSubscription();
-    final showVideo = await IntroVideoScreen.shouldShow();
+    final showVideo = await IntroScreen.shouldShow();
     if (!mounted) return;
     setState(() {
       _userId = null;
@@ -3319,7 +3319,7 @@ class _BootstrapGateState extends State<BootstrapGate>
     }
 
     if (_showIntroVideo) {
-      return IntroVideoScreen(
+      return IntroScreen(
         onDone: () {
           if (!mounted) return;
           setState(() => _showIntroVideo = false);

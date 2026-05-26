@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/analytics_service.dart';
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/legal/legal_repository_impl.dart';
 import '../../data/local/user_snapshot_storage.dart';
 import '../auth/onboarding_state.dart';
@@ -14,7 +16,11 @@ class NicknameScreen extends StatefulWidget {
   State<NicknameScreen> createState() => _NicknameScreenState();
 }
 
-class _NicknameScreenState extends State<NicknameScreen> {
+class _NicknameScreenState extends State<NicknameScreen>
+    with ScreenAnalyticsMixin<NicknameScreen> {
+  @override
+  String get screenName => 'nickname';
+
   static const String _kAppVersion = '1.0.10';
 
   final _controller = TextEditingController();
@@ -40,6 +46,7 @@ class _NicknameScreenState extends State<NicknameScreen> {
   void initState() {
     super.initState();
     _repo = LegalRepositoryImpl(Supabase.instance.client);
+    AnalyticsService.event(AppEvents.nicknameShown);
   }
 
   Future<void> _submit() async {
@@ -99,6 +106,8 @@ class _NicknameScreenState extends State<NicknameScreen> {
       if (state != 'GUEST' && state != 'USER') {
         throw StateError('Unexpected state from bootstrap_guest: $payload');
       }
+
+      AnalyticsService.event(AppEvents.nicknameSubmitted, {'state': state!});
 
       // Шаг 2: фиксируем принятие соглашений (версии собраны на AgreementScreen).
       final docs = OnboardingFlowState.instance.acceptedLegalDocuments;

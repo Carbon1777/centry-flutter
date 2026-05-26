@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "mcp__supabase__list_projects"
+      "mcp__supabase__list_projects",
+      "Bash(gh secret set:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../core/geo/geo_service.dart';
 import '../../data/feed/feed_place_dto.dart';
 import '../../data/feed/feed_repository.dart';
@@ -62,7 +63,11 @@ class ActivityFeedScreen extends StatefulWidget {
   State<ActivityFeedScreen> createState() => _ActivityFeedScreenState();
 }
 
-class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
+class _ActivityFeedScreenState extends State<ActivityFeedScreen>
+    with ScreenAnalyticsMixin<ActivityFeedScreen> {
+  @override
+  String get screenName => 'activity_feed';
+
   late Future<_FeedUserState> _future;
   StreamSubscription<AuthState>? _authSub;
   final ValueNotifier<int> _feedReloadSignal = ValueNotifier(0);

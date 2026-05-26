@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/analytics_service.dart';
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/legal/legal_document_dto.dart';
 import '../../data/legal/legal_repository_impl.dart';
 import '../legal/legal_document_screen.dart';
@@ -18,7 +20,11 @@ class AgreementScreen extends StatefulWidget {
   State<AgreementScreen> createState() => _AgreementScreenState();
 }
 
-class _AgreementScreenState extends State<AgreementScreen> {
+class _AgreementScreenState extends State<AgreementScreen>
+    with ScreenAnalyticsMixin<AgreementScreen> {
+  @override
+  String get screenName => 'agreement';
+
   late final LegalRepositoryImpl _repo;
 
   bool _accepted = false;
@@ -30,6 +36,7 @@ class _AgreementScreenState extends State<AgreementScreen> {
     super.initState();
     _repo = LegalRepositoryImpl(Supabase.instance.client);
     _loadDocuments();
+    AnalyticsService.event(AppEvents.agreementShown);
   }
 
   Future<void> _loadDocuments() async {
@@ -64,6 +71,7 @@ class _AgreementScreenState extends State<AgreementScreen> {
 
   void _continue() {
     if (!_accepted || _docsLoading) return;
+    AnalyticsService.event(AppEvents.agreementAccepted);
     OnboardingFlowState.instance.acceptedLegalDocuments = _documents;
 
     // Сначала PermissionsScreen (system dialogs гео + уведомления),

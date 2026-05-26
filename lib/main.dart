@@ -7,10 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:appmetrica_plugin/appmetrica_plugin.dart';
 
 import 'config/supabase_config.dart';
-import 'config/appmetrica_keys.dart';
+import 'core/analytics/analytics_service.dart';
 import 'app/app.dart';
 import 'push/push_notifications.dart';
 import 'firebase_options.dart';
@@ -37,13 +36,8 @@ Future<void> main() async {
         debugPrint('[Main] Firebase init failed (push notifications disabled): $e');
       }
 
-      try {
-        await AppMetrica.activate(
-          const AppMetricaConfig(AppMetricaKeys.apiKey),
-        );
-      } catch (e) {
-        debugPrint('[Main] AppMetrica init failed: $e');
-      }
+      await AnalyticsService.init();
+      AnalyticsService.event(AppEvents.appOpen);
     }
 
     await Supabase.initialize(

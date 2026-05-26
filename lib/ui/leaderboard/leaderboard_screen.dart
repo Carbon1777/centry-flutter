@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/leaderboard/leaderboard_dto.dart';
 import '../../data/leaderboard/leaderboard_repository.dart';
 import '../shared/spinning_logo.dart';
@@ -26,7 +27,11 @@ class LeaderboardScreen extends StatefulWidget {
   State<LeaderboardScreen> createState() => _LeaderboardScreenState();
 }
 
-class _LeaderboardScreenState extends State<LeaderboardScreen> {
+class _LeaderboardScreenState extends State<LeaderboardScreen>
+    with ScreenAnalyticsMixin<LeaderboardScreen> {
+  @override
+  String get screenName => 'leaderboard';
+
   int _tabIndex = 0; // 0 = Активность, 1 = Симпатии
 
   late Future<LeaderboardSnapshotDto> _activityFuture;

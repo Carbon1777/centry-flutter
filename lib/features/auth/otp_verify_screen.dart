@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import 'auth_service.dart';
 
 class OtpVerifyScreen extends StatefulWidget {
@@ -23,7 +24,11 @@ class OtpVerifyScreen extends StatefulWidget {
   State<OtpVerifyScreen> createState() => _OtpVerifyScreenState();
 }
 
-class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
+class _OtpVerifyScreenState extends State<OtpVerifyScreen>
+    with ScreenAnalyticsMixin<OtpVerifyScreen> {
+  @override
+  String get screenName => 'otp_verify';
+
   final _ctrl = TextEditingController();
   late final AuthService _auth;
 

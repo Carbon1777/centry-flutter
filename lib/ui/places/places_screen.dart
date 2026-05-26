@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../core/geo/geo_service.dart';
 import '../../data/places/place_dto.dart';
 import '../../data/places/places_feed_result.dart';
@@ -55,7 +56,11 @@ class PlacesScreen extends StatefulWidget {
   State<PlacesScreen> createState() => _PlacesScreenState();
 }
 
-class _PlacesScreenState extends State<PlacesScreen> {
+class _PlacesScreenState extends State<PlacesScreen>
+    with ScreenAnalyticsMixin<PlacesScreen> {
+  @override
+  String get screenName => 'places';
+
   late PlacesViewMode _viewMode;
 
   final _geoInfoController = PlacesGeoInfoController();

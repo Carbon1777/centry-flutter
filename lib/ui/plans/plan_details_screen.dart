@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/plans/plan_details_dto.dart';
 import '../../data/plans/plans_repository.dart';
 import '../../data/places/places_repository_impl.dart';
@@ -38,7 +39,10 @@ class PlanDetailsScreen extends StatefulWidget {
 }
 
 class _PlanDetailsScreenState extends State<PlanDetailsScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ScreenAnalyticsMixin<PlanDetailsScreen> {
+  @override
+  String get screenName => 'plan_details';
+
   bool _loading = true;
   bool _actionLoading = false;
   bool _visibilityLoading = false;

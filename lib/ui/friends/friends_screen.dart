@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../common/center_toast.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
 import '../../data/friends/friend_dto.dart';
 import '../../data/friends/friend_request_result_dto.dart';
 import '../../data/friends/friends_repository.dart';
@@ -30,7 +31,11 @@ class FriendsScreen extends StatefulWidget {
   State<FriendsScreen> createState() => _FriendsScreenState();
 }
 
-class _FriendsScreenState extends State<FriendsScreen> {
+class _FriendsScreenState extends State<FriendsScreen>
+    with ScreenAnalyticsMixin<FriendsScreen> {
+  @override
+  String get screenName => 'friends';
+
   bool _loading = true;
   List<FriendDto> _friends = const <FriendDto>[];
   Map<String, UserMiniProfile> _profiles = {};

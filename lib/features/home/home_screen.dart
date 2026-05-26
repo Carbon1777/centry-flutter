@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/analytics/screen_analytics_mixin.dart';
+
 class HomeScreen extends StatefulWidget {
   final String nickname;
 
@@ -19,7 +21,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, ScreenAnalyticsMixin<HomeScreen> {
+  @override
+  String get screenName => 'welcome';
+
   late final AnimationController _controller;
 
   late final Animation<double> _iconOpacity;
