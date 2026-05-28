@@ -56,4 +56,28 @@ class AnalyticsService {
       debugPrint('[Analytics] event "$name" failed: $e');
     }
   }
+
+  /// Связывает текущий device_id AppMetrica с канонический ID юзера Centry
+  /// (`app_user_id`, не `auth.uid()` — см. server-first принцип в CLAUDE.md).
+  /// После этого фильтрация воронки по конкретному юзеру работает в UI AppMetrica.
+  static void setUserId(String userId) {
+    if (kIsWeb) return;
+    if (userId.isEmpty) return;
+    try {
+      AppMetrica.setUserProfileID(userId);
+    } catch (e) {
+      debugPrint('[Analytics] setUserId failed: $e');
+    }
+  }
+
+  /// Отвязывает device_id от юзера (на signOut). Следующие события
+  /// будут трекаться без user profile id, пока не вызовется setUserId.
+  static void clearUserId() {
+    if (kIsWeb) return;
+    try {
+      AppMetrica.setUserProfileID(null);
+    } catch (e) {
+      debugPrint('[Analytics] clearUserId failed: $e');
+    }
+  }
 }

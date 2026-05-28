@@ -2,7 +2,7 @@ name: centry
 description: "Centry mobile application"
 publish_to: 'none'
 
-version: 1.6.0+27
+version: 1.6.0+28
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -26,6 +26,11 @@ dependencies:
 
   # ✅ AppMetrica (Yandex) — mobile attribution for VK Ads
   appmetrica_plugin: ^4.0.0
+
+  # ✅ Install-source detection (App Store / Google Play / RuStore / etc.)
+  # Используется для атрибуции магазина установки (app_users.install_store).
+  # Мультиплатформенный плагин, iOS-часть подцепляется через pod install.
+  store_checker: ^1.8.0
 
   # ✅ Local notifications (Android actions / heads-up)
   flutter_local_notifications: ^17.2.2

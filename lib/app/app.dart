@@ -18,7 +18,9 @@ import '../ui/plans/plans_screen.dart';
 import '../ui/plans/plan_details_screen.dart';
 
 import '../app_theme.dart';
+import '../core/analytics/analytics_service.dart';
 import '../core/geo/geo_service.dart';
+import '../core/install/install_source_service.dart';
 import '../data/local/user_snapshot_storage.dart';
 import '../data/legal/legal_repository_impl.dart';
 import '../features/home/home_screen.dart';
@@ -2555,7 +2557,14 @@ class _BootstrapGateState extends State<BootstrapGate>
   }
 
   void _initAuthListener() {
-    _authSub = _supabase.auth.onAuthStateChange.listen((_) {
+    _authSub = _supabase.auth.onAuthStateChange.listen((data) {
+      // На logout сразу отвязываем device_id от user profile id в AppMetrica.
+      // setUserId на signedIn/tokenRefreshed/userUpdated/initialSession делается
+      // внутри _restore() — там известен app_user_id (канонический ID Centry,
+      // не сырой auth.uid()), и только тогда есть смысл писать install_store.
+      if (data.event == AuthChangeEvent.signedOut) {
+        AnalyticsService.clearUserId();
+      }
       _restore();
     });
   }
@@ -3115,6 +3124,13 @@ class _BootstrapGateState extends State<BootstrapGate>
         _homeVisibleAt = null;
         _postIdentityFlowsRerunRequested = false;
       });
+
+      // Привязываем AppMetrica device_id к app_user_id и записываем атрибуцию
+      // магазина установки. Идемпотентно: setUserProfileID можно дёргать на
+      // каждый token refresh, persistForUser пишет только если поле NULL.
+      final authedUserId = userRow['id'] as String;
+      AnalyticsService.setUserId(authedUserId);
+      unawaited(InstallSourceService.persistForUser(authedUserId));
 
       unawaited(_checkLegalAcceptanceIfNeeded());
       return;
